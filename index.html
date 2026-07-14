@@ -294,7 +294,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v29';
+const APP_VERSION = 'v31';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -908,40 +908,102 @@ function handleGlobalSearch(v){
   else if(currentTab==='customers') refreshContent();
   else refreshContent();
 }
+/* أرشفة وحذف العملاء: الأرشفة بتخفيه من القوائم مع الحفاظ على تاريخه،
+   والحذف النهائي مسموح بس لو مالوش أي تاريخ (اتسجل بالغلط) — والاتنين للمالك فقط */
+let custShowArchived = false;
+function toggleCustArchive(){ custShowArchived = !custShowArchived; refreshContent(); }
+function customerHistoryCount(custId){
+  return {
+    cars: DB.cars.filter(c=>c.customerId===custId).length,
+    jobs: DB.jobs.filter(j=>j.customerId===custId).length,
+    invoices: DB.invoices.filter(i=>i.customerId===custId).length
+  };
+}
+function customerHasHistory(custId){
+  const h = customerHistoryCount(custId);
+  return (h.jobs + h.invoices) > 0;
+}
 function renderCustomers(){
-  let list = DB.customers;
+  const everyone = DB.customers;
+  const archivedCount = everyone.filter(c=>c.archived).length;
+  let list = custShowArchived ? everyone : everyone.filter(c=>!c.archived);
   if(custSearchTerm){
     list = list.filter(c=>customerMatchesSearch(c, custSearchTerm));
   }
   return `
-  <div class="section-head"><h3>العملاء (${DB.customers.length})</h3>
-    <button class="btn btn-accent" onclick="openNewCustomerModal()">${ICONS.plus} عميل جديد</button></div>
+  <div class="section-head"><h3>العملاء (${everyone.filter(c=>!c.archived).length})</h3>
+    <div style="display:flex;gap:8px">
+      ${archivedCount?`<button class="btn" onclick="toggleCustArchive()">${custShowArchived?'إخفاء الأرشيف':'🗄️ عرض الأرشيف ('+archivedCount+')'}</button>`:''}
+      <button class="btn btn-accent" onclick="openNewCustomerModal()">${ICONS.plus} عميل جديد</button>
+    </div></div>
   <div class="grid g3">
-    ${list.length? list.map(customerCard).join('') : emptyState('لسه مفيش عملاء مسجلين')}
+    ${list.length? list.map(customerCard).join('') : emptyState(custSearchTerm?'مفيش نتائج مطابقة':'لسه مفيش عملاء مسجلين')}
   </div>`;
 }
 function customerCard(c){
   const cars = DB.cars.filter(x=>x.customerId===c.id);
+  const isOwner = session.role==='owner';
   return `
-  <div class="card">
+  <div class="card" style="${c.archived?'opacity:.6':''}">
     <div class="flex-between">
       <div>
-        <div style="font-weight:800;font-size:15px">${c.name}</div>
+        <div style="font-weight:800;font-size:15px">${c.name} ${c.archived?'<span class="muted" style="font-size:11px">🗄️ أرشيف</span>':''}</div>
         <div class="muted" style="font-size:12.5px;margin-top:2px">${c.phone}</div>
       </div>
-      <div style="display:flex;gap:6px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
         <button class="btn btn-sm" onclick="openCustomerHistory('${c.id}')">سجل العميل</button>
-        <button class="btn btn-sm" onclick="openAddCarModal('${c.id}')">${ICONS.plus} سيارة</button>
+        ${c.archived?'':`<button class="btn btn-sm" onclick="openAddCarModal('${c.id}')">${ICONS.plus} سيارة</button>`}
+        ${isOwner?`<button class="btn btn-sm" onclick="archiveCustomer('${c.id}')">${c.archived?'↩️ رجّع':'🗄️'}</button>`:''}
+        ${isOwner && !customerHasHistory(c.id) ? `<button class="btn btn-sm btn-danger" onclick="deleteCustomer('${c.id}')">حذف</button>` : ''}
       </div>
     </div>
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
       ${cars.length? cars.map(car=>`
         <div style="display:flex;justify-content:space-between;background:var(--surface-2);padding:8px 10px;border-radius:8px;font-size:12.5px">
           <span>${car.plate} — ${carLabel(car)}</span>
-          <button class="btn btn-sm btn-accent" onclick="openNewJobModal('${car.id}')">أمر شغل</button>
+          ${c.archived?'':`<button class="btn btn-sm btn-accent" onclick="openNewJobModal('${car.id}')">أمر شغل</button>`}
         </div>`).join('') : '<div class="muted" style="font-size:12px">مفيش سيارات مسجلة</div>'}
     </div>
   </div>`;
+}
+function archiveCustomer(custId){
+  if(session.role!=='owner'){ toast('صلاحية صاحب المركز فقط', true); return; }
+  const c = DB.customers.find(x=>x.id===custId);
+  if(!c) return;
+  if(c.archived){
+    askConfirm('رجوع العميل «'+c.name+'» من الأرشيف؟ هيظهر تاني في القوائم وتقدر تفتحله أوامر شغل.', async ()=>{
+      c.archived = false; delete c.archivedAt;
+      await saveKey('customers');
+      await logAction('إرجاع العميل من الأرشيف: '+c.name);
+      toast('رجع العميل للقوائم'); refreshContent();
+    });
+    return;
+  }
+  const openJobs = DB.jobs.filter(j=>j.customerId===custId && !isJobClosed(j) && j.status!=='ملغاة').length;
+  if(openJobs>0){ toast('مينفعش تأرشف عميل عنده '+openJobs+' أمر شغل مفتوح — اقفلهم الأول', true); return; }
+  const h = customerHistoryCount(custId);
+  askConfirmReason('أرشفة العميل «'+c.name+'»؟<br><span class="muted" style="font-size:12px">هيختفي من القوائم بس تاريخه هيفضل محفوظ بالكامل ('+h.jobs+' أمر شغل · '+h.invoices+' فاتورة) وتقدر ترجّعه في أي وقت.</span>', async (reason)=>{
+    c.archived = true; c.archivedAt = new Date().toISOString();
+    await saveKey('customers');
+    await logAction('أرشفة العميل: '+c.name+' — السبب: '+(reason||'—'));
+    toast('تمت أرشفة العميل'); refreshContent();
+  });
+}
+function deleteCustomer(custId){
+  if(session.role!=='owner'){ toast('صلاحية صاحب المركز فقط', true); return; }
+  const c = DB.customers.find(x=>x.id===custId);
+  if(!c) return;
+  if(customerHasHistory(custId)){
+    toast('مينفعش حذف عميل ليه أوامر شغل أو فواتير — استخدم الأرشفة', true); return;
+  }
+  const cars = DB.cars.filter(x=>x.customerId===custId);
+  askConfirmReason('حذف العميل «'+c.name+'» نهائياً؟'+(cars.length?'<br><span class="muted" style="font-size:12px">هتتحذف معاه '+cars.length+' سيارة مسجلة عليه.</span>':'')+'<br><span class="muted" style="font-size:12px">الحذف متاح لأنه مالوش أي أوامر شغل أو فواتير.</span>', async (reason)=>{
+    DB.cars = DB.cars.filter(x=>x.customerId!==custId);
+    DB.customers = DB.customers.filter(x=>x.id!==custId);
+    await Promise.all([saveKey('customers'), saveKey('cars')]);
+    await logAction('حذف العميل نهائياً: '+c.name+(cars.length?' (ومعاه '+cars.length+' سيارة)':'')+' — السبب: '+(reason||'—'));
+    toast('تم حذف العميل'); refreshContent();
+  });
 }
 function openCustomerHistory(customerId){ openModal(customerHistoryHTML(customerId)); }
 function customerHistoryHTML(customerId){
@@ -1087,7 +1149,13 @@ function renderJobs(){
 }
 function openPickCarForJob(){
   if(DB.cars.length===0){ toast('سجل عميل وسيارة الأول', true); openNewCustomerModal(); return; }
-  const opts = DB.cars.map(car=>{
+  // سيارات العملاء المؤرشفين مش بتظهر في اختيار أمر شغل جديد
+  const activeCars = DB.cars.filter(car=>{
+    const cust = DB.customers.find(c=>c.id===car.customerId);
+    return !cust || !cust.archived;
+  });
+  if(activeCars.length===0){ toast('كل العملاء مؤرشفين — رجّع عميل من الأرشيف أو سجّل عميل جديد', true); return; }
+  const opts = activeCars.map(car=>{
     const cust = DB.customers.find(c=>c.id===car.customerId);
     return `<option value="${car.id}">${car.plate} — ${carLabel(car)} (${cust?cust.name:''})</option>`;
   }).join('');
@@ -1097,13 +1165,42 @@ function openPickCarForJob(){
     <button class="btn btn-accent" style="width:100%" onclick="openNewJobModal(document.getElementById('pickCarSel').value)">التالي</button>
   `);
 }
+/* ============ هوية الفني: الربط بالرقم الوظيفي مش بالاسم (الملاحظة 30) ============
+   كل بند شغل بيتخزن معاه technicianId (معرف الموظف) + technician (لقطة من الاسم للسجلات القديمة والطباعة).
+   التقارير والحوافز بتتجمع بالـ ID ⇐ مفيش تكرار أسماء، وتغيير اسم الموظف مش بيكسر السجلات القديمة. */
+const TECH_JOB_KEYWORDS = ['فني','ميكانيك','كهرب','سمكر','دهان','ورشة'];
+function isTechEmployee(e){
+  if(!e || e.status!=='نشط') return false;
+  const hay = (e.job||'')+' '+(e.dept||'');
+  return TECH_JOB_KEYWORDS.some(k=>hay.includes(k));
+}
+function techEmployees(){ return DB.employees.filter(isTechEmployee).sort((a,b)=>a.name.localeCompare(b.name,'ar')); }
+function techOptionsHTML(selectedId){
+  const list = techEmployees();
+  if(list.length===0) return `<option value="">— مفيش فنيين نشطين في الموارد البشرية —</option>`;
+  return `<option value="">— اختار الفني —</option>` +
+    list.map(e=>`<option value="${e.id}" ${selectedId===e.id?'selected':''}>${e.name} — #${e.empNo||'—'} — ${e.job||'—'}</option>`).join('');
+}
+/* المفتاح الثابت للفني: الـ ID لو موجود، وإلا الاسم القديم (توافق مع السجلات القديمة) */
+function techKeyOf(it, job){
+  const id = (it && it.technicianId) || (job && job.technicianId);
+  if(id) return id;
+  const nm = (it && it.technician && it.technician.trim()) || (job && job.technician && job.technician.trim());
+  return nm || 'غير محدد';
+}
+/* الاسم المعروض: بيتقرا من ملف الموظف (فيتحدث لو الاسم اتغير)، وإلا اللقطة القديمة */
+function techLabelOf(key){
+  const e = DB.employees.find(x=>x.id===key);
+  return e ? e.name : (key || 'غير محدد');
+}
+function itemTechLabel(it, job){ return techLabelOf(techKeyOf(it, job)); }
 function openNewJobModal(carId){
   const car = DB.cars.find(c=>c.id===carId);
   openModal(`
     <h3>أمر شغل جديد — ${car.plate}</h3>
     <div class="form-row"><label class="f-label">وصف الأعطال / المطلوب</label><textarea class="f" id="jobNotes" rows="3" placeholder="مثال: تغيير زيت + فحص فرامل"></textarea></div>
     <div class="grid g2">
-      <div class="form-row"><label class="f-label">اسم الفني (اختياري)</label><input class="f" id="jobTech"></div>
+      <div class="form-row"><label class="f-label">الفني المسؤول (اختياري)</label><select class="f" id="jobTech">${techOptionsHTML()}</select></div>
       <div class="form-row"><label class="f-label">قراءة العداد الحالية (كم)</label><input class="f" id="jobOdo" type="number" min="0" value="${car.currentOdometer||''}"></div>
     </div>
     <div class="grid g2">
@@ -1122,7 +1219,8 @@ async function saveNewJob(carId){
     return;
   }
   const notes = document.getElementById('jobNotes').value.trim();
-  const tech = document.getElementById('jobTech').value.trim();
+  const techId = (document.getElementById('jobTech')||{}).value || null;
+  const tech = techId ? techLabelOf(techId) : '';
   const odo = parseFloat(document.getElementById('jobOdo').value)||null;
   const nextKm = parseFloat(document.getElementById('jobNextKm').value)||null;
   const nextDate = document.getElementById('jobNextDate').value || null;
@@ -1133,7 +1231,7 @@ async function saveNewJob(carId){
   const job = {
     id: uid('job'), jobNo: nextNo(DB.jobs,'jobNo'),
     carId, customerId: car.customerId, status:'مستلمة',
-    receivedAt: new Date().toISOString(), notes, technician: tech, odometer: odo,
+    receivedAt: new Date().toISOString(), notes, technicianId: techId, technician: tech, odometer: odo,
     items: [], deliveredAt:null, customerApproved:false
   };
   DB.jobs.push(job);
@@ -1199,7 +1297,7 @@ function jobDetailHTML(jobId){
     <tbody>
       ${job.items.length ? job.items.map(it=>`
         <tr><td>${it.name} <span class="muted" style="font-size:11px">(${kindLabel(it)})</span>
-        ${it.technician ? `<div style="font-size:11px;color:var(--accent)">👨‍🔧 الفني: ${it.technician}</div>` : ''}
+        ${(it.technicianId || it.technician) ? `<div style="font-size:11px;color:var(--accent)">👨‍🔧 الفني: ${itemTechLabel(it, job)}</div>` : ''}
         ${(it.kind==='ext_part'||it.kind==='ext_work') && ['accounts','owner'].includes(session.role) ? `<div class="muted" style="font-size:11px">${it.supplierId?('المورد: '+((DB.suppliers.find(s=>s.id===it.supplierId)||{}).name||'—')+' · '):''}التكلفة: ${money(it.costPrice||0)} · ${it.payMethod||'كاش'}</div>` : ''}
         ${it.kind==='part' && it.costPrice!==undefined && ['accounts','owner'].includes(session.role) ? `<div class="muted" style="font-size:11px">سعر الشراء: ${money(it.costPrice)}</div>` : ''}
         </td>
@@ -1272,7 +1370,7 @@ function brandedJobHTML(job){
     <div style="font-size:13px;margin-bottom:6px"><b>الوصف:</b> ${job.notes||'—'}</div>
     <table>
       <thead><tr><th>الصنف</th><th>الوصف</th><th>سعر الوحدة</th><th>الكمية</th><th>السعر</th></tr></thead>
-      <tbody>${job.items.map(it=>`<tr><td>${it.name}</td><td>${kindLabelFull(it)}${it.technician?' — الفني: '+it.technician:''}</td><td>${it.unitPrice.toFixed(2)}</td><td>${it.qty}</td><td>${(it.qty*it.unitPrice).toFixed(2)}</td></tr>`).join('') || '<tr><td colspan="5">لا توجد بنود</td></tr>'}</tbody>
+      <tbody>${job.items.map(it=>`<tr><td>${it.name}</td><td>${kindLabelFull(it)}${(it.technicianId||it.technician)?' — الفني: '+itemTechLabel(it, job):''}</td><td>${it.unitPrice.toFixed(2)}</td><td>${it.qty}</td><td>${(it.qty*it.unitPrice).toFixed(2)}</td></tr>`).join('') || '<tr><td colspan="5">لا توجد بنود</td></tr>'}</tbody>
     </table>
     <div class="binv-totals"><div class="binv-grand"><span>الإجمالي</span><span>${total.toFixed(2)} ج.م</span></div></div>
     <div class="binv-foot">
@@ -1303,7 +1401,8 @@ function openEditJobItemModal(jobId, itemId){
         <div class="form-row"><label class="f-label">الكمية</label><input class="f" id="editItQty" type="number" min="1" value="${it.qty}"></div>
         <div class="form-row"><label class="f-label">السعر</label><input class="f" id="editItPrice" type="number" min="0" value="${it.unitPrice}"></div>
       </div>
-      <div class="form-row"><label class="f-label">اسم الفني المنفذ</label><input class="f" id="editItTech" value="${it.technician||''}"></div>
+      <div class="form-row"><label class="f-label">الفني المنفذ</label>
+        <select class="f" id="editItTech">${techOptionsHTML(it.technicianId)}</select></div>
     `}
     <button class="btn btn-accent" style="width:100%" onclick="saveEditJobItem('${jobId}','${itemId}')">حفظ التعديل</button>
   `);
@@ -1320,7 +1419,10 @@ async function saveEditJobItem(jobId, itemId){
     const qtyEl = document.getElementById('editItQty');
     if(qtyEl) it.qty = parseFloat(qtyEl.value)||1;
     const techEl = document.getElementById('editItTech');
-    if(techEl) it.technician = techEl.value.trim();
+    if(techEl){
+      it.technicianId = techEl.value || null;
+      it.technician = it.technicianId ? techLabelOf(it.technicianId) : '';
+    }
   }
   await saveKey('jobs', DB.jobs);
   await logAction('تعديل بند "'+name+'" في أمر الشغل #'+job.jobNo);
@@ -1410,7 +1512,9 @@ async function changeJobStatus(jobId, status){
   toast('تم تحديث الحالة'); openJobDetail(jobId); refreshContent();
 }
 function addJobServiceRow(jobId){
+  const job = DB.jobs.find(j=>j.id===jobId);
   const opts = DB.cannedServices.map(s=>`<option value="${s.id}">${s.name} — ${money(s.price)}</option>`).join('');
+  const noTechs = techEmployees().length===0;
   openModal(`
     <h3>إضافة خدمة</h3>
     ${DB.cannedServices.length? `
@@ -1423,8 +1527,10 @@ function addJobServiceRow(jobId){
     <div class="form-row"><label class="f-label">اسم الخدمة</label><input class="f" id="svcName" placeholder="مثال: تغيير زيت"></div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">السعر</label><input class="f" id="svcPrice" type="number" min="0"></div>
-      <div class="form-row"><label class="f-label">اسم الفني المنفذ</label><input class="f" id="svcTech" placeholder="مثال: أحمد"></div>
+      <div class="form-row"><label class="f-label">الفني المنفذ</label>
+        <select class="f" id="svcTech">${techOptionsHTML(job?job.technicianId:null)}</select></div>
     </div>
+    ${noTechs?`<div class="muted" style="font-size:12px;margin-bottom:10px">⚠️ مفيش فنيين نشطين — سجّلهم في الموارد البشرية (الوظيفة لازم تكون فني/ورشة) عشان يظهروا هنا.</div>`:''}
     <div class="form-row"><label class="f-label">هل دي إعادة شغل (Rework)؟</label>
       <select class="f" id="svcRework"><option value="no">لا — شغل جديد</option><option value="yes">نعم — إعادة/تصليح شغل سابق</option></select></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveServiceRow('${jobId}')">إضافة</button>
@@ -1433,11 +1539,13 @@ function addJobServiceRow(jobId){
 async function saveServiceRow(jobId){
   const name = document.getElementById('svcName').value.trim();
   const price = parseFloat(document.getElementById('svcPrice').value)||0;
-  const tech = document.getElementById('svcTech').value.trim();
+  const techId = (document.getElementById('svcTech')||{}).value || null;
   const rework = (document.getElementById('svcRework')||{}).value==='yes';
   if(!name){ toast('اكتب اسم الخدمة', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
-  job.items.push({id:uid('it'), kind:'service', name, qty:1, unitPrice:price, technician:tech, date:new Date().toISOString(), rework});
+  job.items.push({id:uid('it'), kind:'service', name, qty:1, unitPrice:price,
+    technicianId: techId, technician: techId ? techLabelOf(techId) : '',
+    date:new Date().toISOString(), rework});
   await saveKey('jobs', DB.jobs);
   toast('تمت الإضافة'); openJobDetail(jobId); refreshContent();
 }
@@ -2160,7 +2268,7 @@ function workOrderReportHTML(jobId){
     <div><span class="muted" style="font-size:12px">مدة الصيانة</span><div><b>${job.status==='ملغاة'?'—':durationText(job.receivedAt, job.deliveredAt)}</b></div></div>
   </div>
   <div style="margin-bottom:14px"><span class="muted" style="font-size:12px">الحالة:</span> <span class="tag ${STATUS_TAGCLASS[job.status]}">${job.status}</span></div>
-  <div class="muted" style="font-size:12.5px;margin-bottom:14px">الفني: ${job.technician||'غير محدد'}</div>
+  <div class="muted" style="font-size:12.5px;margin-bottom:14px">الفني: ${job.technicianId ? techLabelOf(job.technicianId) : (job.technician||'غير محدد')}</div>
   <label class="f-label">الخدمات المنفذة</label>
   <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>الخدمة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
   <tbody>${services.length? services.map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>`).join('') : `<tr><td colspan="4" class="empty">لا توجد خدمات</td></tr>`}</tbody></table>
@@ -2522,7 +2630,7 @@ function itemLedgerRowsHTML(partId){
       if(job) details.push('أمر شغل #'+job.jobNo);
       if(car) details.push(car.plate+' — '+carLabel(car));
       if(cust) details.push(cust.name);
-      if(job&&job.technician) details.push('الفني: '+job.technician);
+      if(job && (job.technicianId||job.technician)) details.push('الفني: '+(job.technicianId?techLabelOf(job.technicianId):job.technician));
     } else if(m.type==='customer_return'){
       if(job) details.push('أمر شغل #'+job.jobNo);
       if(cust) details.push(cust.name);
@@ -2848,7 +2956,8 @@ function openScrapModal(){
       <select class="f" id="scReason">${SCRAP_REASONS.map(r=>`<option>${r}</option>`).join('')}</select>
     </div>
     <div class="grid g2">
-      <div class="form-row"><label class="f-label">الفني المتسبب (اختياري)</label><input class="f" id="scTech" placeholder="لو السبب تركيب خاطئ أو كسر"></div>
+      <div class="form-row"><label class="f-label">الفني المتسبب (اختياري)</label>
+        <select class="f" id="scTech">${techOptionsHTML()}</select></div>
       <div class="form-row"><label class="f-label">المورد (اختياري)</label>
         <select class="f" id="scSupplier"><option value="">— بدون —</option>${DB.suppliers.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select>
       </div>
@@ -2862,14 +2971,15 @@ async function saveScrap(){
   const kind = document.getElementById('scKind').value;
   const qty = parseFloat(document.getElementById('scQty').value)||0;
   const reason = document.getElementById('scReason').value;
-  const tech = document.getElementById('scTech').value.trim();
+  const techId = (document.getElementById('scTech')||{}).value || null;
+  const tech = techId ? techLabelOf(techId) : '';
   const supplierId = document.getElementById('scSupplier').value || null;
   const note = document.getElementById('scNote').value.trim();
   const p = DB.inventory.find(x=>x.id===partId);
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
   if(qty>p.qty){ toast('الكمية أكبر من المتاح في المخزون', true); return; }
   p.qty -= qty;
-  DB.stockMoves.push({id:uid('mv'), partId, type:'scrap', scrapKind:kind, qty, unitCost:p.costPrice, reason, technician:tech||null, supplierId, date:new Date().toISOString(),
+  DB.stockMoves.push({id:uid('mv'), partId, type:'scrap', scrapKind:kind, qty, unitCost:p.costPrice, reason, technicianId:techId, technician:tech||null, supplierId, date:new Date().toISOString(),
     note:[kind, reason, tech?('الفني: '+tech):null, note].filter(Boolean).join(' — ')});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
   await logAction('تسجيل '+kind+': '+qty+' من '+p.name+' — '+reason+' (خسارة '+money(qty*p.costPrice)+')');
@@ -2918,7 +3028,7 @@ function stockStatsHTML(){
   const byTech = {}, bySup = {}, byPart = {};
   scraps.forEach(m=>{
     const v = m.qty*(m.unitCost||0);
-    const t = m.technician||'غير محدد'; byTech[t]=(byTech[t]||0)+v;
+    const t = m.technicianId ? techLabelOf(m.technicianId) : (m.technician||'غير محدد'); byTech[t]=(byTech[t]||0)+v;
     if(m.supplierId){ const s=DB.suppliers.find(x=>x.id===m.supplierId); bySup[s?s.name:'—']=(bySup[s?s.name:'—']||0)+v; }
     const p = DB.inventory.find(x=>x.id===m.partId); const pn=p?p.name:'صنف محذوف'; byPart[pn]=(byPart[pn]||0)+v;
   });
@@ -4469,20 +4579,24 @@ function renderCancellationAnalytics(){
 /* ---- أداء الفنيين بفلتر زمني وحوافز (الملاحظتان 22 و23) ---- */
 let techPeriod = { preset:'this_month', from:'', to:'' };
 function setTechPreset(p){ techPeriod.preset = p; refreshContent(); }
-function allTechNames(){
+/* كل الفنيين اللي ليهم شغل (بالمفتاح الثابت) + الفنيين النشطين في الموارد البشرية */
+function allTechKeys(){
   const s = new Set();
   DB.jobs.forEach(j=>j.items.forEach(it=>{
-    if(it.kind==='service'){ const t = techOfItem(it, j); if(t && t!=='غير محدد') s.add(t); }
+    if(it.kind==='service'){ const k = techKeyOf(it, j); if(k && k!=='غير محدد') s.add(k); }
   }));
-  return [...s].sort((a,b)=>a.localeCompare(b,'ar'));
+  techEmployees().forEach(e=>s.add(e.id));
+  return [...s].sort((a,b)=>techLabelOf(a).localeCompare(techLabelOf(b),'ar'));
 }
 function computeTechPerf(range){
   const techMap = {};
   const ensure = (t)=>{ if(!techMap[t]) techMap[t] = {servicesCount:0, laborValue:0, laborCollected:0, incentiveBase:0, rework:0, jobs:new Set(), days:new Set()}; return techMap[t]; };
   const excl = DB.settings.incentiveExclusions||[];
-  const isExcluded = (tech, dStr)=>{
+  // الاستبعاد بيقارن بالمفتاح والاسم — عشان الاستبعادات القديمة (المخزنة بالاسم) تفضل شغالة
+  const isExcluded = (techKey, dStr)=>{
+    const label = techLabelOf(techKey);
     const d = new Date(dStr);
-    return excl.some(x=>x.tech===tech && d>=new Date(x.from) && d<=new Date(x.to+'T23:59:59'));
+    return excl.some(x=>(x.tech===techKey || x.tech===label) && d>=new Date(x.from) && d<=new Date(x.to+'T23:59:59'));
   };
   DB.jobs.forEach(j=>{
     if(j.status==='ملغاة') return;
@@ -4496,7 +4610,7 @@ function computeTechPerf(range){
       // الخدمات الجديدة ليها تاريخها الخاص؛ القديمة بتتبع تاريخ أمر الشغل
       const dStr = it.date || j.deliveredAt || j.receivedAt;
       if(!inPeriod(dStr, range)) return;
-      const tech = techOfItem(it, j);
+      const tech = techKeyOf(it, j);
       const d = ensure(tech);
       d.servicesCount++;
       const val = it.qty*it.unitPrice;
@@ -4538,16 +4652,18 @@ function renderTechnicianPerformance(){
     </div>`:''}
   </div>
   <div class="card" style="margin-bottom:16px">
-    ${rows.length===0 ? `<div class="empty">لا توجد بيانات فنيين في «${periodLbl}» — سجّل اسم الفني عند إضافة كل خدمة</div>` : `
+    ${rows.length===0 ? `<div class="empty">لا توجد بيانات فنيين في «${periodLbl}» — اختار الفني من القائمة عند إضافة كل خدمة</div>` : `
     <div class="muted" style="font-size:12px;margin-bottom:8px">اضغط على اسم أي فني لتقريره التفصيلي · الحوافز = ${pct}% من المصنعيات المُحصَّلة (بعد استبعاد الفترات المستبعدة) · متوسط الإنتاج اليومي = الإجمالي ÷ أيام النشاط الفعلية</div>
-    <table><thead><tr><th>الفني</th><th>أوامر شغل</th><th>خدمات</th><th>إجمالي المصنعية</th><th>متوسط قيمة الأمر</th><th>إعادة شغل</th><th>متوسط الإنتاج اليومي</th><th>الحوافز المستحقة</th></tr></thead>
-    <tbody>${rows.map(([name,d])=>{
+    <table><thead><tr><th>الفني</th><th>الرقم الوظيفي</th><th>أوامر شغل</th><th>خدمات</th><th>إجمالي المصنعية</th><th>متوسط قيمة الأمر</th><th>إعادة شغل</th><th>متوسط الإنتاج اليومي</th><th>الحوافز المستحقة</th></tr></thead>
+    <tbody>${rows.map(([key,d])=>{
       const avgJob = d.jobs.size>0 ? d.laborValue/d.jobs.size : 0;
       const avgDay = d.days.size>0 ? d.laborValue/d.days.size : 0;
       const incentive = d.incentiveBase*pct/100;
       const excluded = d.incentiveBase < d.laborCollected - 0.005;
-      return `<tr onclick="openTechnicianReport('${name.replace(/'/g,"\\'")}')" style="cursor:pointer">
-        <td style="color:var(--accent);font-weight:700">${name}</td>
+      const emp = DB.employees.find(x=>x.id===key);
+      return `<tr onclick="openTechnicianReport('${String(key).replace(/'/g,"\\'")}')" style="cursor:pointer">
+        <td style="color:var(--accent);font-weight:700">${techLabelOf(key)}</td>
+        <td class="muted">${emp?'#'+(emp.empNo||'—')+' · '+(emp.job||''):'<span style="font-size:11px">سجل قديم (بالاسم)</span>'}</td>
         <td>${d.jobs.size}</td><td>${d.servicesCount}</td>
         <td style="font-weight:700">${money(d.laborValue)}</td>
         <td>${money(avgJob)}</td>
@@ -4562,7 +4678,7 @@ function renderTechnicianPerformance(){
     <label class="f-label">الفترات المستبعدة من الحوافز (${excl.length}) — البيانات موجودة، بس مش داخلة في حساب الحافز</label>
     <table style="margin-top:8px"><tbody>
     ${excl.map(x=>`<tr>
-      <td style="font-weight:700">${x.tech}</td>
+      <td style="font-weight:700">${techLabelOf(x.tech)}</td>
       <td style="white-space:nowrap;font-size:12.5px">${fmtDate(x.from)} → ${fmtDate(x.to)}</td>
       <td class="muted" style="font-size:12px">${x.reason||'—'}</td>
       <td class="muted" style="font-size:11px">${x.by||''}</td>
@@ -4580,13 +4696,13 @@ async function saveIncentivePct(){
 }
 function openIncentiveExclusionModal(){
   if(session.role!=='owner'){ toast('صلاحية صاحب المركز فقط', true); return; }
-  const techs = allTechNames();
-  if(techs.length===0){ toast('مفيش فنيين مسجلين على خدمات لسه', true); return; }
+  const techs = allTechKeys();
+  if(techs.length===0){ toast('مفيش فنيين مسجلين لسه', true); return; }
   openModal(`
     <h3>⛔ استبعاد فترة من الحوافز</h3>
     <div class="muted" style="font-size:12.5px;margin-bottom:12px">بيانات الأداء هتفضل موجودة زي ما هي للمراجعة — بس الفترة دي مش هتدخل في حساب حافز الفني.</div>
     <div class="form-row"><label class="f-label">الفني</label>
-      <select class="f" id="ieTech">${techs.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>
+      <select class="f" id="ieTech">${techs.map(t=>`<option value="${t}">${techLabelOf(t)}</option>`).join('')}</select></div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">من تاريخ</label><input class="f" id="ieFrom" type="date"></div>
       <div class="form-row"><label class="f-label">إلى تاريخ</label><input class="f" id="ieTo" type="date"></div>
@@ -4607,31 +4723,30 @@ async function saveIncentiveExclusion(){
   if(!DB.settings.incentiveExclusions) DB.settings.incentiveExclusions = [];
   DB.settings.incentiveExclusions.push({ id:uid('ie'), tech, from, to, reason, by:actorName(), at:new Date().toISOString() });
   await saveKey('settings');
-  await logAction('استبعاد أداء الفني '+tech+' من الحوافز ('+fmtDate(from)+' → '+fmtDate(to)+') — السبب: '+reason);
+  await logAction('استبعاد أداء الفني '+techLabelOf(tech)+' من الحوافز ('+fmtDate(from)+' → '+fmtDate(to)+') — السبب: '+reason);
   closeModal(); toast('تم الاستبعاد — البيانات محفوظة والحافز متوقف للفترة دي'); refreshContent();
 }
 function removeIncentiveExclusion(id){
   if(session.role!=='owner'){ toast('صلاحية صاحب المركز فقط', true); return; }
   const x = (DB.settings.incentiveExclusions||[]).find(e=>e.id===id);
   if(!x) return;
-  askConfirm('إلغاء استبعاد الفني '+x.tech+' ('+fmtDate(x.from)+' → '+fmtDate(x.to)+')؟ الفترة هترجع تتحسب في الحوافز.', async ()=>{
+  askConfirm('إلغاء استبعاد الفني '+techLabelOf(x.tech)+' ('+fmtDate(x.from)+' → '+fmtDate(x.to)+')؟ الفترة هترجع تتحسب في الحوافز.', async ()=>{
     DB.settings.incentiveExclusions = DB.settings.incentiveExclusions.filter(e=>e.id!==id);
     await saveKey('settings');
-    await logAction('إلغاء استبعاد الفني '+x.tech+' من الحوافز ('+fmtDate(x.from)+' → '+fmtDate(x.to)+')');
+    await logAction('إلغاء استبعاد الفني '+techLabelOf(x.tech)+' من الحوافز ('+fmtDate(x.from)+' → '+fmtDate(x.to)+')');
     toast('تم إلغاء الاستبعاد'); refreshContent();
   });
 }
-function techOfItem(it, job){
-  return (it.technician && it.technician.trim()) || (job.technician && job.technician.trim()) || 'غير محدد';
-}
-function openTechnicianReport(techName){ openModal(technicianReportHTML(techName)); }
-function technicianReportHTML(techName){
+function openTechnicianReport(techKey){ openModal(technicianReportHTML(techKey)); }
+function technicianReportHTML(techKey){
   // أوامر الشغل التي عمل عليها الفني والمُحصَّلة بالكامل فقط (أساس حساب الحوافز)
+  const techName = techLabelOf(techKey);
+  const emp = DB.employees.find(x=>x.id===techKey);
   const collectedJobs = [];
   let totalCollectedLabor = 0, totalServices = 0;
   let pendingJobsCount = 0, pendingLabor = 0;
   DB.jobs.forEach(j=>{
-    const techItems = j.items.filter(it=>it.kind==='service' && techOfItem(it,j)===techName);
+    const techItems = j.items.filter(it=>it.kind==='service' && techKeyOf(it,j)===techKey);
     if(techItems.length===0) return;
     const laborVal = techItems.reduce((s,it)=>s+it.qty*it.unitPrice,0);
     const inv = DB.invoices.find(i=>i.jobId===j.id && !i.cancelled);
@@ -4647,7 +4762,7 @@ function technicianReportHTML(techName){
   });
   collectedJobs.sort((a,b)=>new Date(b.job.receivedAt)-new Date(a.job.receivedAt));
   return `
-  <h3>تقرير الفني — ${techName}</h3>
+  <h3>تقرير الفني — ${techName} ${emp?`<span class="muted" style="font-size:12px">#${emp.empNo||'—'} — ${emp.job||'—'}</span>`:'<span class="muted" style="font-size:11px">(سجل قديم بالاسم)</span>'}</h3>
   <div class="muted" style="font-size:12.5px;margin-bottom:14px">التقرير يعرض أوامر الشغل <b style="color:var(--accent)">المُحصَّلة بالكامل فقط</b> — وهي أساس حساب الحوافز.</div>
   <div class="grid g3" style="margin-bottom:16px">
     ${stat(String(collectedJobs.length),'أوامر شغل محصلة')}
