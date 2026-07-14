@@ -294,7 +294,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v31';
+const APP_VERSION = 'v32';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -557,6 +557,7 @@ async function initApp(){
   loaded = true;
   render();
   startRealtime();
+  startUpdateChecker();
   // إصلاح ذاتي: استرجاع أي حركات صرف اتفقدت بسبب فشل حفظ سابق
   try{ await repairMissingStockMoves(); }catch(e){ console.error('repair failed', e); }
   // فحص ذاتي للتخزين — مؤجل 8 ثواني بعيداً عن ذروة طلبات الفتح
@@ -577,6 +578,49 @@ async function initApp(){
       refreshContent();
     }catch(e){ /* تجاهل أي خطأ في التحديث الصامت */ }
   }, 45000);
+}
+
+/* ============ فحص تحديثات النسخة تلقائياً ============
+   GitHub Pages بيبعت Cache-Control: max-age=600 وبيتجاهل meta tags،
+   فبنسأل السيرفر بنفسنا (برابط مكسّر للكاش) ولو فيه نسخة أحدث بنحدّث لوحدنا. */
+async function fetchRemoteVersion(){
+  const url = location.pathname + '?_v=' + Date.now();
+  const res = await fetch(url, { cache:'no-store' });
+  if(!res.ok) throw new Error('fetch failed');
+  const html = await res.text();
+  const m = /APP_VERSION\s*=\s*'([^']+)'/.exec(html);
+  return m ? m[1] : null;
+}
+function hardReload(){
+  // إعادة تحميل برابط جديد — بتتجاوز كاش المتصفح والـ CDN
+  const base = location.origin + location.pathname;
+  location.replace(base + '?_v=' + Date.now());
+}
+async function checkForUpdate(silent){
+  try{
+    const remote = await fetchRemoteVersion();
+    if(!remote){ if(!silent) toast('مش قادر أقرا رقم النسخة من السيرفر', true); return; }
+    if(remote === APP_VERSION){
+      if(!silent) toast('إنت على آخر نسخة ('+APP_VERSION+') ✓');
+      return;
+    }
+    // فيه نسخة أحدث — منقاطعش شغل جاري
+    if(window._opBusy || _pendingSaves > 0 || document.getElementById('modalOverlay')) return;
+    if(window._updatePrompted) return;
+    window._updatePrompted = true;
+    askConfirm('🎉 فيه تحديث جديد للنظام!<br><br>نسختك: <b>'+APP_VERSION+'</b> — المتاح: <b>'+remote+'</b><br><br>هيتم إعادة تحميل الصفحة عشان تاخد التحديث. بياناتك كلها محفوظة ومش هيحصلها حاجة.', ()=>{
+      hardReload();
+    });
+    // لو ألغى، نسأله تاني بعد 10 دقايق
+    setTimeout(()=>{ window._updatePrompted = false; }, 600000);
+  }catch(e){ if(!silent) toast('تعذر فحص التحديثات — اتأكد من النت', true); }
+}
+function startUpdateChecker(){
+  // مش بيشتغل محلياً (file://) ولا في بيئة الاختبار
+  if(typeof location === 'undefined' || typeof fetch !== 'function') return;
+  if(location.protocol === 'file:') return;
+  setTimeout(()=>checkForUpdate(true), 15000);        // بعد التحميل بشوية
+  setInterval(()=>checkForUpdate(true), 5*60*1000);   // وكل 5 دقايق
 }
 
 /* ======================= ICONS (inline svg) ======================= */
@@ -768,7 +812,7 @@ function shellHTML(){
       <div class="sidebar-foot">
         <p class="role-tag">مسجل دخول: ${actorName()}</p>
         <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
-        <p class="role-tag" style="margin:8px 0 0;text-align:center;font-size:11px">النسخة ${APP_VERSION}</p>
+        <p class="role-tag" style="margin:8px 0 0;text-align:center;font-size:11px;cursor:pointer" onclick="checkForUpdate(false)" title="اضغط للتحقق من وجود تحديث">النسخة ${APP_VERSION} · 🔄</p>
       </div>
     </div>
     <div class="main">
