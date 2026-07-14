@@ -4915,12 +4915,14 @@ function openEmployeeDetail(empId){
   const empPermits = DB.permits.filter(p=>p.employeeId===empId).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const earlyPermits = empPermits.filter(p=>p.kind==='early');
   const errands = empPermits.filter(p=>p.kind==='errand');
+  const bonuses = [...(e.bonuses||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const totAdv = advances.reduce((s,a)=>s+(a.amount||0),0);
   const totPen = penalties.reduce((s,p)=>s+(p.amount||0),0);
+  const totBon = bonuses.reduce((s,b)=>s+(b.amount||0),0);
   openModal(`
     <h3>${e.name} <span class="muted" style="font-size:12px">#${e.empNo} — ${e.job||'—'} (${e.dept||'—'})</span></h3>
     <div style="margin-bottom:10px">${empStatusTag(e.status)}
-      <span class="muted" style="font-size:12px;margin-right:8px">تعيين: ${e.hireDate?fmtDate(e.hireDate):'—'} · موبايل: <span style="direction:ltr;display:inline-block">${e.phone||'—'}</span> · راتب ${e.salaryType==='يومية'?'يومية':'شهري'}: ${money(e.salary||0)} · قيمة اليوم: ${money(empDayValue(e, new Date().toISOString().slice(0,7)))}${(e.socialIns||e.healthIns||e.otherDeduct)?' · استقطاعات ثابتة: '+money((e.socialIns||0)+(e.healthIns||0)+(e.otherDeduct||0)):''}</span></div>
+      <span class="muted" style="font-size:12px;margin-right:8px">تعيين: ${e.hireDate?fmtDate(e.hireDate):'—'} · موبايل: <span style="direction:ltr;display:inline-block">${e.phone||'—'}</span> · راتب ${e.salaryType==='يومية'?'يومية':'شهري'}: ${money(e.salary||0)} · قيمة اليوم: ${money(empDayValue(e))} (÷ ${workingDays()} يوم عمل)${(e.socialIns||e.healthIns||e.otherDeduct)?' · استقطاعات ثابتة: '+money((e.socialIns||0)+(e.healthIns||0)+(e.otherDeduct||0)):''}</span></div>
     ${e.notes?`<div class="muted" style="font-size:12px;margin-bottom:10px">📝 ${e.notes}</div>`:''}
     <div class="grid g3" style="margin-bottom:12px">
       ${stat(String(st.total),'إجمالي الإجازات المتاحة')}
@@ -4935,8 +4937,8 @@ function openEmployeeDetail(empId){
     <div class="grid g4" style="margin-bottom:12px">
       ${stat(money(totAdv),'إجمالي السلف', totAdv>0)}
       ${stat(money(totPen),'إجمالي الجزاءات', totPen>0)}
-      ${stat(String(earlyPermits.filter(p=>p.status==='approved').length),'أذونات انصراف معتمدة')}
-      ${stat(String(errands.filter(p=>p.status==='approved').length),'مأموريات معتمدة')}
+      ${stat(money(totBon),'إجمالي الحوافز')}
+      ${stat(String(earlyPermits.filter(p=>p.status==='approved').length)+' / '+String(errands.filter(p=>p.status==='approved').length),'أذونات / مأموريات معتمدة')}
     </div>
     <div class="muted" style="font-size:12px;margin-bottom:14px">دوري: متبقي ${st.remRoutine} من ${st.balRoutine} · طارئ: متبقي ${st.remEmergency} من ${st.balEmergency}${st.usedOther?` · إجازات أخرى (مرضية/بدون راتب): ${st.usedOther} يوم`:''}</div>
     ${hrCanManage()?`
@@ -4944,6 +4946,7 @@ function openEmployeeDetail(empId){
       <button class="btn" style="flex:1" onclick="openEditEmployeeModal('${empId}')">✏️ تعديل الملف</button>
       <button class="btn" style="flex:1" onclick="openAbsenceModal('${empId}')">🚫 غياب</button>
       <button class="btn" style="flex:1" onclick="openAdvanceModal('${empId}')">💰 سلفة</button>
+      <button class="btn" style="flex:1" onclick="openBonusModal('${empId}')">🎁 حافز</button>
       ${session.role==='owner'?`<button class="btn" style="flex:1" onclick="openPenaltyModal('${empId}')">⚖️ جزاء</button>`:''}
       <button class="btn btn-accent" style="flex:1" onclick="openPayslip('${empId}')">🧾 كشف الراتب</button>
     </div>`:''}
@@ -4976,6 +4979,14 @@ function openEmployeeDetail(empId){
       <td style="font-weight:700;color:var(--danger)">${money(p.amount)}</td>
       <td class="muted" style="font-size:11.5px">${p.reason||'—'}</td>
       <td class="muted" style="font-size:11.5px">${p.note||'—'}</td></tr>`).join('') : '<tr><td class="empty">مفيش جزاءات 👏</td></tr>'}
+    </tbody></table>
+    <label class="f-label">الحوافز والمكافآت (${bonuses.length})</label>
+    <table style="margin:6px 0 14px"><tbody>
+    ${bonuses.length? bonuses.map(b=>`<tr>
+      <td style="font-size:12px;white-space:nowrap">${fmtDate(b.date)}</td>
+      <td style="font-weight:700;color:var(--accent)">+ ${money(b.amount)}</td>
+      <td class="muted" style="font-size:11.5px">${b.reason||'—'}</td>
+      <td class="muted" style="font-size:11.5px">${b.note||'—'}</td></tr>`).join('') : '<tr><td class="empty">مفيش حوافز مسجلة</td></tr>'}
     </tbody></table>
     <label class="f-label">أذونات الانصراف المبكر (${earlyPermits.length})</label>
     <table style="margin:6px 0 14px"><tbody>
@@ -5348,27 +5359,40 @@ function rejectPermit(id){
   });
 }
 
-/* ---- السلف والجزاءات والرواتب (الملاحظة 20) ---- */
-function daysInMonth(ym){ const p = ym.split('-'); return new Date(parseInt(p[0],10), parseInt(p[1],10), 0).getDate(); }
-function empDayValue(emp, ym){
+/* ---- السلف والجزاءات والرواتب (الملاحظة 20) + دورة رواتب مرنة (الملاحظة 29) ----
+   الرواتب مش مربوطة بالشهر الميلادي — دورة من تاريخ لتاريخ (مثال: 25/6 → 25/7)
+   وقيمة اليوم = الراتب الشهري ÷ أيام العمل المتفق عليها (قابلة للضبط، الافتراضي 26) */
+function workingDays(){ const d = parseFloat(DB.settings.payrollWorkingDays); return (d>0 ? d : 26); }
+function empDayValue(emp){
   if(emp.dayValue>0) return emp.dayValue;
-  const dim = daysInMonth(ym||new Date().toISOString().slice(0,7));
-  return dim>0 ? Math.round(((emp.salary||0)/dim)*100)/100 : 0;
+  const wd = workingDays();
+  return wd>0 ? Math.round(((emp.salary||0)/wd)*100)/100 : 0;
 }
-function inMonth(dateStr, ym){ return (dateStr||'').slice(0,7)===ym; }
-/* حساب راتب شهر كامل: الأساسي − (سلف + غياب + جزاءات + استقطاعات ثابتة) */
-function payrollCalc(emp, ym){
-  const dim = daysInMonth(ym);
-  const dayVal = empDayValue(emp, ym);
-  const base = emp.salaryType==='يومية' ? Math.round(dayVal*dim*100)/100 : (emp.salary||0);
-  const advances = (emp.advances||[]).filter(a=>inMonth(a.date,ym)).reduce((s,a)=>s+(a.amount||0),0);
-  const absDays = (emp.absences||[]).filter(a=>inMonth(a.date,ym)).reduce((s,a)=>s+(a.days||1),0);
+function inRange(dateStr, from, to){
+  if(!dateStr) return false;
+  const d = (dateStr+'').slice(0,10);
+  return d >= from && d <= to;
+}
+/* حساب راتب فترة: الأساسي + حوافز − (سلف + غياب + جزاءات + تأمينات + استقطاعات) */
+function payrollCalc(emp, from, to){
+  const wd = workingDays();
+  const dayVal = empDayValue(emp);
+  // اليومية: الأيام الفعلية في الفترة (بحد أقصى أيام العمل) — الشهري: الراتب كامل
+  const spanDays = Math.round((new Date(to) - new Date(from))/86400000) + 1;
+  const base = emp.salaryType==='يومية'
+    ? Math.round(dayVal * Math.min(spanDays, wd) * 100)/100
+    : (emp.salary||0);
+  const advances  = (emp.advances||[]).filter(a=>inRange(a.date, from, to)).reduce((s,a)=>s+(a.amount||0),0);
+  const absDays   = (emp.absences||[]).filter(a=>inRange(a.date, from, to)).reduce((s,a)=>s+(a.days||1),0);
   const absenceDeduct = Math.round(dayVal*absDays*100)/100;
-  const penalties = (emp.penalties||[]).filter(p=>inMonth(p.date,ym)).reduce((s,p)=>s+(p.amount||0),0);
+  const penalties = (emp.penalties||[]).filter(p=>inRange(p.date, from, to)).reduce((s,p)=>s+(p.amount||0),0);
+  const bonuses   = (emp.bonuses||[]).filter(b=>inRange(b.date, from, to)).reduce((s,b)=>s+(b.amount||0),0);
   const socialIns = emp.socialIns||0, healthIns = emp.healthIns||0, otherDeduct = emp.otherDeduct||0;
   const fixed = socialIns+healthIns+otherDeduct;
   const totalDeduct = advances+absenceDeduct+penalties+fixed;
-  return { base, dayVal, dim, advances, absDays, absenceDeduct, penalties, socialIns, healthIns, otherDeduct, fixed, totalDeduct, net: Math.round((base-totalDeduct)*100)/100 };
+  return { base, bonuses, dayVal, wd, spanDays, advances, absDays, absenceDeduct, penalties,
+           socialIns, healthIns, otherDeduct, fixed, totalDeduct,
+           net: Math.round((base + bonuses - totalDeduct)*100)/100 };
 }
 function openAdvanceModal(empId){
   const e = DB.employees.find(x=>x.id===empId);
@@ -5420,6 +5444,39 @@ function openPenaltyModal(empId){
     <button class="btn btn-danger" style="width:100%" onclick="savePenalty('${empId}')">تسجيل الجزاء</button>
   `);
 }
+function openBonusModal(empId){
+  if(!hrCanManage()){ toast('صلاحية الحسابات أو صاحب المركز فقط', true); return; }
+  const e = DB.employees.find(x=>x.id===empId);
+  if(!e) return;
+  openModal(`
+    <h3>حافز / مكافأة — ${e.name}</h3>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">التاريخ</label><input class="f" id="bnDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-row"><label class="f-label">قيمة الحافز</label><input class="f" id="bnAmt" type="number" min="0"></div>
+    </div>
+    <div class="form-row"><label class="f-label">سبب الحافز</label><input class="f" id="bnReason" placeholder="مثال: حافز إنتاج، مكافأة تميز"></div>
+    <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="bnNote"></div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">الحافز هيتضاف لراتب الدورة اللي التاريخ ده واقع فيها.</div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveBonus('${empId}')">حفظ الحافز</button>
+  `);
+}
+async function saveBonus(empId){
+  if(!hrCanManage()){ toast('صلاحية الحسابات أو صاحب المركز فقط', true); return; }
+  const e = DB.employees.find(x=>x.id===empId);
+  if(!e) return;
+  const date = (document.getElementById('bnDate')||{}).value;
+  const amount = parseFloat((document.getElementById('bnAmt')||{}).value)||0;
+  const reason = ((document.getElementById('bnReason')||{}).value||'').trim();
+  const note = ((document.getElementById('bnNote')||{}).value||'').trim();
+  if(!date){ toast('اختر التاريخ', true); return; }
+  if(amount<=0){ toast('اكتب قيمة الحافز', true); return; }
+  if(!reason){ toast('اكتب سبب الحافز', true); return; }
+  if(!e.bonuses) e.bonuses = [];
+  e.bonuses.push({ id:uid('bon'), date, amount, reason, note, recordedBy:actorName(), createdAt:new Date().toISOString() });
+  await saveKey('employees');
+  await logAction('حافز '+money(amount)+' — '+e.name+' ('+reason+')');
+  closeModal(); toast('تم تسجيل الحافز'); openEmployeeDetail(empId);
+}
 async function savePenalty(empId){
   if(!session || session.role!=='owner'){ toast('الجزاءات صلاحية صاحب المركز فقط', true); return; }
   const e = DB.employees.find(x=>x.id===empId);
@@ -5437,57 +5494,119 @@ async function savePenalty(empId){
   await logAction('جزاء '+money(amount)+' — '+e.name+' ('+reason+')');
   closeModal(); toast('تم تسجيل الجزاء'); openEmployeeDetail(empId);
 }
-/* ---- شاشة الرواتب الشهرية ---- */
-let payrollMonth = new Date().toISOString().slice(0,7);
-function setPayrollMonth(v){ if(v) payrollMonth = v; refreshContent(); }
-function monthLabel(ym){ try{ return new Date(ym+'-01T12:00:00').toLocaleDateString('ar-EG',{month:'long',year:'numeric'}); }catch(e){ return ym; } }
+/* ---- شاشة الرواتب بدورة مرنة (الملاحظة 29) ---- */
+function defaultPayrollCycle(){
+  // الافتراضي: دورة الشهر الحالي حسب يوم قفل الرواتب (مثال: 25/6 → 25/7)
+  const d = parseInt(DB.settings.payrollCycleDay,10) || 25;
+  const now = new Date();
+  let to = new Date(now.getFullYear(), now.getMonth(), d);
+  if(now.getDate() > d) to = new Date(now.getFullYear(), now.getMonth()+1, d);
+  const from = new Date(to.getFullYear(), to.getMonth()-1, d);
+  const iso = (x)=>new Date(x.getTime() - x.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  return { from: iso(from), to: iso(to) };
+}
+let payrollPeriod = null;
+let payrollFilter = { emp:'', dept:'' };
+function getPayrollPeriod(){ if(!payrollPeriod) payrollPeriod = defaultPayrollCycle(); return payrollPeriod; }
+function setPayrollFrom(v){ getPayrollPeriod(); if(v) payrollPeriod.from = v; refreshContent(); }
+function setPayrollTo(v){ getPayrollPeriod(); if(v) payrollPeriod.to = v; refreshContent(); }
+function setPayrollFilter(k, v){ payrollFilter[k] = v; refreshContent(); }
+function periodLabel(from, to){ return fmtDate(from)+' → '+fmtDate(to); }
+async function saveWorkingDays(){
+  if(session.role!=='owner'){ toast('صلاحية صاحب المركز فقط', true); return; }
+  const wd = parseFloat((document.getElementById('prWorkDays')||{}).value)||0;
+  const cd = parseInt((document.getElementById('prCycleDay')||{}).value,10)||0;
+  if(wd<=0 || wd>31){ toast('أيام العمل لازم تكون بين 1 و 31', true); return; }
+  if(cd<1 || cd>28){ toast('يوم قفل الرواتب لازم يكون بين 1 و 28', true); return; }
+  const oldWd = workingDays(), oldCd = parseInt(DB.settings.payrollCycleDay,10)||25;
+  DB.settings.payrollWorkingDays = wd;
+  DB.settings.payrollCycleDay = cd;
+  await saveKey('settings');
+  await logAction('تعديل إعدادات الرواتب — أيام العمل: من '+oldWd+' إلى '+wd+' · يوم القفل: من '+oldCd+' إلى '+cd);
+  toast('تم حفظ إعدادات الرواتب'); refreshContent();
+}
 function renderPayroll(){
-  const ym = payrollMonth;
-  const emps = DB.employees.filter(e=>e.status!=='مستقيل' && e.status!=='أرشيف');
-  const rows = emps.map(e=>({ e, p: payrollCalc(e, ym) }));
+  const per = getPayrollPeriod();
+  const { from, to } = per;
+  const isOwner = session.role==='owner';
+  const wd = workingDays();
+  const cycleDay = parseInt(DB.settings.payrollCycleDay,10)||25;
+  const depts = [...new Set(DB.employees.map(e=>e.dept).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'));
+  const emps = DB.employees
+    .filter(e=>e.status!=='مستقيل' && e.status!=='أرشيف')
+    .filter(e=>!payrollFilter.emp || e.id===payrollFilter.emp)
+    .filter(e=>!payrollFilter.dept || e.dept===payrollFilter.dept);
+  const rows = emps.map(e=>({ e, p: payrollCalc(e, from, to) }));
   const totBase = rows.reduce((s,r)=>s+r.p.base,0);
+  const totBonus = rows.reduce((s,r)=>s+r.p.bonuses,0);
   const totDeduct = rows.reduce((s,r)=>s+r.p.totalDeduct,0);
   const totNet = rows.reduce((s,r)=>s+r.p.net,0);
   return `
   <div class="card" style="margin-bottom:16px">
-    <div class="grid g2" style="max-width:440px">
-      <div class="form-row" style="margin:0"><label class="f-label">شهر الرواتب</label>
-        <input class="f" type="month" value="${ym}" onchange="setPayrollMonth(this.value)"></div>
-      <div style="align-self:flex-end" class="muted">كشف رواتب ${monthLabel(ym)}</div>
+    <label class="f-label" style="font-weight:800">🗓️ دورة الرواتب (من تاريخ — إلى تاريخ)</label>
+    <div class="grid g4" style="margin-top:8px">
+      <div class="form-row" style="margin:0"><label class="f-label">من تاريخ</label>
+        <input class="f" type="date" value="${from}" onchange="setPayrollFrom(this.value)"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">إلى تاريخ</label>
+        <input class="f" type="date" value="${to}" onchange="setPayrollTo(this.value)"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">الموظف</label>
+        <select class="f" onchange="setPayrollFilter('emp', this.value)">
+          <option value="">— كل الموظفين —</option>
+          ${DB.employees.filter(e=>e.status!=='مستقيل'&&e.status!=='أرشيف').map(e=>`<option value="${e.id}" ${payrollFilter.emp===e.id?'selected':''}>${e.name}</option>`).join('')}
+        </select></div>
+      <div class="form-row" style="margin:0"><label class="f-label">القسم</label>
+        <select class="f" onchange="setPayrollFilter('dept', this.value)">
+          <option value="">— كل الأقسام —</option>
+          ${depts.map(d=>`<option value="${d}" ${payrollFilter.dept===d?'selected':''}>${d}</option>`).join('')}
+        </select></div>
     </div>
+    <div class="muted" style="font-size:12.5px;margin-top:10px">كشف رواتب الفترة: <b style="color:var(--accent)">${periodLabel(from,to)}</b> · قيمة اليوم = الراتب الشهري ÷ <b>${wd}</b> يوم عمل</div>
+    ${isOwner?`
+    <div class="grid g3" style="max-width:620px;margin-top:12px">
+      <div class="form-row" style="margin:0"><label class="f-label">أيام العمل بالشهر</label>
+        <input class="f" id="prWorkDays" type="number" min="1" max="31" step="0.5" value="${wd}"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">يوم قفل الرواتب</label>
+        <input class="f" id="prCycleDay" type="number" min="1" max="28" value="${cycleDay}"></div>
+      <div style="align-self:flex-end"><button class="btn btn-accent" style="width:100%" onclick="saveWorkingDays()">حفظ إعدادات الرواتب</button></div>
+    </div>`:''}
   </div>
-  <div class="grid g3" style="margin-bottom:20px">
+  <div class="grid g4" style="margin-bottom:20px">
     ${stat(money(totBase),'إجمالي الرواتب الأساسية')}
+    ${stat(money(totBonus),'إجمالي الحوافز')}
     ${stat(money(totDeduct),'إجمالي الخصومات', totDeduct>0)}
     ${stat(money(totNet),'صافي المستحق للموظفين')}
   </div>
   <div class="card">
-    <table><thead><tr><th>الموظف</th><th>الأساسي</th><th>سلف</th><th>غياب</th><th>جزاءات</th><th>تأمينات واستقطاعات</th><th>صافي الراتب</th><th></th></tr></thead>
+    <table><thead><tr><th>الموظف</th><th>القسم</th><th>الأساسي</th><th>حوافز</th><th>سلف</th><th>أيام غياب</th><th>خصم الغياب</th><th>جزاءات</th><th>تأمينات</th><th>صافي الراتب</th><th></th></tr></thead>
     <tbody>
     ${rows.length? rows.map(({e,p})=>`<tr>
       <td style="font-weight:700">${e.name}<div class="muted" style="font-size:10.5px">${e.job||''} · ${e.salaryType==='يومية'?'يومية':'شهري'}</div></td>
+      <td class="muted">${e.dept||'—'}</td>
       <td>${money(p.base)}</td>
+      <td>${p.bonuses?'<span style="color:var(--accent);font-weight:700">+'+money(p.bonuses)+'</span>':'—'}</td>
       <td>${p.advances?money(p.advances):'—'}</td>
-      <td>${p.absDays?p.absDays+' يوم ('+money(p.absenceDeduct)+')':'—'}</td>
+      <td>${p.absDays||'—'}</td>
+      <td>${p.absenceDeduct?money(p.absenceDeduct):'—'}</td>
       <td>${p.penalties?money(p.penalties):'—'}</td>
       <td>${p.fixed?money(p.fixed):'—'}</td>
       <td style="font-weight:800;${p.net<0?'color:var(--danger)':''}">${money(p.net)}</td>
       <td><button class="btn btn-sm btn-accent" onclick="openPayslip('${e.id}')">🧾 كشف</button></td>
-    </tr>`).join('') : `<tr><td colspan="8" class="empty">مفيش موظفين — سجّلهم من "ملفات الموظفين"</td></tr>`}
+    </tr>`).join('') : `<tr><td colspan="11" class="empty">مفيش موظفين مطابقين للفلتر</td></tr>`}
     </tbody></table>
   </div>`;
 }
-/* ---- كشف الراتب (Payslip) ---- */
-function payslipHTML(empId, ym){
+/* ---- كشف الراتب (Payslip) — بفترة مرنة ---- */
+function payslipHTML(empId, from, to){
   const e = DB.employees.find(x=>x.id===empId);
   if(!e) return '';
-  const p = payrollCalc(e, ym);
+  const p = payrollCalc(e, from, to);
   const s = DB.settings;
   const line = (lbl, val, minus)=>`<div><span>${lbl}</span><span style="${minus?'color:#E02525':''}">${minus?'− ':''}${money(val)}</span></div>`;
+  const listOf = (arr, fn)=> (arr||[]).filter(x=>inRange(x.date, from, to)).map(fn).join(' · ') || 'لا يوجد';
   return `
   <div class="binv">
     <div class="binv-head">
-      <div><h1 class="binv-title">كشف راتب</h1><div style="font-size:13px;color:#555">${monthLabel(ym)}</div></div>
+      <div><h1 class="binv-title">كشف راتب</h1><div style="font-size:13px;color:#555">دورة الرواتب: ${periodLabel(from,to)}</div></div>
       <img src="${LOGO}" alt="logo">
     </div>
     <div class="binv-meta">
@@ -5499,17 +5618,18 @@ function payslipHTML(empId, ym){
     <table>
       <thead><tr><th>البند</th><th>التفاصيل</th><th>القيمة</th></tr></thead>
       <tbody>
-        <tr><td>الراتب الأساسي</td><td>${e.salaryType==='يومية'?'يومية — '+money(p.dayVal)+' × '+p.dim+' يوم':'شهري'}</td><td>${money(p.base)}</td></tr>
-        <tr><td>السلف</td><td>${(e.advances||[]).filter(a=>inMonth(a.date,ym)).map(a=>fmtDate(a.date)+' ('+money(a.amount)+')').join(' · ')||'لا يوجد'}</td><td>− ${money(p.advances)}</td></tr>
-        <tr><td>الغياب</td><td>${p.absDays?p.absDays+' يوم × '+money(p.dayVal):'لا يوجد'}</td><td>− ${money(p.absenceDeduct)}</td></tr>
-        <tr><td>الجزاءات</td><td>${(e.penalties||[]).filter(x=>inMonth(x.date,ym)).map(x=>x.reason+' ('+money(x.amount)+')').join(' · ')||'لا يوجد'}</td><td>− ${money(p.penalties)}</td></tr>
-        <tr><td>التأمينات الاجتماعية</td><td>استقطاع شهري ثابت</td><td>− ${money(p.socialIns)}</td></tr>
-        <tr><td>التأمين الصحي</td><td>استقطاع شهري ثابت</td><td>− ${money(p.healthIns)}</td></tr>
-        ${p.otherDeduct?`<tr><td>استقطاعات أخرى</td><td>استقطاع شهري ثابت</td><td>− ${money(p.otherDeduct)}</td></tr>`:''}
+        <tr><td>الراتب الأساسي</td><td>${e.salaryType==='يومية'?'يومية — '+money(p.dayVal)+' × '+Math.min(p.spanDays,p.wd)+' يوم':'شهري'}</td><td>${money(p.base)}</td></tr>
+        ${p.bonuses?`<tr><td>الحوافز والمكافآت</td><td>${listOf(e.bonuses, b=>b.reason+' ('+money(b.amount)+')')}</td><td>+ ${money(p.bonuses)}</td></tr>`:''}
+        <tr><td>السلف</td><td>${listOf(e.advances, a=>fmtDate(a.date)+' ('+money(a.amount)+')')}</td><td>− ${money(p.advances)}</td></tr>
+        <tr><td>الغياب</td><td>${p.absDays?p.absDays+' يوم × '+money(p.dayVal)+' (اليوم = الراتب ÷ '+p.wd+')':'لا يوجد'}</td><td>− ${money(p.absenceDeduct)}</td></tr>
+        <tr><td>الجزاءات</td><td>${listOf(e.penalties, x=>x.reason+' ('+money(x.amount)+')')}</td><td>− ${money(p.penalties)}</td></tr>
+        <tr><td>التأمينات الاجتماعية</td><td>استقطاع ثابت</td><td>− ${money(p.socialIns)}</td></tr>
+        <tr><td>التأمين الصحي</td><td>استقطاع ثابت</td><td>− ${money(p.healthIns)}</td></tr>
+        ${p.otherDeduct?`<tr><td>استقطاعات أخرى</td><td>استقطاع ثابت</td><td>− ${money(p.otherDeduct)}</td></tr>`:''}
       </tbody>
     </table>
     <div class="binv-totals">
-      ${line('إجمالي الاستحقاق', p.base)}
+      ${line('إجمالي الاستحقاق', p.base + p.bonuses)}
       ${line('إجمالي الخصومات', p.totalDeduct, true)}
       <div class="binv-grand"><span>صافي الراتب المستحق</span><span>${money(p.net)}</span></div>
     </div>
@@ -5518,25 +5638,25 @@ function payslipHTML(empId, ym){
       <div style="text-align:center">الحسابات<br><br>______________</div>
       <div style="text-align:center">صاحب المركز<br><br>______________</div>
     </div>
-    <div class="binv-foot">${s.centerName||'Masters Auto Service'} — كشف راتب ${monthLabel(ym)} · اتطبع بتاريخ ${fmtDate(new Date().toISOString())} بواسطة ${actorName()}</div>
+    <div class="binv-foot">${s.centerName||'Masters Auto Service'} — كشف راتب دورة ${periodLabel(from,to)} · اتطبع بتاريخ ${fmtDate(new Date().toISOString())} بواسطة ${actorName()}</div>
   </div>`;
 }
-function printPayslip(empId, ym){
-  printHTML('<style>'+brandedInvoiceCSS()+'</style>'+payslipHTML(empId, ym));
+function printPayslip(empId, from, to){
+  printHTML('<style>'+brandedInvoiceCSS()+'</style>'+payslipHTML(empId, from, to));
 }
 function openPayslip(empId){
   const e = DB.employees.find(x=>x.id===empId);
   if(!e) return;
-  const ym = payrollMonth;
+  const { from, to } = getPayrollPeriod();
   openModal(`
-    <h3>كشف راتب — ${e.name} <span class="muted" style="font-size:12px">(${monthLabel(ym)})</span></h3>
+    <h3>كشف راتب — ${e.name} <span class="muted" style="font-size:12px">(${periodLabel(from,to)})</span></h3>
     <div style="max-height:60vh;overflow:auto;background:#fff;border-radius:10px;padding:18px;margin-bottom:12px;color:#111;font-family:Tahoma,Arial,sans-serif">
       <style>${brandedInvoiceCSS()} .binv, .binv td, .binv .binv-title{color:#111} .binv .binv-totals div{color:#111}</style>
-      ${payslipHTML(empId, ym)}
+      ${payslipHTML(empId, from, to)}
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-accent" style="flex:1" onclick="printPayslip('${empId}','${ym}')">🖨️ طباعة</button>
-      <button class="btn" style="flex:1" onclick="downloadHTML(payslipHTML('${empId}','${ym}'),'كشف راتب ${e.name} ${ym}')">⬇️ تحميل</button>
+      <button class="btn btn-accent" style="flex:1" onclick="printPayslip('${empId}','${from}','${to}')">🖨️ طباعة</button>
+      <button class="btn" style="flex:1" onclick="downloadHTML(payslipHTML('${empId}','${from}','${to}'),'كشف راتب ${e.name} ${from} - ${to}')">⬇️ تحميل</button>
     </div>
   `);
 }
@@ -5799,7 +5919,7 @@ function setBusy(on){
     'saveCustomerReturn','saveStockAdjustment','saveScrap','saveTransfer','saveNewWarehouse','saveNewAppointment',
     'saveCannedService','saveCountProgress','submitCountForApproval','confirmCancelJob','saveInvoiceInfo','saveTaxWa','savePins','saveCenterName','saveNewStaff','toggleStaff','saveStaffPass','saveFinAccount','saveOpeningBalance','saveFinTransfer','saveExternalDeposit','saveCustodySettle','saveExpenseCat',
     'saveNewEmployee','saveEmployeeEdit','saveLeaveRequest','saveAbsence','saveAdvance','savePenalty','savePermit',
-    'saveIncentivePct','saveIncentiveExclusion'];
+    'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveWorkingDays'];
   opNames.forEach(name=>{
     const orig = window[name];
     if(typeof orig !== 'function') return;
