@@ -191,7 +191,8 @@ const TABLE_MAP = {
   warehouses:'warehouses', staff:'staff', finAccounts:'fin_accounts', finMoves:'fin_moves',
   appointments:'appointments', cannedServices:'canned_services', activityLog:'activity_log',
   expenseCategories:'expense_categories', employees:'hr_employees', leaveRequests:'leave_requests',
-  permits:'hr_permits'
+  permits:'hr_permits', tools:'special_tools', toolMoves:'tool_moves',
+  notifications:'notifications'
 };
 const DATA_KEYS = Object.keys(TABLE_MAP);
 const KV_KEYS = ['users','settings'];
@@ -294,17 +295,180 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v32';
+const APP_VERSION = 'v36';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
-const ROLE_LABEL = {reception:'الاستقبال', accounts:'الحسابات', warehouse:'المخزن', owner:'صاحب المركز'};
+const ROLE_LABEL = {reception:'الاستقبال', accounts:'الحسابات', warehouse:'المخزن', hr:'الموارد البشرية', owner:'صاحب المركز'};
 const ROLE_TABS = {
   reception:['dashboard','customers','jobs','appointments','hr'],
-  warehouse:['dashboard','inventory','stockmoves','suppliers'],
-  accounts:['dashboard','jobs','openjobs','invoices','receivables','finance','expenses','hr','reports','services'],
-  owner:['dashboard','customers','jobs','openjobs','appointments','inventory','stockmoves','suppliers','invoices','receivables','finance','expenses','hr','reports','services','activitylog','settings']
+  warehouse:['dashboard','inventory','stockmoves','tools','suppliers'],
+  accounts:['dashboard','jobs','openjobs','invoices','receivables','finance','expenses','hr','tools','reports','services'],
+  hr:['dashboard','hr'],
+  owner:['dashboard','notifications','customers','jobs','openjobs','appointments','inventory','stockmoves','tools','suppliers','invoices','receivables','finance','expenses','hr','reports','services','activitylog','settings']
 };
+
+/* ============ نظام الصلاحيات متعدد المستويات (الملاحظة 32) ============
+   مستويين: (1) شاشات يقدر يشوفها  (2) إجراءات ينفذها جوه الشاشة.
+   الشاشة الممنوعة بتختفي تماماً — مش بتظهر مقفولة. المالك عنده كل حاجة دايماً. */
+const SCREEN_LABELS = {
+  dashboard:'الرئيسية', notifications:'مركز الإشعارات', customers:'العملاء والسيارات', jobs:'أوامر الشغل', openjobs:'الأوامر المفتوحة',
+  appointments:'المواعيد', inventory:'المخزون', stockmoves:'حركة المخزن', tools:'العدد الخاصة',
+  suppliers:'الموردين', invoices:'الفواتير', receivables:'المديونيات', finance:'الخزنة والحسابات',
+  expenses:'المصروفات', hr:'الموارد البشرية', reports:'التقارير', services:'قوائم الخدمات',
+  activitylog:'سجل العمليات', settings:'الإعدادات'
+};
+const DEPT_SCREENS = {
+  reception:['dashboard','customers','jobs','appointments','hr'],
+  warehouse:['dashboard','inventory','stockmoves','tools','suppliers','jobs'],
+  accounts:['dashboard','notifications','jobs','openjobs','invoices','receivables','finance','expenses','services','reports','hr','tools'],
+  hr:['dashboard','hr'],
+  owner:Object.keys(SCREEN_LABELS)
+};
+const ACTION_GROUPS = [
+  ['أوامر الشغل', [
+    ['jobs.create','إنشاء أمر شغل'],
+    ['jobs.edit','تعديل الأمر وإضافة خدمات'],
+    ['jobs.cancel','إلغاء أمر شغل'],
+    ['jobs.delete','حذف أمر شغل نهائياً'],
+  ]],
+  ['العملاء', [
+    ['customers.create','إضافة عميل وسيارة'],
+    ['customers.archive','أرشفة عميل'],
+    ['customers.delete','حذف عميل نهائياً'],
+  ]],
+  ['المخزن', [
+    ['inv.issue','صرف قطع لأمر شغل'],
+    ['inv.receive','توريد ومشتريات'],
+    ['inv.return','مرتجعات العملاء'],
+    ['inv.item_create','إضافة صنف جديد'],
+    ['inv.item_edit','تعديل صنف'],
+    ['inv.transfer','تحويل بين المخازن'],
+    ['inv.adjust','تسوية المخزون'],
+    ['inv.scrap','تسجيل هالك وتالف'],
+    ['inv.count_approve','اعتماد الجرد'],
+  ]],
+  ['العدد الخاصة', [
+    ['tools.issue','صرف واستلام العدد'],
+    ['tools.manage','إضافة وتعديل وحذف العدد'],
+  ]],
+  ['الفواتير والتحصيل', [
+    ['bill.create','إصدار فاتورة'],
+    ['bill.collect','تحصيل دفعات'],
+    ['bill.discount','عمل خصم على الفاتورة'],
+    ['bill.cancel','إلغاء فاتورة'],
+  ]],
+  ['المالية', [
+    ['fin.expenses','تسجيل مصروفات'],
+    ['fin.manage','إدارة الخزنة والحسابات والتحويلات'],
+    ['sup.pay','سداد الموردين'],
+  ]],
+  ['التقارير', [
+    ['rep.profit','تقارير الربحية والأرباح'],
+    ['rep.financial','التقارير المالية'],
+  ]],
+  ['الموارد البشرية', [
+    ['hr.employees','إدارة ملفات الموظفين'],
+    ['hr.approve','اعتماد الإجازات والأذونات'],
+    ['hr.payroll','الرواتب وكشوف المرتبات'],
+    ['hr.penalties','الجزاءات والخصومات'],
+  ]],
+  ['الإدارة', [
+    ['settings.users','إدارة المستخدمين والصلاحيات'],
+  ]],
+];
+const ALL_ACTIONS = ACTION_GROUPS.reduce((a,g)=>a.concat(g[1].map(x=>x[0])), []);
+function actionLabel(key){
+  for(const g of ACTION_GROUPS){ const f = g[1].find(a=>a[0]===key); if(f) return f[1]; }
+  return key;
+}
+const ROLE_TEMPLATES = {
+  reception_engineer: { label:'مهندس استقبال', dept:'reception',
+    screens:['dashboard','customers','jobs','appointments','hr'],
+    actions:['jobs.create','jobs.edit','customers.create'] },
+  reception_supervisor: { label:'مشرف استقبال', dept:'reception',
+    screens:['dashboard','customers','jobs','appointments','hr'],
+    actions:['jobs.create','jobs.edit','jobs.cancel','customers.create','customers.archive'] },
+  warehouse_keeper: { label:'أمين مخزن', dept:'warehouse',
+    screens:['dashboard','inventory','stockmoves','tools','suppliers'],
+    actions:['inv.issue','inv.receive','inv.return','inv.item_create','tools.issue'] },
+  warehouse_manager: { label:'مدير مخزن', dept:'warehouse',
+    screens:['dashboard','inventory','stockmoves','tools','suppliers','jobs'],
+    actions:['inv.issue','inv.receive','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.adjust','inv.scrap','inv.count_approve','tools.issue','tools.manage'] },
+  workshop_manager: { label:'مدير ورشة', dept:'warehouse',
+    screens:['dashboard','jobs','inventory','stockmoves','tools'],
+    actions:['jobs.edit','inv.issue','tools.issue'] },
+  junior_accountant: { label:'محاسب', dept:'accounts',
+    screens:['dashboard','jobs','invoices','receivables'],
+    actions:['bill.create','bill.collect'] },
+  senior_accountant: { label:'محاسب أول', dept:'accounts',
+    screens:['dashboard','jobs','openjobs','invoices','receivables','finance','expenses','services','reports','hr','tools'],
+    actions:['bill.create','bill.collect','bill.discount','bill.cancel','fin.expenses','fin.manage','sup.pay','rep.profit','rep.financial','hr.payroll'] },
+  hr_officer: { label:'موظف موارد بشرية', dept:'hr',
+    screens:['dashboard','hr'], actions:['hr.employees'] },
+  hr_manager: { label:'مدير موارد بشرية', dept:'hr',
+    screens:['dashboard','hr'], actions:['hr.employees','hr.approve','hr.payroll','hr.penalties'] },
+  admin: { label:'أدمن (صلاحيات كاملة)', dept:'owner',
+    screens:Object.keys(SCREEN_LABELS), actions:ALL_ACTIONS },
+};
+/* صلاحيات القسم الافتراضية (دخول الأقسام بالرقم السري) — مطابقة للسلوك القديم:
+   القسم يشوف كل شاشاته وينفّذ عملياته العادية، والإجراءات الحساسة (تسوية/اعتماد جرد/
+   إدارة العدد/الجزاءات/حذف نهائي/إدارة المستخدمين) تفضل لصاحب المركز فقط. */
+const DEPT_DEFAULT_ACTIONS = {
+  reception: ['jobs.create','jobs.edit','jobs.cancel','customers.create','customers.archive'],
+  warehouse: ['inv.issue','inv.receive','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.scrap','tools.issue'],
+  accounts: ['bill.create','bill.collect','bill.discount','bill.cancel','fin.expenses','fin.manage','sup.pay','rep.profit','rep.financial','hr.payroll'],
+  hr: ['hr.employees','hr.approve','hr.payroll','hr.penalties'],
+};
+function fullDeptPerms(dept){
+  if(dept==='owner') return { screens:Object.keys(SCREEN_LABELS), actions:ALL_ACTIONS.slice() };
+  return { screens:(DEPT_SCREENS[dept]||['dashboard']).slice(), actions:(DEPT_DEFAULT_ACTIONS[dept]||[]).slice() };
+}
+function isOwnerSession(){ return !!session && session.role==='owner'; }
+/* جلسة مالهاش Sets (دخول أقسام قديم أو جلسة مبسطة) ⇒ صلاحيات القسم كاملة */
+function sessionActions(){
+  if(!session) return null;
+  if(session.actions instanceof Set) return session.actions;
+  return new Set(fullDeptPerms(session.role).actions);
+}
+function sessionScreens(){
+  if(!session) return null;
+  if(session.screens instanceof Set) return session.screens;
+  return new Set(fullDeptPerms(session.role).screens);
+}
+function can(actionKey){
+  if(!session) return false;
+  if(isOwnerSession()) return true;
+  return sessionActions().has(actionKey);
+}
+function canScreen(tab){
+  if(!session) return false;
+  if(isOwnerSession()) return true;
+  return sessionScreens().has(tab);
+}
+function visibleTabs(){
+  if(!session) return [];
+  if(isOwnerSession()) return ROLE_TABS.owner;
+  const pool = DEPT_SCREENS[session.role] || [];
+  return ROLE_TABS.owner.filter(t=>pool.includes(t) && canScreen(t));
+}
+function firstVisibleTab(){
+  const tabs = visibleTabs();
+  return tabs.includes('dashboard') ? 'dashboard' : (tabs[0] || 'dashboard');
+}
+function buildSession(dept, staff){
+  const perms = (staff && Array.isArray(staff.screens) && Array.isArray(staff.actions))
+    ? { screens:staff.screens, actions:staff.actions }
+    : fullDeptPerms(dept);   // حسابات قديمة أو دخول بالرقم السري ⇒ صلاحيات القسم كاملة
+  return {
+    role: dept,
+    staffId: staff ? staff.id : null,
+    staffName: staff ? staff.name : null,
+    template: staff ? staff.template : null,
+    screens: new Set(perms.screens),
+    actions: new Set(perms.actions)
+  };
+}
 
 function uid(p){ return p+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function nextNo(list, field){
@@ -424,7 +588,7 @@ function showStorageDeadBanner(){
 }
 const DATA_DEFAULTS = {
   users: {reception:'1111',accounts:'2222',warehouse:'3333',owner:'9999'},
-  settings: {centerName:'Masters Auto Service', vatRate:0, whatsappTemplate:'سيارتك {plate} جاهزة للاستلام من {center}. شكراً لثقتك بينا 🚗', address:'العبور - الشباب - ميدان الصورة - منطقة حرفيين العبور', phone:'01146604611', warrantyText:'ضمان قطع الغيار الجديدة المبدلة في المركز 3 شهور أو 5 آلاف كم أيهما أقرب\nضمان قطع الغيار الاستيراد المبدلة في المركز شهر واحد أو 5 آلاف كم أيهما أقرب\nشروط الضمان: عدم المساس بقطعة الغيار أو محاولة فكها خارج المركز'}
+  settings: {centerName:'Masters Auto Service', vatRate:0, whatsappTemplate:'سيارتك {plate} جاهزة للاستلام من {center}. شكراً لثقتك بينا 🚗', address:'العبور - الشباب - ميدان الصورة - منطقة حرفيين العبور', phone:'01146604611', warrantyText:'ضمان قطع الغيار الجديدة المبدلة في المركز 3 شهور أو 5 آلاف كم أيهما أقرب\nضمان قطع الغيار الاستيراد المبدلة في المركز شهر واحد أو 5 آلاف كم أيهما أقرب\nشروط الضمان: عدم المساس بقطعة الغيار أو محاولة فكها خارج المركز', largeExpenseThreshold:20000, largeDiscountPct:15, highAdvancePct:50, highAbsenceDays:3, stagnantDays:90}
 };
 function keyDefault(k){
   if(k==='users') return {...DATA_DEFAULTS.users};
@@ -757,8 +921,8 @@ function doStaffLogin(){
   const st = DB.staff.find(s=>s.username.toLowerCase()===username.toLowerCase() && s.password===password);
   if(!st){ err.textContent='اسم المستخدم أو كلمة المرور غلط'; return; }
   if(st.active===false){ err.textContent='الحساب ده موقوف — كلم صاحب المركز'; return; }
-  session = { role: st.role, staffId: st.id, staffName: st.name };
-  currentTab = 'dashboard';
+  session = buildSession(st.dept || st.role, st);
+  currentTab = firstVisibleTab();
   logAction('تسجيل دخول');
   render();
 }
@@ -767,8 +931,8 @@ function doLogin(){
   if(!pickedRole){ err.textContent='اختار الدور الأول'; return; }
   const pin = document.getElementById('pinInput').value.trim();
   if(DB.users[pickedRole] !== pin){ err.textContent='الرقم السري غلط'; return; }
-  session = { role: pickedRole };
-  currentTab = 'dashboard';
+  session = buildSession(pickedRole, null);   // دخول الأقسام = صلاحيات القسم كاملة (زي النظام القديم)
+  currentTab = firstVisibleTab();
   render();
 }
 function logout(){ session=null; pickedRole=null; render(); }
@@ -780,15 +944,17 @@ function navItem(id, label, icon){
 function goTab(id){ currentTab=id; render(); }
 
 function shellHTML(){
-  const tabs = ROLE_TABS[session.role];
+  const tabs = visibleTabs();   // الشاشات الممنوعة بتختفي تماماً — مش بتظهر مقفولة
   const navMap = {
     dashboard: navItem('dashboard','الرئيسية',ICONS.home),
+    notifications: navItem('notifications', '🔔 مركز الإشعارات'+((()=>{ const n=pendingNotifCount(); return n?' ('+n+')':''; })()), ICONS.clock),
     customers: navItem('customers','العملاء والسيارات',ICONS.users),
     jobs: navItem('jobs','أوامر الشغل',ICONS.wrench),
     openjobs: navItem('openjobs','الأوامر المفتوحة',ICONS.chart),
     appointments: navItem('appointments','المواعيد',ICONS.calendar),
     inventory: navItem('inventory','المخزون',ICONS.box),
     stockmoves: navItem('stockmoves','حركة المخزن',ICONS.arrows),
+    tools: navItem('tools','العدد الخاصة',ICONS.wrench),
     suppliers: navItem('suppliers','الموردين',ICONS.truck),
     invoices: navItem('invoices','الفواتير',ICONS.invoice),
     receivables: navItem('receivables','المديونيات',ICONS.wallet),
@@ -800,7 +966,7 @@ function shellHTML(){
     activitylog: navItem('activitylog','سجل العمليات',ICONS.clock),
     settings: navItem('settings','الإعدادات',ICONS.gear),
   };
-  const titles = {dashboard:'الرئيسية',customers:'العملاء والسيارات',jobs:'أوامر الشغل',openjobs:'تقارير أوامر الشغل المفتوحة',appointments:'المواعيد',inventory:'المخزون',stockmoves:'حركة المخزن',suppliers:'الموردين',invoices:'الفواتير',receivables:'المديونيات والمستحقات',finance:'الخزنة والحسابات المالية',expenses:'المصروفات',hr:(session.role==='reception'?'الإجازات والأذونات':'الموارد البشرية (HR)'),reports:'التقارير',services:'قوائم الخدمات',activitylog:'سجل العمليات',settings:'الإعدادات',newPurchase:'فاتورة شراء مورد جديدة',inventoryCount:'جرد المخزن'};
+  const titles = {dashboard:'الرئيسية',notifications:'🔔 مركز الإشعارات والحوكمة',customers:'العملاء والسيارات',jobs:'أوامر الشغل',openjobs:'تقارير أوامر الشغل المفتوحة',appointments:'المواعيد',inventory:'المخزون',stockmoves:'حركة المخزن',tools:'العدد الخاصة (Special Tools)',suppliers:'الموردين',invoices:'الفواتير',receivables:'المديونيات والمستحقات',finance:'الخزنة والحسابات المالية',expenses:'المصروفات',hr:(session.role==='reception'?'الإجازات والأذونات':'الموارد البشرية (HR)'),reports:'التقارير',services:'قوائم الخدمات',activitylog:'سجل العمليات',settings:'الإعدادات',newPurchase:'فاتورة شراء مورد جديدة',inventoryCount:'جرد المخزن'};
 
   return `
   <div class="shell">
@@ -837,14 +1003,21 @@ async function refreshData(){
 }
 
 function renderTab(){
+  // حارس الصلاحيات: أي شاشة مش مسموح بيها ترفض حتى لو حد وصلها بأي طريقة
+  const subTabs = ['newPurchase','inventoryCount'];   // شاشات فرعية بتتفتح من جوه المخزن
+  if(!subTabs.includes(currentTab) && !canScreen(currentTab)){
+    return `<div class="card"><div class="empty">🔒 مالكش صلاحية على الشاشة دي — كلّم صاحب المركز</div></div>`;
+  }
   switch(currentTab){
     case 'dashboard': return renderDashboard();
+    case 'notifications': return renderNotifications();
     case 'customers': return renderCustomers();
     case 'jobs': return renderJobs();
     case 'openjobs': return renderOpenJobsReport();
     case 'appointments': return renderAppointments();
     case 'inventory': return renderInventory();
     case 'stockmoves': return renderStockMoves();
+    case 'tools': return renderTools();
     case 'suppliers': return renderSuppliers();
     case 'newPurchase': return renderNewPurchaseInvoice();
     case 'inventoryCount': return renderInventoryCount();
@@ -877,10 +1050,14 @@ function renderDashboard(){
   if(['reception','owner'].includes(session.role)) cards += stat(String(activeJobs.length),'أوامر شغل مفتوحة');
   if(['reception','owner'].includes(session.role)) cards += stat(String(readyJobs.length),'جاهزة للتسليم');
   if(['warehouse','owner'].includes(session.role)) cards += stat(String(lowStock.length),'قطع تحت حد الأمان', lowStock.length>0);
+  if(['warehouse','owner'].includes(session.role)){
+    const od = overdueTools().length, outNow = DB.tools.filter(t=>t.status==='مصروفة').length;
+    if(outNow>0 || od>0) cards += stat(String(outNow)+(od?' ('+od+' متأخرة)':''),'عدد خاصة بره المخزن', od>0);
+  }
   if(['warehouse','owner'].includes(session.role)) cards += stat(money(supplierPayable),'مستحق للموردين', supplierPayable>0);
   if(['accounts','owner'].includes(session.role)) cards += stat(money(todayCollected),'تحصيل اليوم');
   if(['accounts','owner'].includes(session.role)) cards += stat(money(outstanding),'مستحقات غير محصلة');
-  if(session.role==='owner'){
+  if(can('rep.profit')){
     const monthProfit = computeProfitStats(periodRange({preset:'this_month'}));
     cards += stat(money(monthProfit.profit),'💰 صافي ربح هذا الشهر', monthProfit.profit<0);
     cards += stat(monthProfit.margin.toFixed(1)+'%','نسبة الربحية هذا الشهر', monthProfit.margin<15 && monthProfit.sales>0);
@@ -891,6 +1068,7 @@ function renderDashboard(){
 
   return `
     <div class="grid g4" style="margin-bottom:24px">${cards}</div>
+    ${canScreen('notifications') ? renderNotifCenterWidget() : ''}
     ${['reception','owner'].includes(session.role) ? `
     <div class="section-head"><h3>أحدث أوامر الشغل</h3><button class="btn btn-accent btn-sm" onclick="goTab('jobs')">عرض الكل</button></div>
     <div class="grid g3">${recentJobs.length? recentJobs.map(ticketCard).join('') : emptyState('لسه مفيش أوامر شغل')}</div>
@@ -904,6 +1082,30 @@ function renderDashboard(){
     ${['reception','owner'].includes(session.role) ? renderServiceRemindersWidget() : ''}
     ${['reception','owner'].includes(session.role) ? renderTodayAppointmentsWidget() : ''}
   `;
+}
+function renderNotifCenterWidget(){
+  const unseen = unseenNotifCount(), debts = debtReminders(), leaves = pendingLeaveReqs().length, early = pendingPermits('early').length, dmg = damagedWaiting().length;
+  const highAdv = highAdvanceEmployees().length, highAbs = highAbsenceEmployees().length, stagnant = stagnantParts().length, lowStk = lowStockParts().length;
+  const debtTot = debts.reduce((a,d)=>a+d.due,0);
+  const totalAlerts = unseen + debts.length + leaves + early + dmg + highAdv + highAbs + stagnant + lowStk;
+  if(totalAlerts===0) return '';
+  const chip = (lbl, count, tab)=> count>0 ? `<div onclick="goTab('${tab}')" style="cursor:pointer;background:var(--surface-2);padding:8px 12px;border-radius:9px;font-size:12.5px;display:flex;gap:8px;align-items:center"><b style="color:var(--danger)">${count}</b> ${lbl}</div>` : '';
+  return `
+    <div class="section-head" style="margin-top:6px"><h3>🔔 مركز الإشعارات والحوكمة</h3>
+      <button class="btn btn-accent btn-sm" onclick="goTab('notifications')">فتح المركز${unseen?' ('+unseen+')':''}</button></div>
+    <div class="card" style="margin-bottom:22px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${chip('إشعار غير مقروء',unseen,'notifications')}
+        ${chip('مديونية متأخرة ('+money(debtTot)+')',debts.length,'receivables')}
+        ${chip('طلب إجازة منتظر',leaves,'hr')}
+        ${chip('إذن انصراف منتظر',early,'hr')}
+        ${chip('عدة تالفة/صيانة',dmg,'tools')}
+        ${chip('موظف بسلف عالية',highAdv,'notifications')}
+        ${chip('موظف بغياب عالي',highAbs,'notifications')}
+        ${chip('قطع راكدة',stagnant,'notifications')}
+        ${chip('قطع تحت حد الأمان',lowStk,'inventory')}
+      </div>
+    </div>`;
 }
 function renderServiceRemindersWidget(){
   const today = new Date();
@@ -978,7 +1180,7 @@ function renderCustomers(){
   <div class="section-head"><h3>العملاء (${everyone.filter(c=>!c.archived).length})</h3>
     <div style="display:flex;gap:8px">
       ${archivedCount?`<button class="btn" onclick="toggleCustArchive()">${custShowArchived?'إخفاء الأرشيف':'🗄️ عرض الأرشيف ('+archivedCount+')'}</button>`:''}
-      <button class="btn btn-accent" onclick="openNewCustomerModal()">${ICONS.plus} عميل جديد</button>
+      ${can('customers.create')?`<button class="btn btn-accent" onclick="openNewCustomerModal()">${ICONS.plus} عميل جديد</button>`:''}
     </div></div>
   <div class="grid g3">
     ${list.length? list.map(customerCard).join('') : emptyState(custSearchTerm?'مفيش نتائج مطابقة':'لسه مفيش عملاء مسجلين')}
@@ -986,7 +1188,7 @@ function renderCustomers(){
 }
 function customerCard(c){
   const cars = DB.cars.filter(x=>x.customerId===c.id);
-  const isOwner = session.role==='owner';
+  const isOwner = can('customers.archive');
   return `
   <div class="card" style="${c.archived?'opacity:.6':''}">
     <div class="flex-between">
@@ -996,22 +1198,22 @@ function customerCard(c){
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
         <button class="btn btn-sm" onclick="openCustomerHistory('${c.id}')">سجل العميل</button>
-        ${c.archived?'':`<button class="btn btn-sm" onclick="openAddCarModal('${c.id}')">${ICONS.plus} سيارة</button>`}
+        ${c.archived||!can('customers.create')?'':`<button class="btn btn-sm" onclick="openAddCarModal('${c.id}')">${ICONS.plus} سيارة</button>`}
         ${isOwner?`<button class="btn btn-sm" onclick="archiveCustomer('${c.id}')">${c.archived?'↩️ رجّع':'🗄️'}</button>`:''}
-        ${isOwner && !customerHasHistory(c.id) ? `<button class="btn btn-sm btn-danger" onclick="deleteCustomer('${c.id}')">حذف</button>` : ''}
+        ${can('customers.delete') && !customerHasHistory(c.id) ? `<button class="btn btn-sm btn-danger" onclick="deleteCustomer('${c.id}')">حذف</button>` : ''}
       </div>
     </div>
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
       ${cars.length? cars.map(car=>`
         <div style="display:flex;justify-content:space-between;background:var(--surface-2);padding:8px 10px;border-radius:8px;font-size:12.5px">
           <span>${car.plate} — ${carLabel(car)}</span>
-          ${c.archived?'':`<button class="btn btn-sm btn-accent" onclick="openNewJobModal('${car.id}')">أمر شغل</button>`}
+          ${c.archived||!can('jobs.create')?'':`<button class="btn btn-sm btn-accent" onclick="openNewJobModal('${car.id}')">أمر شغل</button>`}
         </div>`).join('') : '<div class="muted" style="font-size:12px">مفيش سيارات مسجلة</div>'}
     </div>
   </div>`;
 }
 function archiveCustomer(custId){
-  if(session.role!=='owner'){ toast('صلاحية صاحب المركز فقط', true); return; }
+  if(!can('customers.archive')){ toast('مالكش صلاحية أرشفة العملاء', true); return; }
   const c = DB.customers.find(x=>x.id===custId);
   if(!c) return;
   if(c.archived){
@@ -1034,7 +1236,7 @@ function archiveCustomer(custId){
   });
 }
 function deleteCustomer(custId){
-  if(session.role!=='owner'){ toast('صلاحية صاحب المركز فقط', true); return; }
+  if(!can('customers.delete')){ toast('مالكش صلاحية حذف العملاء', true); return; }
   const c = DB.customers.find(x=>x.id===custId);
   if(!c) return;
   if(customerHasHistory(custId)){
@@ -1101,6 +1303,7 @@ function openNewCustomerModal(){
   `);
 }
 async function saveNewCustomer(){
+  if(!can('customers.create')){ toast('مالكش صلاحية إضافة عملاء', true); return; }
   const name = document.getElementById('ncName').value.trim();
   const phone = document.getElementById('ncPhone').value.trim();
   const custType = document.getElementById('ncType').value;
@@ -1127,6 +1330,7 @@ function openAddCarModal(customerId){
   `);
 }
 async function saveNewCar(customerId){
+  if(!can('customers.create')){ toast('مالكش صلاحية إضافة سيارات', true); return; }
   const plate = document.getElementById('carPlate').value.trim();
   const make = document.getElementById('carMake').value.trim();
   const model = document.getElementById('carModel').value.trim();
@@ -1186,7 +1390,7 @@ function renderJobs(){
   const closedCount = DB.jobs.filter(isJobClosed).length;
   return `
   <div class="section-head"><h3>أوامر الشغل النشطة (${list.length})</h3>
-    <button class="btn btn-accent" onclick="openPickCarForJob()">${ICONS.plus} أمر شغل جديد</button></div>
+    ${can('jobs.create')?`<button class="btn btn-accent" onclick="openPickCarForJob()">${ICONS.plus} أمر شغل جديد</button>`:''}</div>
   ${closedCount>0 ? `<div class="muted" style="margin-bottom:14px;font-size:12.5px">القاعدة: وجود الأمر هنا = السيارة لسه داخل المركز. ${closedCount} أمر صدرت له فاتورة أو أُلغي — انتقلوا لشاشة الفواتير وسجل العميل.</div>` : ''}
   <div class="grid g3">${list.length? list.map(ticketCard).join('') : emptyState('لسه مفيش أوامر شغل')}</div>
   `;
@@ -1255,6 +1459,7 @@ function openNewJobModal(carId){
   `);
 }
 async function saveNewJob(carId){
+  if(!can('jobs.create')){ toast('مالكش صلاحية إنشاء أوامر شغل', true); return; }
   const car = DB.cars.find(c=>c.id===carId);
   // حماية من التكرار: ممنوع أمر شغل جديد لسيارة عندها أمر مفتوح بالفعل
   const existingOpen = DB.jobs.find(j=>j.carId===carId && !isJobClosed(j));
@@ -1311,10 +1516,10 @@ function jobDetailHTML(jobId){
 
   <div class="form-row">
     <label class="f-label">الحالة</label>
-    <select class="f" onchange="handleStatusChange('${job.id}', this.value)">
+    ${can('jobs.edit')||can('jobs.cancel') ? `<select class="f" onchange="handleStatusChange('${job.id}', this.value)">
       ${STATUSES.map(s=>`<option value="${s}" ${job.status===s?'selected':''}>${s}</option>`).join('')}
-      <option value="ملغاة" ${job.status==='ملغاة'?'selected':''}>ملغاة</option>
-    </select>
+      ${can('jobs.cancel')?`<option value="ملغاة" ${job.status==='ملغاة'?'selected':''}>ملغاة</option>`:''}
+    </select>` : `<div style="font-weight:700">${job.status}</div>`}
   </div>
 
   ${job.status==='ملغاة' ? `
@@ -1323,40 +1528,39 @@ function jobDetailHTML(jobId){
     <div style="font-size:13px"><span class="muted">سبب الإلغاء:</span> ${job.cancellationReason||'—'}</div>
     ${job.cancellationNotes?`<div style="font-size:13px;margin-top:4px"><span class="muted">ملاحظات:</span> ${job.cancellationNotes}</div>`:''}
     <div class="muted" style="font-size:12px;margin-top:6px">تاريخ الإلغاء: ${job.cancelledAt?fmtDateTime(job.cancelledAt):'—'}</div>
-    ${['accounts','owner'].includes(session.role) ? `<button class="btn btn-danger btn-sm" style="margin-top:10px" onclick="deleteJobOrder('${job.id}')">حذف أمر الشغل نهائياً</button>` : `<div class="muted" style="font-size:11.5px;margin-top:8px">حذف أوامر الشغل الملغاة متاح فقط للحسابات وصاحب المركز</div>`}
+    ${can('jobs.delete') ? `<button class="btn btn-danger btn-sm" style="margin-top:10px" onclick="deleteJobOrder('${job.id}')">حذف أمر الشغل نهائياً</button>` : `<div class="muted" style="font-size:11.5px;margin-top:8px">حذف أوامر الشغل الملغاة متاح لأصحاب الصلاحية فقط</div>`}
   </div>` : ''}
 
   ${job.notes ? `<div class="form-row"><label class="f-label">الملاحظات</label><div style="font-size:13.5px">${job.notes}</div></div>` : ''}
 
   <div class="form-row">
     <div class="flex-between" style="margin-bottom:8px"><label class="f-label" style="margin:0">البنود (خدمات وقطع)</label>
-      ${['reception','accounts','owner'].includes(session.role) ? `<span style="display:flex;gap:6px;flex-wrap:wrap">
+      ${can('jobs.edit') ? `<span style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-sm" onclick="addJobServiceRow('${job.id}')">${ICONS.plus} خدمة</button>
-        ${['accounts','owner'].includes(session.role)?`
         <button class="btn btn-sm" onclick="openExtItemModal('${job.id}','ext_part')">${ICONS.plus} قطعة غيار خارجية</button>
-        <button class="btn btn-sm" onclick="openExtItemModal('${job.id}','ext_work')">${ICONS.plus} أعمال خارجية</button>`:''}
+        <button class="btn btn-sm" onclick="openExtItemModal('${job.id}','ext_work')">${ICONS.plus} أعمال خارجية</button>
       </span>` : ''}
     </div>
-    <table class="items-table"><thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th>${['accounts','owner'].includes(session.role)?'<th></th>':''}</tr></thead>
+    <table class="items-table"><thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th>${can('jobs.edit')?'<th></th>':''}</tr></thead>
     <tbody>
       ${job.items.length ? job.items.map(it=>`
         <tr><td>${it.name} <span class="muted" style="font-size:11px">(${kindLabel(it)})</span>
         ${(it.technicianId || it.technician) ? `<div style="font-size:11px;color:var(--accent)">👨‍🔧 الفني: ${itemTechLabel(it, job)}</div>` : ''}
-        ${(it.kind==='ext_part'||it.kind==='ext_work') && ['accounts','owner'].includes(session.role) ? `<div class="muted" style="font-size:11px">${it.supplierId?('المورد: '+((DB.suppliers.find(s=>s.id===it.supplierId)||{}).name||'—')+' · '):''}التكلفة: ${money(it.costPrice||0)} · ${it.payMethod||'كاش'}</div>` : ''}
-        ${it.kind==='part' && it.costPrice!==undefined && ['accounts','owner'].includes(session.role) ? `<div class="muted" style="font-size:11px">سعر الشراء: ${money(it.costPrice)}</div>` : ''}
+        ${(it.kind==='ext_part'||it.kind==='ext_work') && can('rep.profit') ? `<div class="muted" style="font-size:11px">${it.supplierId?('المورد: '+((DB.suppliers.find(s=>s.id===it.supplierId)||{}).name||'—')+' · '):''}التكلفة: ${money(it.costPrice||0)} · ${it.payMethod||'كاش'}</div>` : ''}
+        ${it.kind==='part' && it.costPrice!==undefined && can('rep.profit') ? `<div class="muted" style="font-size:11px">سعر الشراء: ${money(it.costPrice)}</div>` : ''}
         </td>
         <td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td>
-        ${['accounts','owner'].includes(session.role) ? `<td style="white-space:nowrap">
+        ${can('jobs.edit') ? `<td style="white-space:nowrap">
           <button class="btn btn-sm" onclick="openEditJobItemModal('${job.id}','${it.id}')">تعديل</button>
           <button class="btn btn-sm btn-danger" onclick="deleteJobItem('${job.id}','${it.id}')">حذف</button>
         </td>` : ''}
         </tr>
-      `).join('') : `<tr><td colspan="${['accounts','owner'].includes(session.role)?5:4}" class="muted" style="text-align:center">مفيش بنود لسه</td></tr>`}
+      `).join('') : `<tr><td colspan="${can('jobs.edit')?5:4}" class="muted" style="text-align:center">مفيش بنود لسه</td></tr>`}
     </tbody></table>
     <div class="flex-between" style="margin-top:10px"><span>الإجمالي</span><span class="total-row">${money(total)}</span></div>
   </div>
 
-  ${['accounts','owner'].includes(session.role) && (job.internalCosts||[]).length ? `
+  ${can('rep.profit') && (job.internalCosts||[]).length ? `
   <div class="form-row">
     <label class="f-label" style="color:var(--accent)">🎨 خامات دهان (تكلفة داخلية — لا تظهر للعميل)</label>
     <table class="items-table"><thead><tr><th>الخامة</th><th>الكمية</th><th>تكلفة الوحدة</th><th>الإجمالي</th></tr></thead>
@@ -1364,7 +1568,7 @@ function jobDetailHTML(jobId){
     <div class="flex-between" style="margin-top:8px"><span class="muted" style="font-size:12.5px">إجمالي تكلفة الخامات</span><span style="font-weight:800;color:var(--accent)">${money(job.internalCosts.reduce((s,ic)=>s+ic.total,0))}</span></div>
   </div>` : ''}
 
-  ${['accounts','owner'].includes(session.role) ? `
+  ${can('bill.create') ? `
     <button class="btn btn-accent" style="width:100%;margin-top:6px" onclick="openCreateInvoiceModal('${job.id}')" ${hasInvoice?'disabled':''}>
       ${hasInvoice?'تم إصدار الفاتورة':'إصدار فاتورة'}
     </button>` : ''}
@@ -1452,6 +1656,7 @@ function openEditJobItemModal(jobId, itemId){
   `);
 }
 async function saveEditJobItem(jobId, itemId){
+  if(!can('jobs.edit')){ toast('مالكش صلاحية تعديل أوامر الشغل', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   const it = job.items.find(i=>i.id===itemId);
   const name = document.getElementById('editItName').value.trim();
@@ -1473,6 +1678,7 @@ async function saveEditJobItem(jobId, itemId){
   closeModal(); toast('تم حفظ التعديل'); openJobDetail(jobId); refreshContent();
 }
 function deleteJobItem(jobId, itemId){
+  if(!can('jobs.edit')){ toast('مالكش صلاحية تعديل أوامر الشغل', true); return; }
   askConfirm('هل أنت متأكد من حذف هذا البند؟', async ()=>{
     const job = DB.jobs.find(j=>j.id===jobId);
     job.items = job.items.filter(i=>i.id!==itemId);
@@ -1506,6 +1712,7 @@ function handleStatusChange(jobId, newStatus){
   }
 }
 function openCancelJobModal(jobId){
+  if(!can('jobs.cancel')){ toast('مالكش صلاحية إلغاء أوامر الشغل', true); refreshContent(); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   openModal(`
     <h3>إلغاء أمر الشغل #${job.jobNo}</h3>
@@ -1523,6 +1730,7 @@ function openCancelJobModal(jobId){
   `);
 }
 async function confirmCancelJob(jobId){
+  if(!can('jobs.cancel')){ toast('مالكش صلاحية إلغاء أوامر الشغل', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   const reason = document.getElementById('cancelReason').value;
   const notes = document.getElementById('cancelNotes').value.trim();
@@ -1532,10 +1740,13 @@ async function confirmCancelJob(jobId){
   job.cancelledAt = new Date().toISOString();
   await saveKey('jobs', DB.jobs);
   await logAction('إلغاء أمر الشغل #'+job.jobNo+' — السبب: '+reason);
+  pushNotif({ category:'jobs', type:'job_cancel', priority:'high',
+    action:'إلغاء أمر شغل #'+job.jobNo+' — '+reason, refType:'job', refId:job.id, refNo:job.jobNo });
   toast('تم إلغاء أمر الشغل وتوثيق السبب');
   openJobDetail(jobId); refreshContent();
 }
 function deleteJobOrder(jobId){
+  if(!can('jobs.delete')){ toast('مالكش صلاحية حذف أوامر الشغل', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   if(job.status!=='ملغاة'){ toast('لا يمكن حذف أمر شغل غير ملغى', true); return; }
   const hasInvoice = DB.invoices.some(i=>i.jobId===jobId && !i.cancelled);
@@ -1544,10 +1755,13 @@ function deleteJobOrder(jobId){
     DB.jobs = DB.jobs.filter(j=>j.id!==jobId);
     await saveKey('jobs', DB.jobs);
     await logAction('حذف أمر الشغل #'+job.jobNo+' نهائياً — السبب: '+(reason||'—'));
+    pushNotif({ category:'jobs', type:'job_delete', priority:'critical',
+      action:'حذف أمر شغل #'+job.jobNo+' نهائياً — '+(reason||'—'), refNo:job.jobNo });
     toast('تم حذف أمر الشغل'); currentTab='jobs'; render();
   });
 }
 async function changeJobStatus(jobId, status){
+  if(!can('jobs.edit')){ toast('مالكش صلاحية تغيير حالة أمر الشغل', true); refreshContent(); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   job.status = status;
   if(status==='تم التسليم') job.deliveredAt = new Date().toISOString();
@@ -1581,6 +1795,7 @@ function addJobServiceRow(jobId){
   `);
 }
 async function saveServiceRow(jobId){
+  if(!can('jobs.edit')){ toast('مالكش صلاحية تعديل أوامر الشغل', true); return; }
   const name = document.getElementById('svcName').value.trim();
   const price = parseFloat(document.getElementById('svcPrice').value)||0;
   const techId = (document.getElementById('svcTech')||{}).value || null;
@@ -1692,11 +1907,11 @@ function renderInventory(){
   return `
   <div class="section-head"><h3>المخزون (${DB.inventory.length} صنف)</h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" onclick="openWarehousesModal()">🏬 إدارة المخازن</button>
-      <button class="btn" onclick="openTransferModal()">⇄ تحويل بين المخازن</button>
+      ${can('inv.item_edit')?`<button class="btn" onclick="openWarehousesModal()">🏬 إدارة المخازن</button>`:''}
+      ${can('inv.transfer')?`<button class="btn" onclick="openTransferModal()">⇄ تحويل بين المخازن</button>`:''}
       <button class="btn" onclick="openInventoryCount()">📋 جرد المخزن</button>
-      <button class="btn" onclick="openNewPurchaseInvoicePage()">🧾 فاتورة شراء مورد</button>
-      <button class="btn btn-accent" onclick="openNewPartModal()">${ICONS.plus} صنف جديد</button>
+      ${can('inv.receive')?`<button class="btn" onclick="openNewPurchaseInvoicePage()">🧾 فاتورة شراء مورد</button>`:''}
+      ${can('inv.item_create')?`<button class="btn btn-accent" onclick="openNewPartModal()">${ICONS.plus} صنف جديد</button>`:''}
     </div></div>
   <div id="invValueBox" style="margin-bottom:16px">${inventoryValueHTML()}</div>
   <div class="grid g2" style="max-width:640px;margin-bottom:4px">
@@ -1765,6 +1980,7 @@ function trShowInfo(partId){
   if(p && el) el.textContent = 'المصدر: '+whName(partWhId(p))+' · المتاح: '+p.qty;
 }
 async function saveTransfer(){
+  if(!can('inv.transfer')){ toast('مالكش صلاحية التحويل بين المخازن', true); return; }
   const partId = document.getElementById('trPart').value;
   const destWhId = document.getElementById('trDest').value;
   const qty = parseFloat(document.getElementById('trQty').value)||0;
@@ -1812,6 +2028,7 @@ function openNewPartModal(){
   `);
 }
 async function saveNewPart(){
+  if(!can('inv.item_create')){ toast('مالكش صلاحية إضافة أصناف', true); return; }
   const name = document.getElementById('pName').value.trim();
   if(!name){ toast('اكتب اسم القطعة', true); return; }
   const part = {
@@ -1854,6 +2071,7 @@ function openStockInModal(partId){
   `);
 }
 async function saveStockIn(partId){
+  if(!can('inv.receive')){ toast('مالكش صلاحية التوريد', true); return; }
   const qty = parseFloat(document.getElementById('inQty').value)||0;
   const cost = parseFloat(document.getElementById('inCost').value)||0;
   const note = document.getElementById('inNote').value.trim();
@@ -1976,9 +2194,9 @@ function renderStockMoves(){
     `}
   </div>
   <div style="display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap">
-    <button class="btn" onclick="openStockAdjustmentModal()">⚖ تسوية مخزون</button>
-    <button class="btn" onclick="openCustomerReturnModal()">↩ مرتجع عميل</button>
-    <button class="btn btn-danger" onclick="openScrapModal()">🗑 تسجيل هالك / تالف</button>
+    ${can('inv.adjust')?`<button class="btn" onclick="openStockAdjustmentModal()">⚖ تسوية مخزون</button>`:''}
+    ${can('inv.return')?`<button class="btn" onclick="openCustomerReturnModal()">↩ مرتجع عميل</button>`:''}
+    ${can('inv.scrap')?`<button class="btn btn-danger" onclick="openScrapModal()">🗑 تسجيل هالك / تالف</button>`:''}
     <button class="btn btn-accent" onclick="openStockStatsModal()">📊 التقارير والإحصائيات</button>
   </div>
 
@@ -2100,7 +2318,7 @@ function filterMvPartSelect(term){
   sel.innerHTML = filtered.length ? filtered.map(p=>`<option value="${p.id}">${p.name} (متاح: ${p.qty})</option>`).join('') : `<option value="">لا يوجد صنف مطابق</option>`;
 }
 function openStockAdjustmentModal(presetPartId){
-  if(session.role!=='owner'){ toast('لا تملك صلاحية تعديل الكميات المخزنية، يرجى الرجوع إلى صاحب المركز.', true); return; }
+  if(!can('inv.adjust')){ toast('مالكش صلاحية تعديل الكميات المخزنية — ارجع لصاحب المركز.', true); return; }
   const first = presetPartId ? DB.inventory.find(p=>p.id===presetPartId) : DB.inventory[0];
   openModal(`
     <h3>تسوية مخزون</h3>
@@ -2117,6 +2335,7 @@ function openStockAdjustmentModal(presetPartId){
   `);
 }
 async function saveStockAdjustment(){
+  if(!can('inv.adjust')){ toast('مالكش صلاحية تسوية المخزون', true); return; }
   const partId = document.getElementById('adjPart').value;
   const newQty = parseFloat(document.getElementById('adjNewQty').value);
   const reason = document.getElementById('adjReason').value.trim();
@@ -2128,6 +2347,8 @@ async function saveStockAdjustment(){
   DB.stockMoves.push({id:uid('mv'), partId, type:'adjustment', qty:Math.abs(diff), date:new Date().toISOString(), note:(diff>0?'زيادة':'نقص')+' بالتسوية '+Math.abs(diff)+(reason?' — '+reason:'')});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
   await logAction('تسوية مخزون: '+p.name+' من '+(p.qty-diff)+' إلى '+newQty);
+  pushNotif({ category:'inventory', type:'adjust', priority:'high',
+    action:'تسوية مخزون: '+p.name+' ('+(p.qty-diff)+' ← '+newQty+')', refType:'inventory' });
   closeModal(); toast('تم تسجيل التسوية'); refreshContent();
 }
 /* مرتجع العميل المربوط بأمر الشغل (الملاحظة 28):
@@ -2210,7 +2431,7 @@ async function saveCustomerReturn(){
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
   if(qty>avail){ toast('مينفعش ترجع أكتر من المصروف ('+avail+')', true); return; }
   const invd = DB.invoices.some(i=>i.jobId===job.id && !i.cancelled);
-  if(invd && session.role!=='owner' && session.role!=='accounts'){
+  if(invd && !can('bill.cancel')){
     toast('الأمر ده متفوتر — المرتجع بعد الفاتورة صلاحية الحسابات أو المالك فقط', true); return;
   }
   // 1) خصم الكمية من بنود الأمر (والبند يتشال لو وصل صفر) ← تكلفة الأمر بتتعدل تلقائياً
@@ -2255,8 +2476,8 @@ function workOrderReportHTML(jobId){
   const totalRevenue = job.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
   const totalCost = inPartsCost + extPartsCost + extWorkCost + paintCost;
   const realProfit = totalRevenue - totalCost;
-  // نسخة المخزن (الملاحظة 26): بدون أي مبيعات أو أرباح أو هامش — الحركة والتكاليف فقط
-  if(session && session.role==='warehouse'){
+  // نسخة بدون أرباح: للمخزن ولأي حد مالوش صلاحية الربحية (الملاحظتان 26 و32)
+  if(!can('rep.profit')){
     const paintItems = (job.internalCosts||[]).filter(ic=>ic.kind==='paint');
     const jobMoves = DB.stockMoves.filter(m=>m.jobId===job.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
     const mvLabel = (m)=> m.type==='out'?'صرف من المخزن': m.type==='ext_part'?'قطعة خارجية': m.type==='paint_out'?'خامات دهان': m.type;
@@ -2421,6 +2642,7 @@ function renderOpenJobsReport(){
   </div>`;
 }
 async function saveExtOutFromStock(){
+  if(!can('jobs.edit')){ toast('مالكش صلاحية تعديل أوامر الشغل', true); return; }
   const jobId = document.getElementById('exJob').value;
   const name = document.getElementById('exName').value.trim();
   const supplierId = document.getElementById('exSupplier').value || null;
@@ -2467,6 +2689,7 @@ async function saveExtOutFromStock(){
   document.getElementById('exQty').value='1'; document.getElementById('exCost').value='0'; document.getElementById('exSell').value='0';
 }
 async function savePaintOut(){
+  if(!can('jobs.edit')){ toast('مالكش صلاحية تعديل أوامر الشغل', true); return; }
   const jobId = document.getElementById('pjJob').value;
   const name = document.getElementById('pjName').value.trim();
   const unit = document.getElementById('pjUnit').value.trim() || 'وحدة';
@@ -2493,6 +2716,7 @@ async function savePaintOut(){
   const costEl = document.getElementById('pjCost'); if(costEl) costEl.value='0';
 }
 async function saveStockOut(){
+  if(!can('inv.issue')){ toast('مالكش صلاحية صرف القطع', true); return; }
   const jobId = document.getElementById('mvJob').value;
   const partId = document.getElementById('mvPart').value;
   const qty = parseFloat(document.getElementById('mvQty').value)||0;
@@ -2548,14 +2772,15 @@ function openEditItemModal(partId){
     <div class="form-row">
       <label class="f-label">الكمية الحالية بالمخزن</label>
       <input class="f" value="${p.qty} ${p.unit||''}" disabled style="opacity:.55">
-      ${session.role==='owner'
-        ? `<button class="btn btn-sm" style="margin-top:8px" onclick="openStockAdjustmentModal('${p.id}')">⚖ تسوية الكمية (صلاحية المالك)</button>`
-        : `<div class="muted" style="font-size:11.5px;margin-top:6px">لا تملك صلاحية تعديل الكميات المخزنية، يرجى الرجوع إلى صاحب المركز.</div>`}
+      ${can('inv.adjust')
+        ? `<button class="btn btn-sm" style="margin-top:8px" onclick="openStockAdjustmentModal('${p.id}')">⚖ تسوية الكمية</button>`
+        : `<div class="muted" style="font-size:11.5px;margin-top:6px">مالكش صلاحية تعديل الكميات المخزنية — ارجع لصاحب المركز.</div>`}
     </div>
     <button class="btn btn-accent" style="width:100%" onclick="saveEditItem('${partId}')">حفظ التعديلات</button>
   `);
 }
 async function saveEditItem(partId){
+  if(!can('inv.item_edit')){ toast('مالكش صلاحية تعديل الأصناف', true); return; }
   const p = DB.inventory.find(x=>x.id===partId);
   const name = document.getElementById('eiName').value.trim();
   if(!name){ toast('اكتب اسم الصنف', true); return; }
@@ -2581,7 +2806,7 @@ function itemCardHTML(partId){
   return `
   <div class="flex-between" style="margin-bottom:14px">
     <h3 style="margin:0">كارت الصنف — ${p.name}</h3>
-    <button class="btn btn-sm btn-accent" onclick="openEditItemModal('${p.id}')">✎ تعديل الصنف</button>
+    ${can('inv.item_edit')?`<button class="btn btn-sm btn-accent" onclick="openEditItemModal('${p.id}')">✎ تعديل الصنف</button>`:''}
   </div>
   <div class="grid g3" style="margin-bottom:16px">
     ${stat(p.qty+' '+(p.unit||''),'الكمية الحالية', p.qty<=p.minQty)}
@@ -2718,6 +2943,7 @@ function openExtItemModal(jobId, kind){
   `);
 }
 async function saveExtItem(jobId, kind){
+  if(!can('jobs.edit')){ toast('مالكش صلاحية تعديل أوامر الشغل', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   const name = document.getElementById('extName').value.trim();
   const supplierId = document.getElementById('extSupplier').value || null;
@@ -2844,10 +3070,10 @@ function renderInventoryCount(){
     <button class="btn" onclick="printCountSheet('${ic.id}')">🖨 طباعة كشف الجرد</button>
     <button class="btn" onclick="downloadCountSheet('${ic.id}')">⬇ تحميل للطباعة / PDF</button>
     <button class="btn" onclick="exportCountCSV('${ic.id}')">⬇ تصدير Excel</button>
-    ${editable && session.role==='owner' && withDiff.length>0 ? `<button class="btn btn-danger" onclick="approveCount('${ic.id}')">✔ اعتماد التسوية النهائية (المالك)</button>` : ''}
-    ${editable && session.role!=='owner' && ic.status==='draft' && filled>0 ? `<button class="btn" onclick="submitCountForApproval('${ic.id}')">📤 إرسال للاعتماد</button>` : ''}
+    ${editable && can('inv.count_approve') && withDiff.length>0 ? `<button class="btn btn-danger" onclick="approveCount('${ic.id}')">✔ اعتماد التسوية النهائية</button>` : ''}
+    ${editable && !can('inv.count_approve') && ic.status==='draft' && filled>0 ? `<button class="btn" onclick="submitCountForApproval('${ic.id}')">📤 إرسال للاعتماد</button>` : ''}
   </div>
-  ${editable && session.role!=='owner' ? `<div class="muted" style="font-size:12px;margin-bottom:12px">صلاحيتك: تعبئة الكميات الفعلية وعرض الفروقات — اعتماد التسوية النهائية لصاحب المركز فقط.</div>`:''}
+  ${editable && !can('inv.count_approve') ? `<div class="muted" style="font-size:12px;margin-bottom:12px">صلاحيتك: تعبئة الكميات الفعلية وعرض الفروقات — اعتماد التسوية النهائية لأصحاب الصلاحية.</div>`:''}
   <div class="card">
     <table>
       <thead><tr><th>#</th><th>الكود</th><th>الصنف</th><th>الوحدة</th><th>سعر الشراء</th><th>رصيد النظام</th><th>الرصيد الفعلي</th><th>الفرق</th></tr></thead>
@@ -2898,7 +3124,7 @@ async function submitCountForApproval(icId){
   refreshContent();
 }
 function approveCount(icId){
-  if(session.role!=='owner'){ toast('اعتماد التسوية النهائية صلاحية صاحب المركز فقط', true); return; }
+  if(!can('inv.count_approve')){ toast('مالكش صلاحية اعتماد الجرد', true); return; }
   const ic = DB.inventoryCounts.find(x=>x.id===icId);
   const withDiff = ic.lines.filter(l=>l.physicalQty!==null && l.physicalQty!=='' && l.physicalQty!==l.systemQty);
   if(withDiff.length===0){ toast('لا توجد فروقات للتسوية', true); return; }
@@ -3011,6 +3237,7 @@ function openScrapModal(){
   `);
 }
 async function saveScrap(){
+  if(!can('inv.scrap')){ toast('مالكش صلاحية تسجيل الهالك', true); return; }
   const partId = document.getElementById('scPart').value;
   const kind = document.getElementById('scKind').value;
   const qty = parseFloat(document.getElementById('scQty').value)||0;
@@ -3027,6 +3254,8 @@ async function saveScrap(){
     note:[kind, reason, tech?('الفني: '+tech):null, note].filter(Boolean).join(' — ')});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
   await logAction('تسجيل '+kind+': '+qty+' من '+p.name+' — '+reason+' (خسارة '+money(qty*p.costPrice)+')');
+  pushNotif({ category:'inventory', type:'scrap', priority:'high', amount:qty*p.costPrice,
+    action:'تسجيل '+kind+': '+qty+' × '+p.name+' — '+reason, refType:'inventory' });
   closeModal(); toast('تم تسجيل الهالك وخصمه من المخزون'); refreshContent();
 }
 function scrapTotals(){
@@ -3243,7 +3472,7 @@ function supplierDetailHTML(supplierId){
   <tbody>
   ${returns.map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${r.name} ×${r.qty}</td><td>${money(r.total)}</td><td class="muted">${r.note||'—'}</td></tr>`).join('')}
   </tbody></table>` : ''}
-  ${b.balance>0 ? `<button class="btn btn-accent" style="width:100%;margin-top:16px" onclick="openSupplierPaymentModal('${supplierId}')">تسديد دفعة للمورد</button>` : ''}
+  ${b.balance>0 && can('sup.pay') ? `<button class="btn btn-accent" style="width:100%;margin-top:16px" onclick="openSupplierPaymentModal('${supplierId}')">تسديد دفعة للمورد</button>` : ''}
   `;
 }
 function openSupplierReturnModal(supplierId){
@@ -3293,6 +3522,7 @@ function openSupplierPaymentModal(supplierId){
   `);
 }
 async function saveSupplierPayment(supplierId){
+  if(!can('sup.pay')){ toast('مالكش صلاحية سداد الموردين', true); return; }
   let amount = parseFloat(document.getElementById('supPayAmt').value)||0;
   if(amount<=0){ toast('اكتب مبلغ صحيح', true); return; }
   const bal = supplierBalance(supplierId).balance;
@@ -3469,6 +3699,7 @@ function removePurchaseLine(idx){
   refreshContent();
 }
 async function savePurchaseInvoice(){
+  if(!can('inv.receive')){ toast('مالكش صلاحية تسجيل المشتريات', true); return; }
   if(!purchaseDraft.supplierId){ toast('اختار المورد أولاً', true); return; }
   if(purchaseDraft.lines.length===0){ toast('أضف صنف واحد على الأقل', true); return; }
   const supplier = DB.suppliers.find(s=>s.id===purchaseDraft.supplierId);
@@ -3518,7 +3749,9 @@ function openCreateInvoiceModal(jobId){
   openModal(`
     <h3>إصدار فاتورة — أمر شغل #${job.jobNo}</h3>
     <div class="flex-between"><span>الإجمالي قبل الخصم</span><span>${money(subtotal)}</span></div>
-    <div class="form-row" style="margin-top:12px"><label class="f-label">الخصم (مبلغ)</label><input class="f" id="invDiscount" type="number" min="0" value="0" oninput="updateInvoicePreview(${subtotal},${vatRate})"></div>
+    ${can('bill.discount')
+      ? `<div class="form-row" style="margin-top:12px"><label class="f-label">الخصم (مبلغ)</label><input class="f" id="invDiscount" type="number" min="0" value="0" oninput="updateInvoicePreview(${subtotal},${vatRate})"></div>`
+      : `<input type="hidden" id="invDiscount" value="0"><div class="muted" style="font-size:12px;margin-top:10px">🔒 مالكش صلاحية عمل خصم على الفاتورة</div>`}
     <div class="muted" style="font-size:12.5px">نسبة الضريبة الحالية: ${vatRate}% (تتغير من الإعدادات)</div>
     <div class="card" style="margin-top:14px" id="invPreview"></div>
     <button class="btn btn-accent" style="width:100%;margin-top:14px" onclick="createInvoiceFromJob('${jobId}')">تأكيد إصدار الفاتورة</button>
@@ -3537,13 +3770,15 @@ function updateInvoicePreview(subtotal, vatRate){
   `;
 }
 async function createInvoiceFromJob(jobId){
+  if(!can('bill.create')){ toast('مالكش صلاحية إصدار الفواتير', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   // حماية من التكرار: ممنوع فاتورة تانية لنفس أمر الشغل
   if(DB.invoices.some(i=>i.jobId===jobId && !i.cancelled)){
     toast('يوجد فاتورة صادرة بالفعل لأمر الشغل ده', true); closeModal(); refreshContent(); return;
   }
   const subtotal = job.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
-  const discount = parseFloat((document.getElementById('invDiscount')||{}).value)||0;
+  let discount = parseFloat((document.getElementById('invDiscount')||{}).value)||0;
+  if(discount>0 && !can('bill.discount')){ toast('مالكش صلاحية الخصم — الفاتورة هتتصدر بدون خصم', true); discount = 0; }
   const vatRate = DB.settings.vatRate||0;
   const afterDiscount = Math.max(subtotal-discount,0);
   const vatAmount = afterDiscount*vatRate/100;
@@ -3562,6 +3797,14 @@ async function createInvoiceFromJob(jobId){
     await saveKey('jobs', DB.jobs);
   }
   await logAction('إصدار فاتورة #'+inv.invNo+' بقيمة '+money(total)+' — تم تسليم السيارة وإقفال أمر الشغل #'+job.jobNo);
+  if(discount>0 && subtotal>0){
+    const pct = discount/subtotal*100;
+    if(pct >= (DB.settings.largeDiscountPct||15)){
+      const custD = DB.customers.find(c=>c.id===job.customerId);
+      pushNotif({ category:'financial', type:'large_discount', priority: pct>=25?'critical':'high', amount:discount,
+        action:'خصم عالي '+pct.toFixed(1)+'% على فاتورة #'+inv.invNo+(custD?' — '+custD.name:''), refType:'invoice', refNo:inv.invNo });
+    }
+  }
   closeModal(); toast('تم إصدار الفاتورة وتسليم السيارة — المتابعة من شاشة الفواتير');
   currentTab='invoices'; render();
 }
@@ -3660,12 +3903,13 @@ function invRowsHTML(){
       <td>${money(inv.total)}</td><td>${money(paid)}</td>
       <td>${inv.cancelled?'<span class="tag tag-cancel">ملغاة</span>':`<span class="tag ${map[st][1]}">${map[st][0]}</span>`}</td>
       <td>${!inv.cancelled && st!=='paid'?`<button class="btn btn-sm btn-accent" onclick="openPaymentModal('${inv.id}')">تحصيل</button>`:''}
-      ${!inv.cancelled && paid===0 && ['accounts','owner'].includes(session.role)?` <button class="btn btn-sm btn-danger" onclick="cancelInvoice('${inv.id}')">إلغاء</button>`:''}</td>
+      ${!inv.cancelled && paid===0 && can('bill.cancel')?` <button class="btn btn-sm btn-danger" onclick="cancelInvoice('${inv.id}')">إلغاء</button>`:''}</td>
       <td style="white-space:nowrap">${job?`<button class="btn btn-sm" onclick="openWorkOrderReport('${job.id}')">📈 الربحية</button> `:''}<button class="btn btn-sm" onclick="printInvoice('${inv.id}')">🖨</button> <button class="btn btn-sm" onclick="downloadInvoice('${inv.id}')">⬇ تحميل</button></td>
     </tr>`;
   }).join('');
 }
 function cancelInvoice(invId){
+  if(!can('bill.cancel')){ toast('مالكش صلاحية إلغاء الفواتير', true); return; }
   const inv = DB.invoices.find(i=>i.id===invId);
   const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
   if(paid>0){ toast('لا يمكن إلغاء فاتورة عليها دفعات محصلة', true); return; }
@@ -3693,6 +3937,7 @@ function openPaymentModal(invId){
   `);
 }
 async function savePayment(invId){
+  if(!can('bill.collect')){ toast('مالكش صلاحية التحصيل', true); return; }
   const amount = parseFloat(document.getElementById('payAmt').value)||0;
   if(amount<=0){ toast('اكتب مبلغ صحيح', true); return; }
   const inv = DB.invoices.find(i=>i.id===invId);
@@ -3880,6 +4125,7 @@ function computeProfitStats(range){
   return {count:invs.length, sales, collected, debt, cost, profit, margin, inParts, extParts, extWork, paint};
 }
 function profitReportHTML(range){
+  if(!can('rep.profit')) return `<div class="empty">🔒 تقارير الربحية متاحة لأصحاب الصلاحية فقط</div>`;
   const ps = computeProfitStats(range);
   return `
   <div class="grid g4" style="margin-bottom:10px">
@@ -4124,9 +4370,9 @@ function renderFinance(){
   return `
   <div class="section-head"><h3>الخزن والحسابات المالية</h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" onclick="openAddAccountModal()">${ICONS.plus} حساب / عهدة جديدة</button>
+      ${can('fin.manage')?`<button class="btn" onclick="openAddAccountModal()">${ICONS.plus} حساب / عهدة جديدة</button>
       <button class="btn" onclick="openExternalDepositModal()">💰 إيداع من شريك/مالك</button>
-      <button class="btn btn-accent" onclick="openTransferFundsModal()">⇄ إيداع / تحويل بين الحسابات</button>
+      <button class="btn btn-accent" onclick="openTransferFundsModal()">⇄ إيداع / تحويل بين الحسابات</button>`:''}
     </div>
   </div>
   <div class="grid g4" style="margin-bottom:8px">
@@ -4179,7 +4425,7 @@ function openAccountDetail(accId){
       ${stat(money(accBalance(accId)),'الرصيد الحالي', accBalance(accId)<0)}
       ${stat(money(acc.openingBalance||0),'الرصيد الافتتاحي')}
     </div>
-    ${session.role==='owner'||session.role==='accounts'?`
+    ${can('fin.manage')?`
     <div class="grid g2" style="margin-bottom:14px">
       <div class="form-row" style="margin:0"><label class="f-label">تعديل الرصيد الافتتاحي (أول المدة)</label>
         <input class="f" id="obAmount" type="number" value="${acc.openingBalance||0}"></div>
@@ -4242,6 +4488,7 @@ function openTransferFundsModal(){
   `);
 }
 async function saveFinTransfer(){
+  if(!can('fin.manage')){ toast('مالكش صلاحية إدارة الخزنة والتحويلات', true); return; }
   const fromId = document.getElementById('tfFrom').value;
   const toId = document.getElementById('tfTo').value;
   const amount = parseFloat(document.getElementById('tfAmount').value)||0;
@@ -4350,7 +4597,7 @@ function renderExpenseList(){
   const noCats = DB.expenseCategories.length===0;
   return `
   <div class="section-head"><h3>المصروفات — إجمالي ${money(total)}</h3>
-    <button class="btn btn-accent" onclick="openNewExpenseModal()">${ICONS.plus} مصروف جديد</button></div>
+    ${can('fin.expenses')?`<button class="btn btn-accent" onclick="openNewExpenseModal()">${ICONS.plus} مصروف جديد</button>`:''}</div>
   ${noCats?`<div class="muted" style="margin-bottom:12px">⚠️ لسه مفيش أنواع مصروفات مكوّدة. روح تبويب "أنواع المصروفات" وكوّدها الأول.</div>`:''}
   <div class="card">
     <table><thead><tr><th>التاريخ</th><th>رقم</th><th>النوع</th><th>المجموعة</th><th>الوصف</th><th>المبلغ</th><th>وسيلة الدفع</th><th>ملاحظات</th><th></th></tr></thead>
@@ -4420,6 +4667,7 @@ function viewReceipt(id){
   openModal(`<h3>صورة الفاتورة — ${e.category||''}</h3><img src="${e.receipt}" style="max-width:100%;border-radius:10px;margin-top:8px">`);
 }
 async function saveExpense(){
+  if(!can('fin.expenses')){ toast('مالكش صلاحية تسجيل المصروفات', true); return; }
   const catId = (document.getElementById('expCatSel')||{}).value;
   const cat = DB.expenseCategories.find(c=>c.id===catId);
   const amount = parseFloat(document.getElementById('expAmt').value)||0;
@@ -4446,6 +4694,10 @@ async function saveExpense(){
   if(acc) addFinMove(acc.id, 'out', amount, 'expense', 'مصروف: '+cat.name+(description?' — '+description:''));
   await Promise.all([saveKey('expenses'), saveKey('finMoves')]);
   await logAction('مصروف '+money(amount)+' — '+cat.name+(acc?' من '+acc.name:''));
+  if(amount >= (DB.settings.largeExpenseThreshold||20000)){
+    pushNotif({ category:'financial', type:'large_expense', priority: amount>=50000?'critical':'high', amount,
+      action:'مصروف كبير: '+cat.name+(description?' — '+description:''), refType:'expense' });
+  }
   closeModal(); toast('تم حفظ المصروف وخصمه من '+(acc?acc.name:'')); refreshContent();
 }
 function renderExpenseCategories(){
@@ -4674,7 +4926,7 @@ function renderTechnicianPerformance(){
   const pct = DB.settings.techIncentivePct||0;
   const excl = DB.settings.incentiveExclusions||[];
   const rows = Object.entries(techMap).sort((a,b)=>b[1].laborValue-a[1].laborValue);
-  const isOwner = session.role==='owner';
+  const isOwner = isOwnerSession();
   const periodLbl = PERIOD_PRESETS.find(x=>x[0]===techPeriod.preset)?.[1]||'فترة مخصصة';
   return `
   <div class="card" style="margin-bottom:16px">
@@ -4731,7 +4983,7 @@ function renderTechnicianPerformance(){
   </div>`:''}`;
 }
 async function saveIncentivePct(){
-  if(session.role!=='owner'){ toast('صلاحية صاحب المركز فقط', true); return; }
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
   const v = parseFloat((document.getElementById('incPct')||{}).value)||0;
   DB.settings.techIncentivePct = v;
   await saveKey('settings');
@@ -4739,7 +4991,7 @@ async function saveIncentivePct(){
   toast('تم حفظ نسبة الحوافز'); refreshContent();
 }
 function openIncentiveExclusionModal(){
-  if(session.role!=='owner'){ toast('صلاحية صاحب المركز فقط', true); return; }
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
   const techs = allTechKeys();
   if(techs.length===0){ toast('مفيش فنيين مسجلين لسه', true); return; }
   openModal(`
@@ -4756,7 +5008,7 @@ function openIncentiveExclusionModal(){
   `);
 }
 async function saveIncentiveExclusion(){
-  if(session.role!=='owner'){ toast('صلاحية صاحب المركز فقط', true); return; }
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
   const tech = (document.getElementById('ieTech')||{}).value;
   const from = (document.getElementById('ieFrom')||{}).value;
   const to = (document.getElementById('ieTo')||{}).value;
@@ -4771,7 +5023,7 @@ async function saveIncentiveExclusion(){
   closeModal(); toast('تم الاستبعاد — البيانات محفوظة والحافز متوقف للفترة دي'); refreshContent();
 }
 function removeIncentiveExclusion(id){
-  if(session.role!=='owner'){ toast('صلاحية صاحب المركز فقط', true); return; }
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
   const x = (DB.settings.incentiveExclusions||[]).find(e=>e.id===id);
   if(!x) return;
   askConfirm('إلغاء استبعاد الفني '+techLabelOf(x.tech)+' ('+fmtDate(x.from)+' → '+fmtDate(x.to)+')؟ الفترة هترجع تتحسب في الحوافز.', async ()=>{
@@ -4888,7 +5140,7 @@ const LEAVE_TYPES = ['دورية','طارئة','مرضية','بدون راتب']
 const EMP_STATUS = ['نشط','موقوف','مستقيل','أرشيف'];
 let hrView = 'employees';
 function setHrView(v){ hrView = v; refreshContent(); }
-function hrCanManage(){ return session && (session.role==='owner' || session.role==='accounts'); }
+function hrCanManage(){ return can('hr.employees') || can('hr.approve'); }
 function leaveDaysCount(from, to){
   if(!from || !to) return 0;
   const d = Math.round((new Date(to) - new Date(from))/86400000) + 1;
@@ -4932,11 +5184,11 @@ function leaveStatusTag(st){
   return '<span class="tag tag-unpaid">مرفوضة</span>';
 }
 function renderHR(){
-  // الاستقبال: تقديم الطلبات فقط (إجازات وأذونات ومأموريات) — بدون ملفات الموظفين والرواتب
-  const isReception = session.role==='reception';
-  const views = isReception
-    ? [['leaves','🏖️ طلبات الإجازات'],['early','⏰ أذونات الانصراف'],['errands','🚗 المأموريات']]
-    : [['employees','👥 ملفات الموظفين'],['leaves','🏖️ طلبات الإجازات'],['early','⏰ أذونات الانصراف'],['errands','🚗 المأموريات'],['payroll','💵 الرواتب']];
+  // الشاشات الفرعية بتظهر حسب صلاحيات المستخدم (الملاحظة 32)
+  const views = [];
+  if(can('hr.employees')) views.push(['employees','👥 ملفات الموظفين']);
+  views.push(['leaves','🏖️ طلبات الإجازات'], ['early','⏰ أذونات الانصراف'], ['errands','🚗 المأموريات']);
+  if(can('hr.payroll')) views.push(['payroll','💵 الرواتب']);
   if(!views.some(v=>v[0]===hrView)) hrView = views[0][0];
   const tabsBar = `
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px">
@@ -5110,12 +5362,12 @@ function openEmployeeDetail(empId){
     <div class="muted" style="font-size:12px;margin-bottom:14px">دوري: متبقي ${st.remRoutine} من ${st.balRoutine} · طارئ: متبقي ${st.remEmergency} من ${st.balEmergency}${st.usedOther?` · إجازات أخرى (مرضية/بدون راتب): ${st.usedOther} يوم`:''}</div>
     ${hrCanManage()?`
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-      <button class="btn" style="flex:1" onclick="openEditEmployeeModal('${empId}')">✏️ تعديل الملف</button>
+      ${can('hr.employees')?`<button class="btn" style="flex:1" onclick="openEditEmployeeModal('${empId}')">✏️ تعديل الملف</button>
       <button class="btn" style="flex:1" onclick="openAbsenceModal('${empId}')">🚫 غياب</button>
       <button class="btn" style="flex:1" onclick="openAdvanceModal('${empId}')">💰 سلفة</button>
-      <button class="btn" style="flex:1" onclick="openBonusModal('${empId}')">🎁 حافز</button>
-      ${session.role==='owner'?`<button class="btn" style="flex:1" onclick="openPenaltyModal('${empId}')">⚖️ جزاء</button>`:''}
-      <button class="btn btn-accent" style="flex:1" onclick="openPayslip('${empId}')">🧾 كشف الراتب</button>
+      <button class="btn" style="flex:1" onclick="openBonusModal('${empId}')">🎁 حافز</button>`:''}
+      ${can('hr.penalties')?`<button class="btn" style="flex:1" onclick="openPenaltyModal('${empId}')">⚖️ جزاء</button>`:''}
+      ${can('hr.payroll')?`<button class="btn btn-accent" style="flex:1" onclick="openPayslip('${empId}')">🧾 كشف الراتب</button>`:''}
     </div>`:''}
     <label class="f-label">سجل الإجازات (${history.length})</label>
     <table style="margin:6px 0 14px"><tbody>
@@ -5353,6 +5605,8 @@ function approveLeave(reqId){
     r.balanceBefore = st.remaining; r.balanceAfter = after;
     await saveKey('leaveRequests');
     await logAction('قبول إجازة '+r.type+' '+r.days+' يوم — '+(emp?emp.name:'—')+' (الرصيد بعدها: '+after+')');
+    pushNotif({ category:'hr', type:'leave_decision', priority:'medium',
+      action:'اعتماد إجازة '+r.type+' ('+r.days+' يوم) لـ '+(emp?emp.name:'—'), refType:'employee', refId:r.employeeId });
     toast('تمت الموافقة — اتخصم من رصيده تلقائياً'); refreshContent();
   });
 }
@@ -5510,6 +5764,8 @@ function approvePermit(id){
     p.status='approved'; p.decidedBy=actorName(); p.decidedAt=new Date().toISOString();
     await saveKey('permits');
     await logAction('اعتماد '+permitLabel(p.kind)+' — '+(emp?emp.name:'—')+' ('+fmtDate(p.date)+')');
+    if(p.kind==='early') pushNotif({ category:'hr', type:'early_leave_decision', priority:'medium',
+      action:'اعتماد إذن انصراف مبكر لـ '+(emp?emp.name:'—')+' يوم '+fmtDate(p.date), refType:'employee', refId:p.employeeId });
     toast('تم الاعتماد واتسجل في ملف الموظف'); refreshContent();
   });
 }
@@ -5597,7 +5853,7 @@ async function saveAdvance(empId){
   closeModal(); toast('تم تسجيل السلفة'+(acc?' وخصمها من '+acc.name:'')); openEmployeeDetail(empId);
 }
 function openPenaltyModal(empId){
-  if(session.role!=='owner'){ toast('الجزاءات صلاحية صاحب المركز فقط', true); return; }
+  if(!can('hr.penalties')){ toast('مالكش صلاحية تسجيل الجزاءات', true); return; }
   const e = DB.employees.find(x=>x.id===empId);
   if(!e) return;
   openModal(`
@@ -5645,7 +5901,7 @@ async function saveBonus(empId){
   closeModal(); toast('تم تسجيل الحافز'); openEmployeeDetail(empId);
 }
 async function savePenalty(empId){
-  if(!session || session.role!=='owner'){ toast('الجزاءات صلاحية صاحب المركز فقط', true); return; }
+  if(!can('hr.penalties')){ toast('مالكش صلاحية تسجيل الجزاءات', true); return; }
   const e = DB.employees.find(x=>x.id===empId);
   if(!e) return;
   const date = (document.getElementById('pnDate')||{}).value;
@@ -5659,6 +5915,8 @@ async function savePenalty(empId){
   e.penalties.push({ id:uid('pen'), date, amount, reason, note, recordedBy:actorName(), createdAt:new Date().toISOString() });
   await saveKey('employees');
   await logAction('جزاء '+money(amount)+' — '+e.name+' ('+reason+')');
+  pushNotif({ category:'hr', type:'penalty', priority:'high', amount,
+    action:'خصم/جزاء على '+e.name+' — '+reason, refType:'employee', refId:e.id });
   closeModal(); toast('تم تسجيل الجزاء'); openEmployeeDetail(empId);
 }
 /* ---- شاشة الرواتب بدورة مرنة (الملاحظة 29) ---- */
@@ -5680,7 +5938,7 @@ function setPayrollTo(v){ getPayrollPeriod(); if(v) payrollPeriod.to = v; refres
 function setPayrollFilter(k, v){ payrollFilter[k] = v; refreshContent(); }
 function periodLabel(from, to){ return fmtDate(from)+' → '+fmtDate(to); }
 async function saveWorkingDays(){
-  if(session.role!=='owner'){ toast('صلاحية صاحب المركز فقط', true); return; }
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
   const wd = parseFloat((document.getElementById('prWorkDays')||{}).value)||0;
   const cd = parseInt((document.getElementById('prCycleDay')||{}).value,10)||0;
   if(wd<=0 || wd>31){ toast('أيام العمل لازم تكون بين 1 و 31', true); return; }
@@ -5695,7 +5953,7 @@ async function saveWorkingDays(){
 function renderPayroll(){
   const per = getPayrollPeriod();
   const { from, to } = per;
-  const isOwner = session.role==='owner';
+  const isOwner = isOwnerSession();
   const wd = workingDays();
   const cycleDay = parseInt(DB.settings.payrollCycleDay,10)||25;
   const depts = [...new Set(DB.employees.map(e=>e.dept).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'));
@@ -5828,6 +6086,618 @@ function openPayslip(empId){
   `);
 }
 
+/* ======================= SPECIAL TOOLS — العدد الخاصة (الملاحظة 31) =======================
+   عهدة الورشة: عدد قابلة لإعادة الاستخدام (مش مخزون استهلاكي).
+   الصرف والاستلام مربوطين بالفني بالـ employee ID مش بالاسم. */
+const TOOL_STATUS = ['متاحة','مصروفة','تحت الصيانة','تالفة','مفقودة','خارج الخدمة'];
+const TOOL_CATEGORIES = ['أجهزة فحص وتشخيص','عدد ميكانيكا','عدد كهرباء','عدد سمكرة ودهان','عدد فرامل','عدد فتيس','أجهزة قياس','ماكينات ورشة','عدد خاصة بماركة','أخرى'];
+const TOOL_CONDITIONS = ['سليمة','تحتاج صيانة','تالفة','ناقصة أجزاء'];
+const TOOL_OVERDUE_HOURS = 24;
+let toolsView = 'list';
+let toolsSearch = '';
+function setToolsView(v){ toolsView = v; refreshContent(); }
+function setToolsSearch(v){ toolsSearch = v.trim().toLowerCase(); refreshContent(); }
+function toolsCanIssue(){ return can('tools.issue'); }
+function toolsCanManage(){ return can('tools.manage'); }
+function toolStatusTag(st){
+  if(st==='متاحة') return '<span class="tag tag-paid">متاحة</span>';
+  if(st==='مصروفة') return '<span class="tag tag-working">مصروفة</span>';
+  if(st==='تحت الصيانة') return '<span class="tag tag-inspect">تحت الصيانة</span>';
+  if(st==='تالفة') return '<span class="tag tag-unpaid">تالفة</span>';
+  if(st==='مفقودة') return '<span class="tag tag-cancel">مفقودة</span>';
+  return '<span class="muted">خارج الخدمة</span>';
+}
+/* آخر حركة صرف مفتوحة للعدة (اللي لسه مترجعتش) */
+function openCheckout(toolId){
+  return DB.toolMoves.filter(m=>m.toolId===toolId && m.type==='out' && !m.returnedAt)
+    .sort((a,b)=>new Date(b.date)-new Date(a.date))[0] || null;
+}
+function toolHoursOut(mv){ return mv ? (Date.now() - new Date(mv.date)) / 3600000 : 0; }
+function isToolOverdue(mv){ return toolHoursOut(mv) > TOOL_OVERDUE_HOURS; }
+function overdueTools(){
+  return DB.tools.filter(t=>t.status==='مصروفة').map(t=>({ t, mv: openCheckout(t.id) }))
+    .filter(x=>x.mv && isToolOverdue(x.mv));
+}
+function toolStats(){
+  const s = { total: DB.tools.length };
+  TOOL_STATUS.forEach(st=>{ s[st] = DB.tools.filter(t=>t.status===st).length; });
+  // فحص التطابق: الإجمالي لازم يساوي مجموع الحالات
+  s.sumStatuses = TOOL_STATUS.reduce((a,st)=>a+s[st],0);
+  s.mismatch = s.total - s.sumStatuses;
+  return s;
+}
+function renderTools(){
+  const views = [['list','🧰 العدد'],['out','📤 المصروفة حالياً'],['log','📋 سجل الحركة']];
+  const st = toolStats();
+  const overdue = overdueTools();
+  const tabsBar = `
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px">
+    ${views.map(([id,lbl])=>`<button class="btn btn-sm ${toolsView===id?'btn-accent':''}" onclick="setToolsView('${id}')">${lbl}${id==='out'&&st['مصروفة']?' ('+st['مصروفة']+')':''}</button>`).join('')}
+  </div>`;
+  const dash = `
+  <div class="grid g4" style="margin-bottom:14px">
+    ${stat(String(st.total),'إجمالي العدد')}
+    ${stat(String(st['متاحة']),'متاحة')}
+    ${stat(String(st['مصروفة']),'مصروفة (بره المخزن)', st['مصروفة']>0)}
+    ${stat(String(st['تحت الصيانة']),'تحت الصيانة', st['تحت الصيانة']>0)}
+  </div>
+  <div class="grid g3" style="margin-bottom:18px">
+    ${stat(String(st['تالفة']),'تالفة', st['تالفة']>0)}
+    ${stat(String(st['مفقودة']),'مفقودة', st['مفقودة']>0)}
+    ${stat(String(st['خارج الخدمة']),'خارج الخدمة')}
+  </div>
+  ${st.mismatch!==0?`<div class="card" style="margin-bottom:16px;border:1px solid var(--danger)">
+    <div style="color:var(--danger);font-weight:800">⚠️ تحذير: فيه اختلاف في الجرد</div>
+    <div class="muted" style="font-size:12.5px;margin-top:4px">إجمالي العدد (${st.total}) مش مساوي مجموع الحالات (${st.sumStatuses}) — الفرق ${Math.abs(st.mismatch)}. يعني فيه عدة اتاخدت من غير تسجيل، راجع السجل.</div>
+  </div>`:''}
+  ${overdue.length?`<div class="card" style="margin-bottom:16px;border:1px solid var(--danger)">
+    <div style="color:var(--danger);font-weight:800;margin-bottom:8px">🚨 عدد بره المخزن أكتر من ${TOOL_OVERDUE_HOURS} ساعة (${overdue.length})</div>
+    <table><tbody>${overdue.map(({t,mv})=>`<tr>
+      <td style="font-weight:700">${t.name} <span class="muted" style="font-size:11px">${t.code||''}</span></td>
+      <td>مع: ${techLabelOf(mv.technicianId)}</td>
+      <td style="color:var(--danger);font-weight:800">بره من ${durationText(mv.date)}</td>
+      ${toolsCanIssue()?`<td style="width:90px"><button class="btn btn-sm btn-accent" onclick="openToolReturnModal('${t.id}')">استلام</button></td>`:''}
+    </tr>`).join('')}</tbody></table>
+  </div>`:''}`;
+  const body = toolsView==='out' ? renderToolsOut() : toolsView==='log' ? renderToolsLog() : renderToolsList();
+  return tabsBar + dash + body;
+}
+function renderToolsList(){
+  const t = toolsSearch;
+  const list = DB.tools.filter(x=>{
+    if(!t) return true;
+    return [x.name, x.code, x.category, x.serial, x.notes].filter(Boolean).join(' ').toLowerCase().includes(t);
+  }).sort((a,b)=>(a.code||'').localeCompare(b.code||''));
+  return `
+  <div class="card" style="margin-bottom:16px">
+    <div class="search-box" style="max-width:100%">${ICONS.search}
+      <input placeholder="بحث: اسم العدة، الكود، الفئة، السيريال..." value="${toolsSearch}" oninput="setToolsSearch(this.value)"></div>
+  </div>
+  <div class="section-head"><h3>العدد الخاصة (${list.length})</h3>
+    ${toolsCanManage()?`<button class="btn btn-accent" onclick="openNewToolModal()">${ICONS.plus} عدة جديدة</button>`:''}</div>
+  <div class="card">
+    <table><thead><tr><th>الكود</th><th>الاسم</th><th>الفئة</th><th>الحالة</th><th>مع مين</th><th>المدة بره</th><th></th></tr></thead>
+    <tbody>${list.length? list.map(x=>{
+      const mv = x.status==='مصروفة' ? openCheckout(x.id) : null;
+      const over = mv && isToolOverdue(mv);
+      return `<tr onclick="openToolDetail('${x.id}')" style="cursor:pointer">
+        <td style="font-weight:700;color:var(--accent)">${x.code||'—'}</td>
+        <td>${x.name}${x.serial?`<div class="muted" style="font-size:10.5px">سيريال: ${x.serial}</div>`:''}</td>
+        <td class="muted">${x.category||'—'}</td>
+        <td>${toolStatusTag(x.status)}</td>
+        <td>${mv?techLabelOf(mv.technicianId):'—'}</td>
+        <td style="${over?'color:var(--danger);font-weight:800':''}">${mv?durationText(mv.date):'—'}</td>
+        <td onclick="event.stopPropagation()">${toolsCanIssue()? (x.status==='متاحة'
+          ? `<button class="btn btn-sm btn-accent" onclick="openToolIssueModal('${x.id}')">صرف</button>`
+          : x.status==='مصروفة' ? `<button class="btn btn-sm" onclick="openToolReturnModal('${x.id}')">استلام</button>` : '') : ''}</td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="7" class="empty">${t?'مفيش نتائج':'لسه مفيش عدد مسجلة'+(toolsCanManage()?' — دوس "عدة جديدة"':'')}</td></tr>`}
+    </tbody></table>
+  </div>`;
+}
+function renderToolsOut(){
+  const out = DB.tools.filter(t=>t.status==='مصروفة').map(t=>({t, mv:openCheckout(t.id)}))
+    .filter(x=>x.mv).sort((a,b)=>new Date(a.mv.date)-new Date(b.mv.date));
+  return `
+  <div class="section-head"><h3>📤 العدد المصروفة حالياً (${out.length})</h3></div>
+  <div class="card">
+    <table><thead><tr><th>الكود</th><th>العدة</th><th>الفني</th><th>وقت الصرف</th><th>المدة بره المخزن</th><th>أمر الشغل</th><th>صرفها</th><th></th></tr></thead>
+    <tbody>${out.length? out.map(({t,mv})=>{
+      const job = mv.jobId ? DB.jobs.find(j=>j.id===mv.jobId) : null;
+      const over = isToolOverdue(mv);
+      return `<tr>
+        <td style="font-weight:700;color:var(--accent)">${t.code||'—'}</td>
+        <td>${t.name}</td>
+        <td style="font-weight:700">${techLabelOf(mv.technicianId)}</td>
+        <td style="white-space:nowrap;font-size:12.5px">${fmtDateTime(mv.date)}</td>
+        <td style="${over?'color:var(--danger);font-weight:800':'font-weight:700'}">${durationText(mv.date)}${over?' 🚨':''}</td>
+        <td>${job?'#'+job.jobNo:'—'}</td>
+        <td class="muted" style="font-size:11.5px">${mv.actor||'—'}</td>
+        <td>${toolsCanIssue()?`<button class="btn btn-sm btn-accent" onclick="openToolReturnModal('${t.id}')">استلام</button>`:''}</td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="8" class="empty">مفيش عدد بره المخزن 👏</td></tr>`}
+    </tbody></table>
+  </div>`;
+}
+function renderToolsLog(){
+  const moves = [...DB.toolMoves].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,200);
+  return `
+  <div class="section-head"><h3>📋 سجل حركة العدد (آخر ${moves.length})</h3></div>
+  <div class="card">
+    <table><thead><tr><th>الوقت</th><th>الحركة</th><th>العدة</th><th>الفني</th><th>المدة</th><th>الحالة عند الاستلام</th><th>بواسطة</th></tr></thead>
+    <tbody>${moves.length? moves.map(m=>{
+      const t = DB.tools.find(x=>x.id===m.toolId);
+      return `<tr>
+        <td style="white-space:nowrap;font-size:12px">${fmtDateTime(m.date)}</td>
+        <td>${m.type==='out'?'<span class="tag tag-working">صرف</span>':'<span class="tag tag-paid">استلام</span>'}</td>
+        <td>${t?t.name:'—'} <span class="muted" style="font-size:11px">${t?(t.code||''):''}</span></td>
+        <td>${m.technicianId?techLabelOf(m.technicianId):'—'}</td>
+        <td>${m.type==='in'&&m.durationFrom?durationText(m.durationFrom, m.date):'—'}</td>
+        <td>${m.condition||'—'}</td>
+        <td class="muted" style="font-size:11.5px">${m.actor||'—'}</td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="7" class="empty">مفيش حركات مسجلة</td></tr>`}
+    </tbody></table>
+  </div>`;
+}
+/* ---- بيانات العدة ---- */
+function toolFormHTML(x){
+  x = x || {};
+  return `
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">اسم العدة</label><input class="f" id="tlName" value="${x.name||''}" placeholder="مثال: جهاز فحص أعطال"></div>
+      <div class="form-row"><label class="f-label">كود العدة</label><input class="f" id="tlCode" value="${x.code||('ST-'+nextNo(DB.tools,'seq'))}"></div>
+    </div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">الفئة</label>
+        <select class="f" id="tlCat">${TOOL_CATEGORIES.map(c=>`<option value="${c}" ${x.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div class="form-row"><label class="f-label">الرقم التسلسلي (اختياري)</label><input class="f" id="tlSerial" value="${x.serial||''}"></div>
+    </div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">تاريخ الشراء</label><input class="f" id="tlDate" type="date" value="${x.purchaseDate||new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-row"><label class="f-label">تكلفة الشراء</label><input class="f" id="tlCost" type="number" min="0" value="${x.cost||0}"></div>
+    </div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">المورد (اختياري)</label>
+        <select class="f" id="tlSupplier"><option value="">— بدون —</option>${DB.suppliers.map(s=>`<option value="${s.id}" ${x.supplierId===s.id?'selected':''}>${s.name}</option>`).join('')}</select></div>
+      <div class="form-row"><label class="f-label">الحالة</label>
+        <select class="f" id="tlStatus">${TOOL_STATUS.map(s=>`<option value="${s}" ${(x.status||'متاحة')===s?'selected':''}>${s}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="tlNotes" value="${x.notes||''}"></div>`;
+}
+function readToolForm(){
+  return {
+    name: document.getElementById('tlName').value.trim(),
+    code: document.getElementById('tlCode').value.trim(),
+    category: (document.getElementById('tlCat')||{}).value,
+    serial: document.getElementById('tlSerial').value.trim(),
+    purchaseDate: (document.getElementById('tlDate')||{}).value,
+    cost: parseFloat(document.getElementById('tlCost').value)||0,
+    supplierId: (document.getElementById('tlSupplier')||{}).value || null,
+    status: (document.getElementById('tlStatus')||{}).value || 'متاحة',
+    notes: document.getElementById('tlNotes').value.trim()
+  };
+}
+function openNewToolModal(){
+  if(!toolsCanManage()){ toast('إضافة العدد صلاحية صاحب المركز فقط', true); return; }
+  openModal(`<h3>عدة خاصة جديدة</h3>${toolFormHTML()}
+    <button class="btn btn-accent" style="width:100%" onclick="saveNewTool()">حفظ العدة</button>`);
+}
+async function saveNewTool(){
+  if(!toolsCanManage()){ toast('إضافة العدد صلاحية صاحب المركز فقط', true); return; }
+  const f = readToolForm();
+  if(!f.name){ toast('اكتب اسم العدة', true); return; }
+  if(!f.code){ toast('اكتب كود العدة', true); return; }
+  if(DB.tools.some(t=>t.code===f.code)){ toast('الكود ده مستخدم بالفعل', true); return; }
+  DB.tools.push({ id:uid('tl'), seq: nextNo(DB.tools,'seq'), ...f, createdAt:new Date().toISOString() });
+  await saveKey('tools');
+  await logAction('إضافة عدة خاصة: '+f.name+' ('+f.code+')');
+  closeModal(); toast('تم حفظ العدة'); refreshContent();
+}
+function openEditToolModal(toolId){
+  if(!toolsCanManage()){ toast('التعديل صلاحية صاحب المركز فقط', true); return; }
+  const x = DB.tools.find(t=>t.id===toolId);
+  if(!x) return;
+  openModal(`<h3>تعديل العدة — ${x.name}</h3>${toolFormHTML(x)}
+    <button class="btn btn-accent" style="width:100%" onclick="saveToolEdit('${toolId}')">حفظ التعديلات</button>`);
+}
+async function saveToolEdit(toolId){
+  if(!toolsCanManage()){ toast('التعديل صلاحية صاحب المركز فقط', true); return; }
+  const x = DB.tools.find(t=>t.id===toolId);
+  if(!x) return;
+  const f = readToolForm();
+  if(!f.name){ toast('اكتب اسم العدة', true); return; }
+  if(DB.tools.some(t=>t.code===f.code && t.id!==toolId)){ toast('الكود ده مستخدم بالفعل', true); return; }
+  const oldStatus = x.status;
+  Object.assign(x, f);
+  await saveKey('tools');
+  await logAction('تعديل العدة: '+x.name+(oldStatus!==f.status?' — الحالة من "'+oldStatus+'" إلى "'+f.status+'"':''));
+  closeModal(); toast('تم حفظ التعديلات'); refreshContent();
+}
+function deleteTool(toolId){
+  if(!toolsCanManage()){ toast('الحذف صلاحية صاحب المركز فقط', true); return; }
+  const x = DB.tools.find(t=>t.id===toolId);
+  if(!x) return;
+  if(x.status==='مصروفة'){ toast('مينفعش تحذف عدة مصروفة — استلمها الأول', true); return; }
+  const hasHistory = DB.toolMoves.some(m=>m.toolId===toolId);
+  askConfirmReason('حذف العدة «'+x.name+'» نهائياً؟'+(hasHistory?'<br><span class="muted" style="font-size:12px">ليها سجل حركة — الأفضل تخليها "خارج الخدمة" بدل الحذف عشان السجل يفضل مفهوم.</span>':''), async (reason)=>{
+    DB.tools = DB.tools.filter(t=>t.id!==toolId);
+    await saveKey('tools');
+    await logAction('حذف العدة: '+x.name+' ('+x.code+') — السبب: '+(reason||'—'));
+    closeModal(); toast('تم حذف العدة'); refreshContent();
+  });
+}
+function openToolDetail(toolId){
+  const x = DB.tools.find(t=>t.id===toolId);
+  if(!x) return;
+  const mv = openCheckout(toolId);
+  const sup = x.supplierId ? DB.suppliers.find(s=>s.id===x.supplierId) : null;
+  const history = DB.toolMoves.filter(m=>m.toolId===toolId).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const outs = DB.toolMoves.filter(m=>m.toolId===toolId && m.type==='out').length;
+  openModal(`
+    <h3>${x.name} <span class="muted" style="font-size:12px">${x.code||''}</span></h3>
+    <div style="margin-bottom:10px">${toolStatusTag(x.status)}
+      <span class="muted" style="font-size:12px;margin-right:8px">${x.category||'—'}${x.serial?' · سيريال: '+x.serial:''} · شراء: ${x.purchaseDate?fmtDate(x.purchaseDate):'—'} · التكلفة: ${money(x.cost||0)}${sup?' · المورد: '+sup.name:''}</span></div>
+    ${x.notes?`<div class="muted" style="font-size:12px;margin-bottom:10px">📝 ${x.notes}</div>`:''}
+    ${mv?`<div class="card" style="margin-bottom:12px;${isToolOverdue(mv)?'border:1px solid var(--danger)':''}">
+      <div style="font-weight:800">📤 مصروفة حالياً مع: ${techLabelOf(mv.technicianId)}</div>
+      <div class="muted" style="font-size:12.5px;margin-top:4px">من ${fmtDateTime(mv.date)} · <b style="${isToolOverdue(mv)?'color:var(--danger)':'color:var(--accent)'}">بره المخزن من ${durationText(mv.date)}</b>${mv.jobId?' · أمر شغل #'+((DB.jobs.find(j=>j.id===mv.jobId)||{}).jobNo||'—'):''}</div>
+      ${mv.purpose?`<div class="muted" style="font-size:12px;margin-top:4px">الغرض: ${mv.purpose}</div>`:''}
+    </div>`:''}
+    <div class="grid g2" style="margin-bottom:12px">
+      ${stat(String(outs),'عدد مرات الصرف')}
+      ${stat(String(history.length),'إجمالي الحركات')}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      ${toolsCanIssue() && x.status==='متاحة' ? `<button class="btn btn-accent" style="flex:1" onclick="openToolIssueModal('${toolId}')">📤 صرف لفني</button>`:''}
+      ${toolsCanIssue() && x.status==='مصروفة' ? `<button class="btn btn-accent" style="flex:1" onclick="openToolReturnModal('${toolId}')">📥 استلام</button>`:''}
+      ${toolsCanManage()?`<button class="btn" style="flex:1" onclick="openEditToolModal('${toolId}')">✏️ تعديل</button>`:''}
+      ${toolsCanManage()?`<button class="btn btn-danger" style="flex:1" onclick="deleteTool('${toolId}')">حذف</button>`:''}
+    </div>
+    <label class="f-label">سجل حركة العدة (${history.length})</label>
+    <table style="margin-top:6px"><tbody>
+    ${history.length? history.map(m=>`<tr>
+      <td style="font-size:12px;white-space:nowrap">${fmtDateTime(m.date)}</td>
+      <td>${m.type==='out'?'<span class="tag tag-working">صرف</span>':'<span class="tag tag-paid">استلام</span>'}</td>
+      <td>${m.technicianId?techLabelOf(m.technicianId):'—'}</td>
+      <td>${m.type==='in'&&m.durationFrom?durationText(m.durationFrom, m.date):''}${m.condition?' · '+m.condition:''}</td>
+      <td class="muted" style="font-size:11px">${m.actor||'—'}</td>
+    </tr>`).join('') : '<tr><td class="empty">مفيش حركات</td></tr>'}
+    </tbody></table>
+  `);
+}
+/* ---- صرف العدة ---- */
+function openToolIssueModal(toolId){
+  if(!toolsCanIssue()){ toast('الصرف صلاحية المخزن أو صاحب المركز فقط', true); return; }
+  const x = DB.tools.find(t=>t.id===toolId);
+  if(!x) return;
+  if(x.status!=='متاحة'){ toast('العدة مش متاحة (حالتها: '+x.status+')', true); return; }
+  const techs = techEmployees();
+  if(techs.length===0){ toast('مفيش فنيين نشطين في الموارد البشرية', true); return; }
+  const openJobs = DB.jobs.filter(j=>!isJobClosed(j) && j.status!=='ملغاة');
+  openModal(`
+    <h3>📤 صرف عدة — ${x.name} <span class="muted" style="font-size:12px">${x.code||''}</span></h3>
+    <div class="form-row"><label class="f-label">الفني المستلم</label>
+      <select class="f" id="tiTech">${techOptionsHTML()}</select></div>
+    <div class="form-row"><label class="f-label">أمر الشغل المرتبط (اختياري)</label>
+      <select class="f" id="tiJob"><option value="">— بدون —</option>${openJobs.map(j=>{
+        const car = DB.cars.find(c=>c.id===j.carId)||{};
+        return `<option value="${j.id}">#${j.jobNo} — ${car.plate||''}</option>`;
+      }).join('')}</select></div>
+    <div class="form-row"><label class="f-label">الغرض / ملاحظات</label><input class="f" id="tiPurpose" placeholder="مثال: فك فلتر زيت"></div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">⏱️ وقت الصرف بيتسجل تلقائياً، والعداد هيبدأ على طول.</div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveToolIssue('${toolId}')">تأكيد الصرف</button>
+  `);
+}
+async function saveToolIssue(toolId){
+  if(!toolsCanIssue()){ toast('الصرف صلاحية المخزن أو صاحب المركز فقط', true); return; }
+  const x = DB.tools.find(t=>t.id===toolId);
+  if(!x) return;
+  if(x.status!=='متاحة'){ toast('العدة مش متاحة', true); return; }
+  const techId = (document.getElementById('tiTech')||{}).value;
+  const jobId = (document.getElementById('tiJob')||{}).value || null;
+  const purpose = ((document.getElementById('tiPurpose')||{}).value||'').trim();
+  if(!techId){ toast('اختار الفني المستلم', true); return; }
+  x.status = 'مصروفة';
+  DB.toolMoves.push({ id:uid('tm'), toolId, type:'out', technicianId:techId, jobId, purpose,
+    date:new Date().toISOString(), actor:actorName(), returnedAt:null });
+  await Promise.all([saveKey('tools'), saveKey('toolMoves')]);
+  const job = jobId ? DB.jobs.find(j=>j.id===jobId) : null;
+  await logAction('صرف عدة: '+x.name+' ('+x.code+') للفني '+techLabelOf(techId)+(job?' — أمر شغل #'+job.jobNo:''));
+  closeModal(); toast('تم صرف العدة للفني '+techLabelOf(techId)+' — العداد بدأ'); refreshContent();
+}
+/* ---- استلام العدة ---- */
+function openToolReturnModal(toolId){
+  if(!toolsCanIssue()){ toast('الاستلام صلاحية المخزن أو صاحب المركز فقط', true); return; }
+  const x = DB.tools.find(t=>t.id===toolId);
+  const mv = openCheckout(toolId);
+  if(!x || !mv){ toast('العدة دي مش مصروفة', true); return; }
+  openModal(`
+    <h3>📥 استلام عدة — ${x.name} <span class="muted" style="font-size:12px">${x.code||''}</span></h3>
+    <div class="card" style="margin-bottom:12px">
+      <div>مصروفة للفني: <b>${techLabelOf(mv.technicianId)}</b></div>
+      <div class="muted" style="font-size:12.5px;margin-top:4px">من ${fmtDateTime(mv.date)} · <b style="color:var(--accent)">مدة الاستخدام: ${durationText(mv.date)}</b></div>
+    </div>
+    <div class="form-row"><label class="f-label">حالة العدة عند الاستلام</label>
+      <select class="f" id="trCond">${TOOL_CONDITIONS.map(c=>`<option value="${c}">${c}</option>`).join('')}</select></div>
+    <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="trNote"></div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">لو الحالة مش "سليمة"، حالة العدة هتتغير تلقائياً (تحت الصيانة / تالفة) بدل ما ترجع متاحة.</div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveToolReturn('${toolId}')">تأكيد الاستلام</button>
+  `);
+}
+async function saveToolReturn(toolId){
+  if(!toolsCanIssue()){ toast('الاستلام صلاحية المخزن أو صاحب المركز فقط', true); return; }
+  const x = DB.tools.find(t=>t.id===toolId);
+  const mv = openCheckout(toolId);
+  if(!x || !mv){ toast('العدة دي مش مصروفة', true); return; }
+  const cond = (document.getElementById('trCond')||{}).value || 'سليمة';
+  const note = ((document.getElementById('trNote')||{}).value||'').trim();
+  const now = new Date().toISOString();
+  // الحالة الجديدة حسب حالة الاستلام
+  x.status = cond==='سليمة' ? 'متاحة' : (cond==='تالفة' ? 'تالفة' : 'تحت الصيانة');
+  mv.returnedAt = now;
+  DB.toolMoves.push({ id:uid('tm'), toolId, type:'in', technicianId:mv.technicianId, jobId:mv.jobId,
+    condition:cond, note, durationFrom:mv.date, date:now, actor:actorName() });
+  await Promise.all([saveKey('tools'), saveKey('toolMoves')]);
+  await logAction('استلام عدة: '+x.name+' ('+x.code+') من الفني '+techLabelOf(mv.technicianId)+
+    ' — مدة الاستخدام: '+durationText(mv.date, now)+' — الحالة: '+cond);
+  closeModal();
+  toast('تم الاستلام — مدة الاستخدام: '+durationText(mv.date, now)+(cond!=='سليمة'?' — الحالة: '+x.status:''));
+  refreshContent();
+}
+
+/* ======================= NOTIFICATION CENTER — مركز الإشعارات والحوكمة (الملاحظة 33) =======================
+   طبقة مراقبة فقط: بتسجّل الإجراءات الحساسة اللي نفّذها المفوَّضون عشان صاحب المركز يتابع —
+   من غير ما توقف أي عملية أو تلغي أي صلاحية. المدير بيعتمد جوه قسمه، والأدمن بيتفرّج ويحاسب. */
+const NOTIF_PRIORITY = { critical:'حرجة', high:'عالية', medium:'متوسطة', low:'منخفضة' };
+const NOTIF_PRIORITY_ORDER = ['critical','high','medium','low'];
+const NOTIF_CAT_LABEL = { hr:'موارد بشرية', inventory:'المخزون', financial:'مالية', jobs:'أوامر الشغل', permissions:'الصلاحيات' };
+function currentPosition(){
+  if(!session) return '—';
+  const dept = ROLE_LABEL[session.role]||session.role;
+  const tpl = session.template ? (ROLE_TEMPLATES[session.template]||{}).label : null;
+  return tpl ? dept+' / '+tpl : dept;
+}
+/* الدالة المركزية — بتنشئ إشعار للأدمن (مراقبة). آمنة: أي خطأ ما بيوقفش العملية الأصلية */
+function pushNotif(opts){
+  try{
+    if(isOwnerSession()) return;   // الأدمن نفسه مش محتاج إشعار بأفعاله
+    const n = {
+      id: uid('ntf'), notifNo: nextNo(DB.notifications,'notifNo'),
+      category: opts.category||'jobs', type: opts.type||'', priority: opts.priority||'medium',
+      userName: session ? (session.staffName||ROLE_LABEL[session.role]||'—') : '—',
+      dept: session ? (ROLE_LABEL[session.role]||session.role) : '—',
+      position: currentPosition(),
+      action: opts.action||'', amount: opts.amount||0,
+      refType: opts.refType||null, refId: opts.refId||null, refNo: opts.refNo||null,
+      status: 'completed',   // الإجراء اتنفّذ فعلاً (المفوَّض معاه صلاحية) — للمتابعة فقط
+      comments: [], seen: false, date: new Date().toISOString()
+    };
+    DB.notifications.push(n);
+    if(DB.notifications.length>1000) DB.notifications = DB.notifications.slice(-1000);
+    saveKey('notifications').catch(()=>{});
+  }catch(e){ /* المراقبة ماتوقفش التشغيل أبداً */ }
+}
+/* التنبيهات الحيّة (محسوبة لحظياً — مش متخزنة): مديونيات، طلبات منتظرة، هالك مستني */
+function debtReminders(){
+  const now = Date.now();
+  const out = [];
+  DB.invoices.filter(i=>!i.cancelled).forEach(inv=>{
+    const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
+    const due = inv.total - paid;
+    if(due <= 0.5) return;
+    const cust = DB.customers.find(c=>c.id===inv.customerId);
+    const isCompany = cust && cust.custType==='شركة';
+    const days = Math.floor((now - new Date(inv.date))/86400000);
+    const interval = isCompany ? 30 : 10;
+    if(days < interval) return;
+    out.push({ inv, cust, due, days, isCompany, interval });
+  });
+  return out.sort((a,b)=>b.due-a.due);
+}
+function pendingLeaveReqs(){ return DB.leaveRequests.filter(r=>r.status==='pending'); }
+function pendingPermits(kind){ return DB.permits.filter(p=>p.status==='pending' && (!kind||p.kind===kind)); }
+function damagedWaiting(){ return DB.tools.filter(t=>t.status==='تالفة' || t.status==='تحت الصيانة'); }
+/* موظفين سلفهم عالية: إجمالي سلف الدورة الحالية ≥ نسبة من الراتب (افتراضي 50%) */
+function highAdvanceEmployees(){
+  const pct = DB.settings.highAdvancePct || 50;
+  const { from, to } = (typeof getPayrollPeriod==='function' ? getPayrollPeriod() : { from:'2000-01-01', to:'2999-01-01' });
+  const inR = (d)=>{ const x=(d||'').slice(0,10); return x>=from && x<=to; };
+  return DB.employees.filter(e=>e.status==='نشط' && (e.salary||0)>0).map(e=>{
+    const adv = (e.advances||[]).filter(a=>inR(a.date)).reduce((s,a)=>s+(a.amount||0),0);
+    return { e, adv, ratio: adv/(e.salary||1)*100 };
+  }).filter(x=>x.ratio >= pct).sort((a,b)=>b.ratio-a.ratio);
+}
+/* موظفين غيابهم عالي: أيام غياب الدورة الحالية ≥ حد (افتراضي 3 أيام) */
+function highAbsenceEmployees(){
+  const th = DB.settings.highAbsenceDays || 3;
+  const { from, to } = (typeof getPayrollPeriod==='function' ? getPayrollPeriod() : { from:'2000-01-01', to:'2999-01-01' });
+  const inR = (d)=>{ const x=(d||'').slice(0,10); return x>=from && x<=to; };
+  return DB.employees.filter(e=>e.status==='نشط').map(e=>{
+    const days = (e.absences||[]).filter(a=>inR(a.date)).reduce((s,a)=>s+(a.days||1),0);
+    return { e, days };
+  }).filter(x=>x.days >= th).sort((a,b)=>b.days-a.days);
+}
+/* قطع راكدة: رصيد موجود + مفيش أي صرف من فترة (افتراضي 90 يوم) */
+function stagnantParts(){
+  const days = DB.settings.stagnantDays || 90;
+  const cutoff = Date.now() - days*86400000;
+  return DB.inventory.filter(p=>{
+    if((p.qty||0) <= 0) return false;
+    if(p.createdAt && new Date(p.createdAt).getTime() > cutoff) return false; // صنف جديد لسه
+    const lastOut = DB.stockMoves.filter(m=>m.partId===p.id && (m.type==='out')).sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+    if(!lastOut) return true; // مااتصرفش خالص
+    return new Date(lastOut.date).getTime() < cutoff;
+  }).map(p=>{
+    const lastOut = DB.stockMoves.filter(m=>m.partId===p.id && m.type==='out').sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+    return { p, lastOut: lastOut?lastOut.date:null, value: (p.qty||0)*(p.costPrice||0) };
+  }).sort((a,b)=>b.value-a.value);
+}
+function lowStockParts(){ return DB.inventory.filter(p=>(p.qty||0) <= (p.minQty||0)); }
+function liveAlertsCount(){
+  return debtReminders().length + pendingLeaveReqs().length + pendingPermits().length + damagedWaiting().length
+    + highAdvanceEmployees().length + highAbsenceEmployees().length + stagnantParts().length + lowStockParts().length;
+}
+function unseenNotifCount(){ return DB.notifications.filter(n=>!n.seen).length; }
+function pendingNotifCount(){
+  if(!session || !canScreen('notifications')) return 0;
+  return unseenNotifCount() + liveAlertsCount();
+}
+let notifFilter = { category:'', priority:'', status:'' };
+function setNotifFilter(k,v){ notifFilter[k]=v; refreshContent(); }
+function priorityTag(p){
+  const c = p==='critical'?'tag-unpaid': p==='high'?'tag-inspect': p==='medium'?'tag-working':'tag-received';
+  return `<span class="tag ${c}">${NOTIF_PRIORITY[p]||p}</span>`;
+}
+function notifStatusTag(s){
+  if(s==='approved') return '<span class="tag tag-paid">تمت المراجعة</span>';
+  if(s==='rejected') return '<span class="tag tag-unpaid">مرفوض</span>';
+  if(s==='pending') return '<span class="tag tag-inspect">منتظر</span>';
+  return '<span class="tag tag-working">مكتمل</span>';
+}
+function renderNotifications(){
+  const s = DB.settings;
+  const debts = debtReminders();
+  const leaves = pendingLeaveReqs();
+  const early = pendingPermits('early');
+  const errands = pendingPermits('errand');
+  const damaged = damagedWaiting();
+  const largeDiscInv = DB.invoices.filter(i=>!i.cancelled && i.discount>0 && (i.subtotal>0) && (i.discount/i.subtotal*100) >= (s.largeDiscountPct||15));
+  const highAdv = highAdvanceEmployees();
+  const highAbs = highAbsenceEmployees();
+  const stagnant = stagnantParts();
+  const lowStk = lowStockParts();
+  // القائمة المخزّنة مع الفلاتر
+  let list = [...DB.notifications];
+  if(notifFilter.category) list = list.filter(n=>n.category===notifFilter.category);
+  if(notifFilter.priority) list = list.filter(n=>n.priority===notifFilter.priority);
+  if(notifFilter.status) list = list.filter(n=>n.status===notifFilter.status);
+  list.sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const widget = (label, count, danger)=>stat(String(count), label, danger && count>0);
+  return `
+  <div class="muted" style="font-size:12.5px;margin-bottom:16px">🛡️ طبقة مراقبة وحوكمة — كل إجراء حساس نفّذه المدراء بيظهر هنا للمتابعة. الصلاحيات زي ما هي، والعمليات ماتوقفش أبداً.</div>
+  <div class="section-head"><h3>📊 مؤشرات تحتاج متابعة</h3></div>
+  <div class="grid g4" style="margin-bottom:14px">
+    ${widget('إشعارات غير مقروءة', unseenNotifCount(), true)}
+    ${widget('مديونيات متأخرة', debts.length, true)}
+    ${widget('طلبات إجازة منتظرة', leaves.length, true)}
+    ${widget('أذونات انصراف منتظرة', early.length, true)}
+  </div>
+  <div class="grid g4" style="margin-bottom:14px">
+    ${widget('مأموريات منتظرة', errands.length)}
+    ${widget('عدد تالفة/صيانة', damaged.length, true)}
+    ${widget('فواتير بخصم عالي', largeDiscInv.length, true)}
+    ${stat(money(debts.reduce((a,d)=>a+d.due,0)), 'إجمالي المديونية المتأخرة', debts.length>0)}
+  </div>
+  <div class="grid g4" style="margin-bottom:20px">
+    ${widget('موظفين بسلف عالية', highAdv.length, true)}
+    ${widget('موظفين بغياب عالي', highAbs.length, true)}
+    ${widget('قطع راكدة', stagnant.length, true)}
+    ${widget('قطع تحت حد الأمان', lowStk.length, true)}
+  </div>
+  ${highAdv.length?`
+  <div class="section-head"><h3>💸 موظفين سلفهم عالية (≥ ${s.highAdvancePct||50}% من الراتب هذه الدورة)</h3></div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الموظف</th><th>الراتب</th><th>إجمالي السلف</th><th>النسبة</th></tr></thead>
+  <tbody>${highAdv.map(x=>`<tr onclick="goTab('hr')" style="cursor:pointer"><td style="font-weight:700">${x.e.name}</td><td>${money(x.e.salary)}</td><td style="color:var(--danger);font-weight:800">${money(x.adv)}</td><td style="color:var(--danger);font-weight:800">${x.ratio.toFixed(0)}%</td></tr>`).join('')}</tbody></table></div>`:''}
+  ${highAbs.length?`
+  <div class="section-head"><h3>🚫 موظفين غيابهم عالي (≥ ${s.highAbsenceDays||3} أيام هذه الدورة)</h3></div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الموظف</th><th>أيام الغياب</th></tr></thead>
+  <tbody>${highAbs.map(x=>`<tr onclick="goTab('hr')" style="cursor:pointer"><td style="font-weight:700">${x.e.name}</td><td style="color:var(--danger);font-weight:800">${x.days} يوم</td></tr>`).join('')}</tbody></table></div>`:''}
+  ${stagnant.length?`
+  <div class="section-head"><h3>📦 قطع راكدة (مفيش صرف من +${s.stagnantDays||90} يوم)</h3></div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الصنف</th><th>الرصيد</th><th>قيمة المخزون</th><th>آخر صرف</th></tr></thead>
+  <tbody>${stagnant.slice(0,30).map(x=>`<tr onclick="goTab('inventory')" style="cursor:pointer"><td>${x.p.name}</td><td>${x.p.qty} ${x.p.unit||''}</td><td style="font-weight:700">${money(x.value)}</td><td class="muted">${x.lastOut?fmtDate(x.lastOut):'مااتصرفش خالص'}</td></tr>`).join('')}</tbody></table></div>`:''}
+  ${debts.length?`
+  <div class="section-head"><h3>💰 مديونيات متأخرة (أفراد +${10} يوم · شركات +${30} يوم)</h3></div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>العميل</th><th>النوع</th><th>المبلغ المتأخر</th><th>متأخر من</th><th>فاتورة</th></tr></thead>
+  <tbody>${debts.slice(0,40).map(d=>`<tr onclick="goTab('receivables')" style="cursor:pointer">
+    <td style="font-weight:700">${d.cust?d.cust.name:'—'}</td>
+    <td>${d.isCompany?'<span class="tag tag-inspect">شركة</span>':'<span class="muted">فرد</span>'}</td>
+    <td style="font-weight:800;color:var(--danger)">${money(d.due)}</td>
+    <td style="color:var(--danger)">${d.days} يوم</td>
+    <td class="muted">#${d.inv.invNo}</td></tr>`).join('')}</tbody></table></div>`:''}
+  <div class="section-head"><h3>🔔 سجل الإشعارات (${list.length})</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <select class="f btn-sm" style="width:auto;padding:6px 10px" onchange="setNotifFilter('category',this.value)">
+        <option value="">كل الأقسام</option>${Object.entries(NOTIF_CAT_LABEL).map(([k,v])=>`<option value="${k}" ${notifFilter.category===k?'selected':''}>${v}</option>`).join('')}</select>
+      <select class="f btn-sm" style="width:auto;padding:6px 10px" onchange="setNotifFilter('priority',this.value)">
+        <option value="">كل الأولويات</option>${Object.entries(NOTIF_PRIORITY).map(([k,v])=>`<option value="${k}" ${notifFilter.priority===k?'selected':''}>${v}</option>`).join('')}</select>
+      ${unseenNotifCount()?`<button class="btn btn-sm" onclick="markAllNotifsSeen()">تحديد الكل كمقروء</button>`:''}
+    </div></div>
+  <div class="card">
+    <table><thead><tr><th>الأولوية</th><th>القسم</th><th>الإجراء</th><th>المستخدم</th><th>الوقت</th><th>الحالة</th><th></th></tr></thead>
+    <tbody>${list.length? list.slice(0,120).map(n=>`<tr style="${n.seen?'':'background:rgba(242,212,16,.06)'}">
+      <td>${priorityTag(n.priority)}</td>
+      <td class="muted">${NOTIF_CAT_LABEL[n.category]||n.category}</td>
+      <td>${n.action}${n.amount?` <b>${money(n.amount)}</b>`:''}${n.refNo?` <span class="muted" style="font-size:11px">#${n.refNo}</span>`:''}</td>
+      <td>${n.userName}<div class="muted" style="font-size:10.5px">${n.position||''}</div></td>
+      <td style="white-space:nowrap;font-size:12px">${fmtDateTime(n.date)}</td>
+      <td>${notifStatusTag(n.status)}</td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openNotifDetail('${n.id}')">تفاصيل</button></td>
+    </tr>`).join('') : `<tr><td colspan="7" class="empty">مفيش إشعارات — كله تمام 👏</td></tr>`}
+    </tbody></table>
+  </div>`;
+}
+function openNotifDetail(id){
+  const n = DB.notifications.find(x=>x.id===id);
+  if(!n) return;
+  if(!n.seen){ n.seen = true; saveKey('notifications').catch(()=>{}); }
+  const canAct = canScreen('notifications');
+  openModal(`
+    <h3>🔔 تفاصيل الإشعار <span class="muted" style="font-size:12px">#${n.notifNo}</span></h3>
+    <div style="margin-bottom:10px">${priorityTag(n.priority)} ${notifStatusTag(n.status)} <span class="muted" style="font-size:12px;margin-right:6px">${NOTIF_CAT_LABEL[n.category]||n.category}</span></div>
+    <table style="margin-bottom:14px"><tbody>
+      <tr><td class="muted">الإجراء</td><td style="font-weight:700">${n.action}${n.amount?' — '+money(n.amount):''}</td></tr>
+      <tr><td class="muted">المستخدم</td><td>${n.userName} <span class="muted">(${n.position||n.dept})</span></td></tr>
+      <tr><td class="muted">القسم</td><td>${n.dept}</td></tr>
+      <tr><td class="muted">التاريخ والوقت</td><td>${fmtDateTime(n.date)}</td></tr>
+      ${n.refNo?`<tr><td class="muted">رقم المرجع</td><td>#${n.refNo}</td></tr>`:''}
+    </tbody></table>
+    ${n.refType?`<button class="btn" style="width:100%;margin-bottom:12px" onclick="openNotifRecord('${n.id}')">📂 فتح السجل المرتبط</button>`:''}
+    <label class="f-label">التعليقات (${(n.comments||[]).length})</label>
+    <div style="max-height:120px;overflow:auto;margin:6px 0 10px">${(n.comments||[]).length? n.comments.map(c=>`<div style="background:var(--surface-2);padding:7px 10px;border-radius:8px;margin-bottom:5px;font-size:12.5px">${c.text}<div class="muted" style="font-size:10.5px">${c.by} · ${fmtDateTime(c.at)}</div></div>`).join('') : '<div class="muted" style="font-size:12px">مفيش تعليقات</div>'}</div>
+    ${canAct?`
+    <div class="form-row"><input class="f" id="notifComment" placeholder="أضف تعليق / ملاحظة متابعة..."></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" style="flex:1" onclick="addNotifComment('${n.id}')">💬 تعليق</button>
+      <button class="btn btn-accent" style="flex:1" onclick="setNotifStatus('${n.id}','approved')">✔ تمت المراجعة</button>
+      <button class="btn btn-danger" style="flex:1" onclick="setNotifStatus('${n.id}','rejected')">⚠ للمتابعة</button>
+    </div>
+    <div class="muted" style="font-size:11px;margin-top:8px">ملاحظة: الإجراء اتنفّذ فعلاً بواسطة المفوَّض — دي مراجعة للمتابعة والتوثيق فقط.</div>`:''}
+  `);
+}
+async function addNotifComment(id){
+  const n = DB.notifications.find(x=>x.id===id); if(!n) return;
+  const el = document.getElementById('notifComment'); const t = (el?el.value:'').trim();
+  if(!t){ toast('اكتب التعليق', true); return; }
+  if(!n.comments) n.comments = [];
+  n.comments.push({ text:t, by:actorName(), at:new Date().toISOString() });
+  await saveKey('notifications');
+  toast('تم إضافة التعليق'); openNotifDetail(id);
+}
+async function setNotifStatus(id, status){
+  const n = DB.notifications.find(x=>x.id===id); if(!n) return;
+  n.status = status; n.seen = true;
+  await saveKey('notifications');
+  await logAction((status==='approved'?'مراجعة':'وضع علامة متابعة على')+' إشعار #'+n.notifNo+': '+n.action);
+  closeModal(); toast('تم التحديث'); refreshContent();
+}
+async function markAllNotifsSeen(){
+  DB.notifications.forEach(n=>{ n.seen = true; });
+  await saveKey('notifications');
+  toast('اتحددوا كلهم كمقروء'); refreshContent();
+}
+function openNotifRecord(id){
+  const n = DB.notifications.find(x=>x.id===id); if(!n) return;
+  closeModal();
+  if(n.refType==='job' && n.refId){ openJobDetail(n.refId); }
+  else if(n.refType==='employee' && n.refId){ currentTab='hr'; render(); openEmployeeDetail(n.refId); }
+  else if(n.refType==='invoice'){ goTab('invoices'); }
+  else if(n.refType==='inventory'){ goTab('stockmoves'); }
+  else if(n.refType==='expense'){ goTab('expenses'); }
+  else { toast('السجل المرتبط مش متاح للفتح المباشر', true); }
+}
+
 /* ======================= ACTIVITY LOG (سجل العمليات) ======================= */
 let auditFilters = { actor:'', text:'', dateFrom:'', dateTo:'', refNo:'' };
 function renderActivityLog(){
@@ -5900,34 +6770,60 @@ function renderSettings(){
     <div class="form-row"><label class="f-label">رسالة واتساب لإشعار العميل (استخدم {plate} و {center})</label><textarea class="f" id="setWa" rows="2">${DB.settings.whatsappTemplate||''}</textarea></div>
     <button class="btn btn-accent" onclick="saveTaxWa()">حفظ</button>
   </div>
-  <div class="card" style="max-width:640px;margin-top:18px">
+  <div class="card" style="max-width:520px;margin-top:18px">
+    <h3 style="margin-top:0">🔔 عتبات مركز الإشعارات</h3>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">الحدود اللي فوقها بيتبعت إشعار لصاحب المركز للمتابعة (مراقبة فقط — مش بتوقف أي عملية).</div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">حد المصروف الكبير (ج.م)</label><input class="f" id="setLargeExp" type="number" min="0" value="${DB.settings.largeExpenseThreshold||20000}"></div>
+      <div class="form-row"><label class="f-label">حد الخصم العالي (%)</label><input class="f" id="setLargeDisc" type="number" min="0" max="100" value="${DB.settings.largeDiscountPct||15}"></div>
+    </div>
+    <div class="grid g3">
+      <div class="form-row"><label class="f-label">حد السلف العالية (% من الراتب)</label><input class="f" id="setHighAdv" type="number" min="0" max="100" value="${DB.settings.highAdvancePct||50}"></div>
+      <div class="form-row"><label class="f-label">حد الغياب العالي (أيام/دورة)</label><input class="f" id="setHighAbs" type="number" min="1" value="${DB.settings.highAbsenceDays||3}"></div>
+      <div class="form-row"><label class="f-label">حد ركود القطعة (أيام بدون صرف)</label><input class="f" id="setStagnant" type="number" min="1" value="${DB.settings.stagnantDays||90}"></div>
+    </div>
+    <button class="btn btn-accent" onclick="saveNotifThresholds()">حفظ العتبات</button>
+  </div>
+  <div class="card" style="max-width:920px;margin-top:18px">
     <h3 style="margin-top:0">👥 المستخدمين والصلاحيات</h3>
-    <div class="muted" style="font-size:12px;margin-bottom:12px">أنشئ حساب مستقل لكل موظف — كل عملية هتتسجل باسمه في سجل العمليات. صلاحيات كل موظف بتتحدد تلقائياً حسب قسمه.</div>
-    ${DB.staff.length? `<table style="margin-bottom:14px"><thead><tr><th>الموظف</th><th>اسم المستخدم</th><th>القسم</th><th>الحالة</th><th></th></tr></thead>
-    <tbody>${DB.staff.map(st=>`<tr>
+    <div class="muted" style="font-size:12px;margin-bottom:12px">لكل مستخدم قسم + قالب صلاحيات، وتقدر تخصص بالظبط أي شاشة يشوفها وأي إجراء ينفذه من زرار "🔐 الصلاحيات". الشاشة الممنوعة بتختفي تماماً.</div>
+    ${DB.staff.length? `<table style="margin-bottom:14px"><thead><tr><th>الموظف</th><th>اسم المستخدم</th><th>القسم</th><th>القالب</th><th>الصلاحيات</th><th>الحالة</th><th></th></tr></thead>
+    <tbody>${DB.staff.map(st=>{
+      const dept = st.dept || st.role;
+      const tpl = st.template ? (ROLE_TEMPLATES[st.template]||{}).label : null;
+      const scr = Array.isArray(st.screens) ? st.screens.length : (DEPT_SCREENS[dept]||[]).length;
+      const act = Array.isArray(st.actions) ? st.actions.length : fullDeptPerms(dept).actions.length;
+      return `<tr>
       <td style="font-weight:700">${st.name}</td><td class="muted">${st.username}</td>
-      <td>${ROLE_LABEL[st.role]}</td>
+      <td>${ROLE_LABEL[dept]||dept}</td>
+      <td class="muted">${tpl||'—'}</td>
+      <td class="muted" style="font-size:11.5px">${scr} شاشة · ${act} إجراء</td>
       <td>${st.active!==false?'<span class="tag tag-paid">نشط</span>':'<span class="tag tag-cancel">موقوف</span>'}</td>
       <td style="white-space:nowrap">
+        <button class="btn btn-sm btn-accent" onclick="openPermsModal('${st.id}')">🔐 الصلاحيات</button>
         <button class="btn btn-sm" onclick="toggleStaff('${st.id}')">${st.active!==false?'إيقاف':'تفعيل'}</button>
-        <button class="btn btn-sm" onclick="openChangeStaffPass('${st.id}')">🔑 كلمة السر</button>
+        <button class="btn btn-sm" onclick="openChangeStaffPass('${st.id}')">🔑</button>
         <button class="btn btn-sm btn-danger" onclick="deleteStaff('${st.id}')">حذف</button>
-      </td></tr>`).join('')}</tbody></table>` : '<div class="muted" style="font-size:12.5px;margin-bottom:12px">لسه مفيش حسابات موظفين</div>'}
-    <label class="f-label">إضافة موظف جديد</label>
+      </td></tr>`;
+    }).join('')}</tbody></table>` : '<div class="muted" style="font-size:12.5px;margin-bottom:12px">لسه مفيش حسابات مستخدمين</div>'}
+    <label class="f-label">إضافة مستخدم جديد</label>
     <div class="grid g2" style="margin-top:6px">
-      <div class="form-row"><input class="f" id="stName" placeholder="اسم الموظف (مثال: أحمد محمد)"></div>
-      <div class="form-row"><select class="f" id="stRole">
-        <option value="reception">الاستقبال</option>
-        <option value="accounts">الحسابات</option>
-        <option value="warehouse">المخزن</option>
-        <option value="owner">صلاحيات كاملة (أدمن)</option>
-      </select></div>
+      <div class="form-row"><label class="f-label">الموظف</label>
+        <input class="f" id="stName" list="stEmpList" placeholder="اسم الموظف">
+        <datalist id="stEmpList">${DB.employees.filter(e=>e.status==='نشط').map(e=>`<option value="${e.name}">`).join('')}</datalist></div>
+      <div class="form-row"><label class="f-label">القسم</label>
+        <select class="f" id="stDept" onchange="onStDeptChange()">
+          ${['reception','warehouse','accounts','hr','owner'].map(d=>`<option value="${d}">${ROLE_LABEL[d]}${d==='owner'?' (صلاحيات كاملة)':''}</option>`).join('')}
+        </select></div>
     </div>
+    <div class="form-row"><label class="f-label">قالب الصلاحيات</label>
+      <select class="f" id="stTemplate">${templateOptionsFor('reception')}</select></div>
     <div class="grid g2">
       <div class="form-row"><input class="f" id="stUser" placeholder="اسم المستخدم (مثال: ahmed)" autocomplete="off"></div>
       <div class="form-row"><input class="f" id="stPass" placeholder="كلمة المرور" autocomplete="off"></div>
     </div>
-    <button class="btn btn-accent" onclick="saveNewStaff()">إضافة الموظف</button>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">هيتطبق القالب المختار، وتقدر تعدّل التفاصيل بعد الإنشاء من "🔐 الصلاحيات".</div>
+    <button class="btn btn-accent" onclick="saveNewStaff()">إضافة المستخدم</button>
   </div>
   <div class="card" style="max-width:520px;margin-top:18px">
     <h3 style="margin-top:0">الأرقام السرية للدخول</h3>
@@ -5964,18 +6860,108 @@ function renderSettings(){
     </div>
   </div>`;
 }
+function templateOptionsFor(dept){
+  const list = Object.entries(ROLE_TEMPLATES).filter(([,t])=>t.dept===dept);
+  if(list.length===0) return `<option value="">— بدون قالب —</option>`;
+  return list.map(([k,t])=>`<option value="${k}">${t.label}</option>`).join('');
+}
+function onStDeptChange(){
+  const dept = (document.getElementById('stDept')||{}).value || 'reception';
+  const sel = document.getElementById('stTemplate');
+  if(sel) sel.innerHTML = templateOptionsFor(dept);
+}
 async function saveNewStaff(){
+  if(!can('settings.users')){ toast('مالكش صلاحية إدارة المستخدمين', true); return; }
   const name = document.getElementById('stName').value.trim();
-  const role = document.getElementById('stRole').value;
+  const dept = (document.getElementById('stDept')||{}).value || 'reception';
+  const template = (document.getElementById('stTemplate')||{}).value || '';
   const username = document.getElementById('stUser').value.trim();
   const password = document.getElementById('stPass').value;
   if(!name || !username || !password){ toast('اكتب اسم الموظف واسم المستخدم وكلمة المرور', true); return; }
   if(password.length<4){ toast('كلمة المرور لازم تكون 4 حروف/أرقام على الأقل', true); return; }
   if(DB.staff.some(s=>s.username.toLowerCase()===username.toLowerCase())){ toast('اسم المستخدم ده موجود بالفعل', true); return; }
-  DB.staff.push({id:uid('st'), name, username, password, role, active:true, createdAt:new Date().toISOString()});
+  const tpl = ROLE_TEMPLATES[template];
+  const perms = tpl ? { screens:[...tpl.screens], actions:[...tpl.actions] } : fullDeptPerms(dept);
+  const emp = DB.employees.find(e=>e.name===name && e.status==='نشط');
+  DB.staff.push({ id:uid('st'), name, username, password,
+    dept, role: dept, template, employeeId: emp?emp.id:null,
+    screens: perms.screens, actions: perms.actions,
+    active:true, createdAt:new Date().toISOString() });
   await saveKey('staff', DB.staff);
-  await logAction('إنشاء حساب موظف جديد: '+name+' ('+ROLE_LABEL[role]+')');
+  await logAction('إنشاء مستخدم: '+name+' — القسم: '+(ROLE_LABEL[dept]||dept)+(tpl?' — القالب: '+tpl.label:'')+' — '+perms.screens.length+' شاشة و'+perms.actions.length+' إجراء');
   toast('تم إنشاء حساب '+name); refreshContent();
+}
+/* ---- محرر الصلاحيات التفصيلي ---- */
+function openPermsModal(staffId){
+  if(!can('settings.users')){ toast('مالكش صلاحية إدارة المستخدمين', true); return; }
+  const st = DB.staff.find(s=>s.id===staffId);
+  if(!st) return;
+  const dept = st.dept || st.role;
+  const cur = {
+    screens: Array.isArray(st.screens) ? st.screens : fullDeptPerms(dept).screens,
+    actions: Array.isArray(st.actions) ? st.actions : fullDeptPerms(dept).actions
+  };
+  const pool = DEPT_SCREENS[dept] || [];
+  const chk = (id, checked, label)=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;cursor:pointer">
+    <input type="checkbox" id="${id}" ${checked?'checked':''} style="width:16px;height:16px"> <span>${label}</span></label>`;
+  openModal(`
+    <h3>🔐 صلاحيات — ${st.name} <span class="muted" style="font-size:12px">(${ROLE_LABEL[dept]||dept})</span></h3>
+    ${dept==='owner'?`<div class="muted" style="font-size:12.5px;margin-bottom:12px">⚠️ حساب بصلاحيات كاملة (أدمن) — عنده كل الشاشات وكل الإجراءات بدون قيود.</div>`:''}
+    <div class="form-row"><label class="f-label">تطبيق قالب جاهز (بيستبدل الاختيارات تحت)</label>
+      <select class="f" id="pmTemplate" onchange="applyPermTemplate(this.value)">
+        <option value="">— بدون تغيير —</option>
+        ${Object.entries(ROLE_TEMPLATES).filter(([,t])=>t.dept===dept).map(([k,t])=>`<option value="${k}" ${st.template===k?'selected':''}>${t.label}</option>`).join('')}
+      </select></div>
+    <div class="card" style="margin-bottom:12px">
+      <label class="f-label" style="font-weight:800">📺 الشاشات اللي يشوفها (${pool.length} متاحة لقسمه)</label>
+      <div style="columns:2;margin-top:6px">
+        ${pool.map(s=>chk('pm_scr_'+s, cur.screens.includes(s), SCREEN_LABELS[s]||s)).join('')}
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:12px;max-height:38vh;overflow:auto">
+      <label class="f-label" style="font-weight:800">⚙️ الإجراءات المسموحة</label>
+      ${ACTION_GROUPS.map(g=>`
+        <div style="margin-top:10px">
+          <div class="muted" style="font-size:11.5px;font-weight:800;color:var(--accent)">${g[0]}</div>
+          ${g[1].map(a=>chk('pm_act_'+a[0].replace(/\./g,'_'), cur.actions.includes(a[0]), a[1])).join('')}
+        </div>`).join('')}
+    </div>
+    <button class="btn btn-accent" style="width:100%" onclick="savePerms('${staffId}')">حفظ الصلاحيات</button>
+  `);
+}
+function applyPermTemplate(tplKey){
+  const tpl = ROLE_TEMPLATES[tplKey];
+  if(!tpl) return;
+  Object.keys(SCREEN_LABELS).forEach(s=>{ const el = document.getElementById('pm_scr_'+s); if(el) el.checked = tpl.screens.includes(s); });
+  ALL_ACTIONS.forEach(k=>{ const el = document.getElementById('pm_act_'+k.replace(/\./g,'_')); if(el) el.checked = tpl.actions.includes(k); });
+  toast('اتطبّق قالب: '+tpl.label+' — دوس حفظ للتأكيد');
+}
+async function savePerms(staffId){
+  if(!can('settings.users')){ toast('مالكش صلاحية إدارة المستخدمين', true); return; }
+  const st = DB.staff.find(s=>s.id===staffId);
+  if(!st) return;
+  const dept = st.dept || st.role;
+  const pool = DEPT_SCREENS[dept] || [];
+  const oldScreens = Array.isArray(st.screens) ? [...st.screens] : fullDeptPerms(dept).screens;
+  const oldActions = Array.isArray(st.actions) ? [...st.actions] : fullDeptPerms(dept).actions;
+  const screens = pool.filter(s=>{ const el = document.getElementById('pm_scr_'+s); return el && el.checked; });
+  const actions = ALL_ACTIONS.filter(k=>{ const el = document.getElementById('pm_act_'+k.replace(/\./g,'_')); return el && el.checked; });
+  const tplSel = (document.getElementById('pmTemplate')||{}).value || '';
+  st.screens = screens; st.actions = actions;
+  if(tplSel) st.template = tplSel;
+  st.dept = dept; st.role = dept;
+  await saveKey('staff', DB.staff);
+  const diff = (a,b,fn)=>{
+    const added = b.filter(x=>!a.includes(x)).map(fn);
+    const removed = a.filter(x=>!b.includes(x)).map(fn);
+    return [added.length?'+ '+added.join('، '):'', removed.length?'− '+removed.join('، '):''].filter(Boolean).join(' | ') || 'بدون تغيير';
+  };
+  const scrDiff = diff(oldScreens, screens, s=>SCREEN_LABELS[s]||s);
+  const actDiff = diff(oldActions, actions, k=>actionLabel(k));
+  await logAction('تعديل صلاحيات «'+st.name+'» — الشاشات: '+scrDiff+' · الإجراءات: '+actDiff);
+  pushNotif({ category:'permissions', type:'permission_change', priority:'critical',
+    action:'تعديل صلاحيات المستخدم «'+st.name+'» — الشاشات: '+scrDiff+' · الإجراءات: '+actDiff });
+  closeModal(); toast('تم حفظ صلاحيات '+st.name); refreshContent();
 }
 async function toggleStaff(id){
   const st = DB.staff.find(s=>s.id===id);
@@ -6022,6 +7008,19 @@ async function saveTaxWa(){
   DB.settings.whatsappTemplate = document.getElementById('setWa').value;
   await saveKey('settings', DB.settings);
   toast('تم الحفظ');
+}
+async function saveNotifThresholds(){
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
+  const exp = parseFloat(document.getElementById('setLargeExp').value)||0;
+  const disc = parseFloat(document.getElementById('setLargeDisc').value)||0;
+  DB.settings.largeExpenseThreshold = exp;
+  DB.settings.largeDiscountPct = disc;
+  DB.settings.highAdvancePct = parseFloat((document.getElementById('setHighAdv')||{}).value)||50;
+  DB.settings.highAbsenceDays = parseFloat((document.getElementById('setHighAbs')||{}).value)||3;
+  DB.settings.stagnantDays = parseFloat((document.getElementById('setStagnant')||{}).value)||90;
+  await saveKey('settings');
+  await logAction('تعديل عتبات الإشعارات — مصروف كبير: '+money(exp)+' · خصم عالي: '+disc+'%');
+  toast('تم حفظ العتبات');
 }
 function exportBackup(){
   const backup = {
@@ -6084,9 +7083,11 @@ function setBusy(on){
     'createInvoiceFromJob','savePayment','saveExpense','saveNewPart','saveEditItem','saveStockIn','saveStockOut',
     'savePaintOut','saveExtOutFromStock','saveNewSupplier','saveSupplierPayment','saveSupplierReturn','savePurchaseInvoice',
     'saveCustomerReturn','saveStockAdjustment','saveScrap','saveTransfer','saveNewWarehouse','saveNewAppointment',
-    'saveCannedService','saveCountProgress','submitCountForApproval','confirmCancelJob','saveInvoiceInfo','saveTaxWa','savePins','saveCenterName','saveNewStaff','toggleStaff','saveStaffPass','saveFinAccount','saveOpeningBalance','saveFinTransfer','saveExternalDeposit','saveCustodySettle','saveExpenseCat',
+    'saveCannedService','saveCountProgress','submitCountForApproval','confirmCancelJob','saveInvoiceInfo','saveTaxWa','savePins','saveCenterName','saveNewStaff','toggleStaff','saveStaffPass','savePerms','saveFinAccount','saveOpeningBalance','saveFinTransfer','saveExternalDeposit','saveCustodySettle','saveExpenseCat',
     'saveNewEmployee','saveEmployeeEdit','saveLeaveRequest','saveAbsence','saveAdvance','savePenalty','savePermit',
-    'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveWorkingDays'];
+    'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveWorkingDays',
+    'saveNewTool','saveToolEdit','saveToolIssue','saveToolReturn',
+    'setNotifStatus','addNotifComment','saveNotifThresholds'];
   opNames.forEach(name=>{
     const orig = window[name];
     if(typeof orig !== 'function') return;
