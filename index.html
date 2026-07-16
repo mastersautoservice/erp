@@ -192,7 +192,7 @@ const TABLE_MAP = {
   appointments:'appointments', cannedServices:'canned_services', activityLog:'activity_log',
   expenseCategories:'expense_categories', employees:'hr_employees', leaveRequests:'leave_requests',
   permits:'hr_permits', tools:'special_tools', toolMoves:'tool_moves',
-  notifications:'notifications'
+  notifications:'notifications', custodies:'custodies'
 };
 const DATA_KEYS = Object.keys(TABLE_MAP);
 const KV_KEYS = ['users','settings'];
@@ -295,7 +295,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v36';
+const APP_VERSION = 'v38';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -362,6 +362,8 @@ const ACTION_GROUPS = [
     ['fin.expenses','تسجيل مصروفات'],
     ['fin.manage','إدارة الخزنة والحسابات والتحويلات'],
     ['sup.pay','سداد الموردين'],
+    ['fin.custody_create','إصدار عهدة لموظف'],
+    ['fin.custody_settle','تسوية العهد'],
   ]],
   ['التقارير', [
     ['rep.profit','تقارير الربحية والأرباح'],
@@ -403,7 +405,7 @@ const ROLE_TEMPLATES = {
     actions:['bill.create','bill.collect'] },
   senior_accountant: { label:'محاسب أول', dept:'accounts',
     screens:['dashboard','jobs','openjobs','invoices','receivables','finance','expenses','services','reports','hr','tools'],
-    actions:['bill.create','bill.collect','bill.discount','bill.cancel','fin.expenses','fin.manage','sup.pay','rep.profit','rep.financial','hr.payroll'] },
+    actions:['bill.create','bill.collect','bill.discount','bill.cancel','fin.expenses','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.payroll'] },
   hr_officer: { label:'موظف موارد بشرية', dept:'hr',
     screens:['dashboard','hr'], actions:['hr.employees'] },
   hr_manager: { label:'مدير موارد بشرية', dept:'hr',
@@ -417,7 +419,7 @@ const ROLE_TEMPLATES = {
 const DEPT_DEFAULT_ACTIONS = {
   reception: ['jobs.create','jobs.edit','jobs.cancel','customers.create','customers.archive'],
   warehouse: ['inv.issue','inv.receive','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.scrap','tools.issue'],
-  accounts: ['bill.create','bill.collect','bill.discount','bill.cancel','fin.expenses','fin.manage','sup.pay','rep.profit','rep.financial','hr.payroll'],
+  accounts: ['bill.create','bill.collect','bill.discount','bill.cancel','fin.expenses','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.payroll'],
   hr: ['hr.employees','hr.approve','hr.payroll','hr.penalties'],
 };
 function fullDeptPerms(dept){
@@ -1104,6 +1106,7 @@ function renderNotifCenterWidget(){
         ${chip('موظف بغياب عالي',highAbs,'notifications')}
         ${chip('قطع راكدة',stagnant,'notifications')}
         ${chip('قطع تحت حد الأمان',lowStk,'inventory')}
+        ${chip('عهد متأخرة',overdueCustodiesAlert().length,'expenses')}
       </div>
     </div>`;
 }
@@ -4584,10 +4587,12 @@ function renderExpenses(){
     <button class="btn btn-sm ${expenseView==='list'?'btn-accent':''}" onclick="setExpenseView('list')">💸 قائمة المصروفات</button>
     <button class="btn btn-sm ${expenseView==='categories'?'btn-accent':''}" onclick="setExpenseView('categories')">🏷️ أنواع المصروفات</button>
     <button class="btn btn-sm ${expenseView==='report'?'btn-accent':''}" onclick="setExpenseView('report')">📊 تقارير المصروفات</button>
+    <button class="btn btn-sm ${expenseView==='custodies'?'btn-accent':''}" onclick="setExpenseView('custodies')">👛 العهد${(()=>{ const o=DB.custodies.filter(c=>c.status==='open').length; return o?' ('+o+')':''; })()}</button>
   </div>`;
   let body;
   if(expenseView==='categories') body = renderExpenseCategories();
   else if(expenseView==='report') body = renderExpenseReport();
+  else if(expenseView==='custodies') body = renderCustodies();
   else body = renderExpenseList();
   return tabsBar + body;
 }
@@ -4790,6 +4795,254 @@ function renderExpenseReport(){
   ${tableCard('توزيع المصروفات حسب النوع', cats)}
   ${tableCard('توزيع المصروفات حسب المجموعة', groups)}
   ${tableCard('توزيع المصروفات حسب وسيلة الدفع / الحساب', accs)}`;
+}
+
+/* ======================= CUSTODY MANAGEMENT — العهد (الملاحظة 34) =======================
+   عهد نثرية للموظفين (Petty Cash Advances) — جزء من المالية والمصروفات، مش من الموارد البشرية.
+   الإصدار بيخصم من الحساب فوراً (مش مصروف)، والتسوية بتحوّل بنود المصروف لمصروفات حقيقية
+   وترجّع الباقي للحساب اللي تختاره. عهدة مفتوحة واحدة لكل موظف. */
+const CUSTODY_OVERDUE_HOURS = 48;
+let custodyFilter = { emp:'', status:'', source:'', from:'', to:'' };
+function setCustodyFilter(k,v){ custodyFilter[k]=v; refreshContent(); }
+function custodyStatusLabel(s){ return s==='open'?'مفتوحة': s==='closed'?'مقفولة': s==='settled'?'مسوّاة':'مقفولة'; }
+function custodyStatusTag(s){
+  if(s==='open') return '<span class="tag tag-working">مفتوحة</span>';
+  return '<span class="tag tag-paid">مقفولة</span>';
+}
+function custodyHoursOpen(c){ return c.status==='open' ? (Date.now()-new Date(c.createdAt))/3600000 : 0; }
+function isCustodyOverdue(c){ return c.status==='open' && custodyHoursOpen(c) > CUSTODY_OVERDUE_HOURS; }
+function openCustodies(){ return DB.custodies.filter(c=>c.status==='open'); }
+function overdueCustodies(){ return openCustodies().filter(isCustodyOverdue); }
+function empOpenCustody(empId){ return DB.custodies.find(c=>c.employeeId===empId && c.status==='open'); }
+function custodyEmpName(c){ const e=DB.employees.find(x=>x.id===c.employeeId); return e?e.name:(c.employeeName||'—'); }
+function renderCustodies(){
+  const canCreate = can('fin.custody_create');
+  const emps = [...DB.employees].filter(e=>e.status==='نشط').sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+  const allEmps = [...DB.employees].sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+  // فلترة
+  let list = [...DB.custodies];
+  if(custodyFilter.emp) list = list.filter(c=>c.employeeId===custodyFilter.emp);
+  if(custodyFilter.status) list = list.filter(c=>c.status===custodyFilter.status);
+  if(custodyFilter.source) list = list.filter(c=>c.sourceAccountId===custodyFilter.source);
+  if(custodyFilter.from) list = list.filter(c=>(c.createdAt||'').slice(0,10) >= custodyFilter.from);
+  if(custodyFilter.to) list = list.filter(c=>(c.createdAt||'').slice(0,10) <= custodyFilter.to);
+  list.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const open = openCustodies();
+  const overdue = overdueCustodies();
+  const openTotal = open.reduce((s,c)=>s+c.amount,0);
+  const closedTotal = DB.custodies.filter(c=>c.status!=='open').reduce((s,c)=>s+c.amount,0);
+  return `
+  <div class="grid g4" style="margin-bottom:16px">
+    ${stat(String(open.length),'عهد مفتوحة', open.length>0)}
+    ${stat(money(openTotal),'إجمالي العهد المفتوحة', openTotal>0)}
+    ${stat(String(overdue.length),'عهد متأخرة (+'+CUSTODY_OVERDUE_HOURS+' ساعة)', overdue.length>0)}
+    ${stat(money(closedTotal),'إجمالي العهد المقفولة')}
+  </div>
+  <div class="section-head"><h3>👛 عهد الموظفين</h3>
+    ${canCreate?`<button class="btn btn-accent" onclick="openNewCustodyModal()">${ICONS.plus} عهدة جديدة</button>`:''}</div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="grid g4">
+      <div class="form-row" style="margin:0"><label class="f-label">الموظف</label>
+        <select class="f" onchange="setCustodyFilter('emp',this.value)"><option value="">كل الموظفين</option>${allEmps.map(e=>`<option value="${e.id}" ${custodyFilter.emp===e.id?'selected':''}>${e.name}</option>`).join('')}</select></div>
+      <div class="form-row" style="margin:0"><label class="f-label">الحالة</label>
+        <select class="f" onchange="setCustodyFilter('status',this.value)"><option value="">الكل</option><option value="open" ${custodyFilter.status==='open'?'selected':''}>مفتوحة</option><option value="closed" ${custodyFilter.status==='closed'?'selected':''}>مقفولة</option></select></div>
+      <div class="form-row" style="margin:0"><label class="f-label">مصدر الصرف</label>
+        <select class="f" onchange="setCustodyFilter('source',this.value)"><option value="">الكل</option>${DB.finAccounts.map(a=>`<option value="${a.id}" ${custodyFilter.source===a.id?'selected':''}>${a.name}</option>`).join('')}</select></div>
+      <div class="form-row" style="margin:0"><label class="f-label">من — إلى</label>
+        <div style="display:flex;gap:4px"><input class="f" type="date" value="${custodyFilter.from}" onchange="setCustodyFilter('from',this.value)"><input class="f" type="date" value="${custodyFilter.to}" onchange="setCustodyFilter('to',this.value)"></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <table><thead><tr><th>رقم</th><th>الموظف</th><th>الغرض</th><th>المبلغ</th><th>المصدر</th><th>التاريخ</th><th>المدة</th><th>الحالة</th><th></th></tr></thead>
+    <tbody>${list.length? list.map(c=>{
+      const over = isCustodyOverdue(c);
+      return `<tr style="${over?'background:rgba(224,37,37,.10)':''}">
+        <td style="font-weight:700;color:var(--accent)">#${c.custodyNo}</td>
+        <td style="font-weight:700">${custodyEmpName(c)}</td>
+        <td class="muted">${c.purpose||'—'}</td>
+        <td style="font-weight:800">${money(c.amount)}</td>
+        <td class="muted">${c.sourceName||'—'}</td>
+        <td style="white-space:nowrap;font-size:12px">${fmtDate(c.createdAt)}</td>
+        <td style="${over?'color:var(--danger);font-weight:800':''}">${c.status==='open'?durationText(c.createdAt)+(over?' 🚨':''):'—'}</td>
+        <td>${custodyStatusTag(c.status)}</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-sm" onclick="openCustodyDetail('${c.id}')">تفاصيل</button>
+          ${c.status==='open' && can('fin.custody_settle')?`<button class="btn btn-sm btn-accent" onclick="openSettleCustodyModal('${c.id}')">تسوية</button>`:''}
+        </td></tr>`;
+    }).join('') : `<tr><td colspan="9" class="empty">مفيش عهد ${custodyFilter.emp||custodyFilter.status?'مطابقة للفلتر':'مسجلة'}</td></tr>`}
+    </tbody></table>
+  </div>`;
+}
+function openNewCustodyModal(){
+  if(!can('fin.custody_create')){ toast('مالكش صلاحية إصدار عهد', true); return; }
+  const emps = DB.employees.filter(e=>e.status==='نشط').sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+  if(emps.length===0){ toast('مفيش موظفين نشطين — سجّلهم في الموارد البشرية الأول', true); return; }
+  openModal(`
+    <h3>👛 عهدة جديدة <span class="muted" style="font-size:12px">— رقم #${nextNo(DB.custodies,'custodyNo')}</span></h3>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">قيمة العهدة</label><input class="f" id="cuAmount" type="number" min="1"></div>
+      <div class="form-row"><label class="f-label">الموظف</label>
+        <select class="f" id="cuEmp">${emps.map(e=>`<option value="${e.id}">${e.name}${empOpenCustody(e.id)?' ⚠️ (عنده عهدة مفتوحة)':''}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row"><label class="f-label">الغرض من العهدة</label><input class="f" id="cuPurpose" placeholder="مثال: شراء بنزين، خامات دهان، مصروفات طارئة..."></div>
+    <div class="form-row"><label class="f-label">مصدر الصرف</label>
+      <select class="f" id="cuSource">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+    <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="cuNotes"></div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">القيمة هتتخصم من المصدر فوراً وتبقى عهدة مفتوحة (مش مصروف) لحد التسوية.</div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveCustody()">إصدار العهدة</button>
+  `);
+}
+async function saveCustody(){
+  if(!can('fin.custody_create')){ toast('مالكش صلاحية إصدار عهد', true); return; }
+  const amount = parseFloat((document.getElementById('cuAmount')||{}).value)||0;
+  const empId = (document.getElementById('cuEmp')||{}).value;
+  const purpose = ((document.getElementById('cuPurpose')||{}).value||'').trim();
+  const sourceId = (document.getElementById('cuSource')||{}).value;
+  const notes = ((document.getElementById('cuNotes')||{}).value||'').trim();
+  const emp = DB.employees.find(e=>e.id===empId);
+  const src = DB.finAccounts.find(a=>a.id===sourceId);
+  if(amount<=0){ toast('اكتب قيمة صحيحة', true); return; }
+  if(!emp){ toast('اختار الموظف', true); return; }
+  if(!src){ toast('اختار مصدر الصرف', true); return; }
+  // عهدة مفتوحة واحدة لكل موظف
+  const existing = empOpenCustody(empId);
+  if(existing){ toast('الموظف '+emp.name+' عنده عهدة مفتوحة بقيمة '+money(existing.amount)+' — لازم تتسوّى الأول قبل عهدة جديدة', true); return; }
+  const c = {
+    id: uid('cus'), custodyNo: nextNo(DB.custodies,'custodyNo'),
+    amount, employeeId: empId, employeeName: emp.name, purpose,
+    sourceAccountId: sourceId, sourceName: src.name, notes,
+    status: 'open', settlement: null, createdAt: new Date().toISOString(), actor: actorName()
+  };
+  DB.custodies.push(c);
+  addFinMove(sourceId, 'out', amount, 'custody', 'عهدة #'+c.custodyNo+' — '+emp.name+(purpose?' — '+purpose:''));
+  await Promise.all([saveKey('custodies'), saveKey('finMoves')]);
+  await logAction('إصدار عهدة #'+c.custodyNo+' بقيمة '+money(amount)+' للموظف '+emp.name+' من '+src.name+(purpose?' — '+purpose:''));
+  pushNotif({ category:'financial', type:'custody_open', priority:'medium', amount,
+    action:'إصدار عهدة #'+c.custodyNo+' للموظف '+emp.name+(purpose?' — '+purpose:''), refType:'expense' });
+  closeModal(); toast('تم إصدار العهدة وخصمها من '+src.name); refreshContent();
+}
+/* ---- سطور تسوية العهدة (في الذاكرة أثناء الفتح) ---- */
+let _custodyLines = [];
+function openSettleCustodyModal(custodyId){
+  if(!can('fin.custody_settle')){ toast('مالكش صلاحية تسوية العهد', true); return; }
+  const c = DB.custodies.find(x=>x.id===custodyId);
+  if(!c || c.status!=='open'){ toast('العهدة دي مش مفتوحة', true); return; }
+  _custodyLines = [];
+  renderSettleModal(custodyId);
+}
+function renderSettleModal(custodyId){
+  const c = DB.custodies.find(x=>x.id===custodyId);
+  const spent = _custodyLines.reduce((s,l)=>s+l.amount,0);
+  const remaining = Math.round((c.amount - spent)*100)/100;
+  const catOpts = `<option value="">— اختار النوع —</option>`+ (typeof expCatOptionsHTML==='function' ? expCatOptionsHTML().replace('<option value="">— اختر نوع المصروف —</option>','') : DB.expenseCategories.map(ct=>`<option value="${ct.id}">${ct.name}</option>`).join(''));
+  openModal(`
+    <h3>📤 تسوية عهدة #${c.custodyNo} <span class="muted" style="font-size:12px">— ${custodyEmpName(c)} — ${money(c.amount)}</span></h3>
+    <div class="grid g3" style="margin-bottom:12px">
+      ${stat(money(c.amount),'قيمة العهدة')}
+      ${stat(money(spent),'المصروفات المسجّلة', spent>c.amount)}
+      ${stat(money(remaining),'المتبقي', remaining<0)}
+    </div>
+    <label class="f-label">بنود المصروفات الفعلية</label>
+    <div class="card" style="margin:6px 0 10px">
+      <table style="margin-bottom:8px"><tbody>
+      ${_custodyLines.length? _custodyLines.map((l,i)=>`<tr><td>${l.catName}</td><td class="muted" style="font-size:11.5px">${l.description||'—'}</td><td style="font-weight:700">${money(l.amount)}</td><td style="width:50px"><button class="btn btn-sm btn-danger" onclick="removeCustodyLine(${i})">حذف</button></td></tr>`).join('') : '<tr><td class="empty">مفيش بنود لسه — ضيف بند تحت</td></tr>'}
+      </tbody></table>
+      <div class="grid g3">
+        <div class="form-row" style="margin:0"><select class="f" id="clCat">${catOpts}</select></div>
+        <div class="form-row" style="margin:0"><input class="f" id="clDesc" placeholder="وصف (اختياري)"></div>
+        <div class="form-row" style="margin:0;display:flex;gap:4px"><input class="f" id="clAmt" type="number" min="0" placeholder="المبلغ"><button class="btn" onclick="addCustodyLine('${custodyId}')">➕</button></div>
+      </div>
+    </div>
+    ${remaining>0.5?`
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">المتبقي (${money(remaining)}) هيرجع لحساب</label>
+        <select class="f" id="clReturnAcc">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select></div>
+      <div class="form-row"><label class="f-label">ملاحظات التسوية</label><input class="f" id="clNotes"></div>
+    </div>`:`<div class="form-row"><label class="f-label">ملاحظات التسوية</label><input class="f" id="clNotes"></div>`}
+    <div class="muted" style="font-size:12px;margin-bottom:10px">البنود هتتحوّل لمصروفات حقيقية في التقارير، والمتبقي هيتضاف للحساب اللي تختاره.</div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveSettleCustody('${custodyId}')">تأكيد التسوية وإقفال العهدة</button>
+  `);
+}
+function addCustodyLine(custodyId){
+  const catId = (document.getElementById('clCat')||{}).value;
+  const amt = parseFloat((document.getElementById('clAmt')||{}).value)||0;
+  const desc = ((document.getElementById('clDesc')||{}).value||'').trim();
+  const cat = DB.expenseCategories.find(c=>c.id===catId);
+  if(!cat){ toast('اختار نوع المصروف', true); return; }
+  if(amt<=0){ toast('اكتب مبلغ صحيح', true); return; }
+  const c = DB.custodies.find(x=>x.id===custodyId);
+  const spent = _custodyLines.reduce((s,l)=>s+l.amount,0);
+  if(spent+amt > c.amount + 0.005){ toast('إجمالي البنود بيتعدّى قيمة العهدة ('+money(c.amount)+')', true); return; }
+  _custodyLines.push({ categoryId:cat.id, catName:cat.name, group:cat.group, amount:amt, description:desc });
+  renderSettleModal(custodyId);
+}
+function removeCustodyLine(i){ _custodyLines.splice(i,1); renderSettleModalById(); }
+function renderSettleModalById(){ const ov=document.getElementById('modalOverlay'); if(!ov) return; const m=ov.innerHTML.match(/saveSettleCustody\('([^']+)'\)/); if(m) renderSettleModal(m[1]); }
+async function saveSettleCustody(custodyId){
+  if(!can('fin.custody_settle')){ toast('مالكش صلاحية تسوية العهد', true); return; }
+  const c = DB.custodies.find(x=>x.id===custodyId);
+  if(!c || c.status!=='open'){ toast('العهدة مش مفتوحة', true); return; }
+  const spent = _custodyLines.reduce((s,l)=>s+l.amount,0);
+  const remaining = Math.round((c.amount - spent)*100)/100;
+  if(_custodyLines.length===0 && remaining>0.5){
+    // مفيش مصروفات — يبقى رجوع كامل، عادي بس نأكد
+  }
+  const emp = DB.employees.find(e=>e.id===c.employeeId);
+  // 1) حوّل كل بند لمصروف حقيقي (بدون خصم من حساب — الفلوس خرجت وقت إصدار العهدة)
+  const createdExpenses = [];
+  _custodyLines.forEach(l=>{
+    const exp = { id:uid('exp'), expNo: nextNo(DB.expenses,'expNo'),
+      category:l.catName, categoryId:l.categoryId, group:l.group,
+      description:l.description, note:l.description, amount:l.amount,
+      accountId:null, payAccount:'عهدة #'+c.custodyNo, fromCustody:c.id,
+      actor:actorName(), date:new Date().toISOString() };
+    DB.expenses.push(exp); createdExpenses.push(exp);
+  });
+  // 2) رجوع المتبقي للحساب المختار
+  let returnAccId = null, returnAccName = null;
+  if(remaining>0.5){
+    returnAccId = (document.getElementById('clReturnAcc')||{}).value;
+    const ra = DB.finAccounts.find(a=>a.id===returnAccId);
+    if(ra){ addFinMove(returnAccId, 'in', remaining, 'custody_return', 'استرجاع باقي عهدة #'+c.custodyNo+' — '+custodyEmpName(c)); returnAccName = ra.name; }
+  }
+  // 3) اقفل العهدة
+  const notes = ((document.getElementById('clNotes')||{}).value||'').trim();
+  c.status = 'closed';
+  c.settlement = { lines: JSON.parse(JSON.stringify(_custodyLines)), totalExpenses: spent, remaining, returnedAccId:returnAccId, returnedAccName:returnAccName, notes, at:new Date().toISOString(), by:actorName() };
+  c.closedAt = new Date().toISOString();
+  const saves = [saveKey('custodies'), saveKey('expenses')];
+  if(remaining>0.5) saves.push(saveKey('finMoves'));
+  await Promise.all(saves);
+  await logAction('تسوية عهدة #'+c.custodyNo+' — '+custodyEmpName(c)+': مصروفات '+money(spent)+(remaining>0.5?' + استرجاع '+money(remaining)+' لـ '+(returnAccName||'—'):'')+' ('+_custodyLines.length+' بند)');
+  pushNotif({ category:'financial', type:'custody_settle', priority:'medium', amount:spent,
+    action:'تسوية عهدة #'+c.custodyNo+' — '+custodyEmpName(c)+' (مصروفات '+money(spent)+(remaining>0.5?' + مرتجع '+money(remaining):'')+')', refType:'expense' });
+  _custodyLines = [];
+  closeModal(); toast('تمت تسوية العهدة وإقفالها'+(spent>0?' — اتسجّل '+money(spent)+' مصروفات':'')); refreshContent();
+}
+function openCustodyDetail(custodyId){
+  const c = DB.custodies.find(x=>x.id===custodyId);
+  if(!c) return;
+  const st = c.settlement;
+  openModal(`
+    <h3>👛 عهدة #${c.custodyNo} — ${custodyEmpName(c)}</h3>
+    <div style="margin-bottom:10px">${custodyStatusTag(c.status)} <span class="muted" style="font-size:12px;margin-right:6px">${fmtDateTime(c.createdAt)} · بواسطة ${c.actor||'—'}</span></div>
+    <table style="margin-bottom:14px"><tbody>
+      <tr><td class="muted">القيمة</td><td style="font-weight:800">${money(c.amount)}</td></tr>
+      <tr><td class="muted">الغرض</td><td>${c.purpose||'—'}</td></tr>
+      <tr><td class="muted">المصدر</td><td>${c.sourceName||'—'}</td></tr>
+      ${c.notes?`<tr><td class="muted">ملاحظات</td><td>${c.notes}</td></tr>`:''}
+      ${c.status==='open'?`<tr><td class="muted">مفتوحة من</td><td style="${isCustodyOverdue(c)?'color:var(--danger);font-weight:700':''}">${durationText(c.createdAt)}${isCustodyOverdue(c)?' 🚨 متأخرة':''}</td></tr>`:''}
+    </tbody></table>
+    ${st?`
+    <label class="f-label">تفاصيل التسوية (${fmtDateTime(st.at)} · ${st.by})</label>
+    <table style="margin:6px 0 12px"><thead><tr><th>البند</th><th>الوصف</th><th>المبلغ</th></tr></thead>
+    <tbody>${st.lines.map(l=>`<tr><td>${l.catName}</td><td class="muted" style="font-size:11.5px">${l.description||'—'}</td><td style="font-weight:700">${money(l.amount)}</td></tr>`).join('')||'<tr><td class="empty">مفيش مصروفات</td></tr>'}</tbody></table>
+    <div class="card"><div class="flex-between"><span>إجمالي المصروفات</span><span style="font-weight:800">${money(st.totalExpenses)}</span></div>
+    ${st.remaining>0.5?`<div class="flex-between" style="margin-top:4px"><span>المرتجع لـ ${st.returnedAccName||'—'}</span><span style="font-weight:800;color:var(--accent)">${money(st.remaining)}</span></div>`:''}
+    ${st.notes?`<div class="muted" style="font-size:12px;margin-top:6px">📝 ${st.notes}</div>`:''}</div>
+    `:`
+    ${c.status==='open' && can('fin.custody_settle')?`<button class="btn btn-accent" style="width:100%" onclick="openSettleCustodyModal('${c.id}')">📤 تسوية العهدة</button>`:''}`}
+  `);
 }
 
 /* ======================= REPORTS ======================= */
@@ -6534,9 +6787,11 @@ function stagnantParts(){
   }).sort((a,b)=>b.value-a.value);
 }
 function lowStockParts(){ return DB.inventory.filter(p=>(p.qty||0) <= (p.minQty||0)); }
+function overdueCustodiesAlert(){ return (typeof overdueCustodies==='function') ? overdueCustodies() : []; }
 function liveAlertsCount(){
   return debtReminders().length + pendingLeaveReqs().length + pendingPermits().length + damagedWaiting().length
-    + highAdvanceEmployees().length + highAbsenceEmployees().length + stagnantParts().length + lowStockParts().length;
+    + highAdvanceEmployees().length + highAbsenceEmployees().length + stagnantParts().length + lowStockParts().length
+    + overdueCustodiesAlert().length;
 }
 function unseenNotifCount(){ return DB.notifications.filter(n=>!n.seen).length; }
 function pendingNotifCount(){
@@ -6544,7 +6799,9 @@ function pendingNotifCount(){
   return unseenNotifCount() + liveAlertsCount();
 }
 let notifFilter = { category:'', priority:'', status:'' };
+let notifShowArchived = false;
 function setNotifFilter(k,v){ notifFilter[k]=v; refreshContent(); }
+function toggleNotifArchive(){ notifShowArchived = !notifShowArchived; refreshContent(); }
 function priorityTag(p){
   const c = p==='critical'?'tag-unpaid': p==='high'?'tag-inspect': p==='medium'?'tag-working':'tag-received';
   return `<span class="tag ${c}">${NOTIF_PRIORITY[p]||p}</span>`;
@@ -6567,11 +6824,13 @@ function renderNotifications(){
   const highAbs = highAbsenceEmployees();
   const stagnant = stagnantParts();
   const lowStk = lowStockParts();
-  // القائمة المخزّنة مع الفلاتر
-  let list = [...DB.notifications];
+  const overCust = overdueCustodiesAlert();
+  // الإشعارات اللي اتراجعت (تمت المراجعة / للمتابعة) بتروح الأرشيف — مش بتزحّم القائمة
+  const isReviewed = n => n.status==='approved' || n.status==='rejected';
+  const archivedCount = DB.notifications.filter(isReviewed).length;
+  let list = DB.notifications.filter(n => notifShowArchived ? isReviewed(n) : !isReviewed(n));
   if(notifFilter.category) list = list.filter(n=>n.category===notifFilter.category);
   if(notifFilter.priority) list = list.filter(n=>n.priority===notifFilter.priority);
-  if(notifFilter.status) list = list.filter(n=>n.status===notifFilter.status);
   list.sort((a,b)=>new Date(b.date)-new Date(a.date));
   const widget = (label, count, danger)=>stat(String(count), label, danger && count>0);
   return `
@@ -6589,12 +6848,19 @@ function renderNotifications(){
     ${widget('فواتير بخصم عالي', largeDiscInv.length, true)}
     ${stat(money(debts.reduce((a,d)=>a+d.due,0)), 'إجمالي المديونية المتأخرة', debts.length>0)}
   </div>
-  <div class="grid g4" style="margin-bottom:20px">
+  <div class="grid g4" style="margin-bottom:14px">
     ${widget('موظفين بسلف عالية', highAdv.length, true)}
     ${widget('موظفين بغياب عالي', highAbs.length, true)}
     ${widget('قطع راكدة', stagnant.length, true)}
     ${widget('قطع تحت حد الأمان', lowStk.length, true)}
   </div>
+  <div class="grid g4" style="margin-bottom:20px">
+    ${widget('عهد متأخرة (+48 ساعة)', overCust.length, true)}
+  </div>
+  ${overCust.length?`
+  <div class="section-head"><h3>👛 عهد مفتوحة متأخرة (+${CUSTODY_OVERDUE_HOURS} ساعة)</h3></div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>العهدة</th><th>الموظف</th><th>المبلغ</th><th>مفتوحة من</th></tr></thead>
+  <tbody>${overCust.map(c=>`<tr onclick="goTab('expenses')" style="cursor:pointer"><td>#${c.custodyNo}</td><td style="font-weight:700">${custodyEmpName(c)}</td><td style="font-weight:800">${money(c.amount)}</td><td style="color:var(--danger);font-weight:800">${durationText(c.createdAt)}</td></tr>`).join('')}</tbody></table></div>`:''}
   ${highAdv.length?`
   <div class="section-head"><h3>💸 موظفين سلفهم عالية (≥ ${s.highAdvancePct||50}% من الراتب هذه الدورة)</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الموظف</th><th>الراتب</th><th>إجمالي السلف</th><th>النسبة</th></tr></thead>
@@ -6616,13 +6882,14 @@ function renderNotifications(){
     <td style="font-weight:800;color:var(--danger)">${money(d.due)}</td>
     <td style="color:var(--danger)">${d.days} يوم</td>
     <td class="muted">#${d.inv.invNo}</td></tr>`).join('')}</tbody></table></div>`:''}
-  <div class="section-head"><h3>🔔 سجل الإشعارات (${list.length})</h3>
+  <div class="section-head"><h3>🔔 ${notifShowArchived?'أرشيف الإشعارات المُراجَعة':'سجل الإشعارات'} (${list.length})</h3>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <select class="f btn-sm" style="width:auto;padding:6px 10px" onchange="setNotifFilter('category',this.value)">
         <option value="">كل الأقسام</option>${Object.entries(NOTIF_CAT_LABEL).map(([k,v])=>`<option value="${k}" ${notifFilter.category===k?'selected':''}>${v}</option>`).join('')}</select>
       <select class="f btn-sm" style="width:auto;padding:6px 10px" onchange="setNotifFilter('priority',this.value)">
         <option value="">كل الأولويات</option>${Object.entries(NOTIF_PRIORITY).map(([k,v])=>`<option value="${k}" ${notifFilter.priority===k?'selected':''}>${v}</option>`).join('')}</select>
-      ${unseenNotifCount()?`<button class="btn btn-sm" onclick="markAllNotifsSeen()">تحديد الكل كمقروء</button>`:''}
+      ${!notifShowArchived && unseenNotifCount()?`<button class="btn btn-sm" onclick="markAllNotifsSeen()">تحديد الكل كمقروء</button>`:''}
+      ${archivedCount?`<button class="btn btn-sm ${notifShowArchived?'btn-accent':''}" onclick="toggleNotifArchive()">${notifShowArchived?'⬅ رجوع للسجل':'🗄️ الأرشيف ('+archivedCount+')'}</button>`:''}
     </div></div>
   <div class="card">
     <table><thead><tr><th>الأولوية</th><th>القسم</th><th>الإجراء</th><th>المستخدم</th><th>الوقت</th><th>الحالة</th><th></th></tr></thead>
@@ -7087,7 +7354,7 @@ function setBusy(on){
     'saveNewEmployee','saveEmployeeEdit','saveLeaveRequest','saveAbsence','saveAdvance','savePenalty','savePermit',
     'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveWorkingDays',
     'saveNewTool','saveToolEdit','saveToolIssue','saveToolReturn',
-    'setNotifStatus','addNotifComment','saveNotifThresholds'];
+    'setNotifStatus','addNotifComment','saveNotifThresholds','saveCustody','saveSettleCustody'];
   opNames.forEach(name=>{
     const orig = window[name];
     if(typeof orig !== 'function') return;
