@@ -295,7 +295,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v45';
+const APP_VERSION = 'v47';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -590,7 +590,7 @@ function showStorageDeadBanner(){
 }
 const DATA_DEFAULTS = {
   users: {reception:'1111',accounts:'2222',warehouse:'3333',owner:'9999'},
-  settings: {centerName:'Masters Auto Service', vatRate:0, whatsappTemplate:'سيارتك {plate} جاهزة للاستلام من {center}. شكراً لثقتك بينا 🚗', address:'العبور - الشباب - ميدان الصورة - منطقة حرفيين العبور', phone:'01146604611', warrantyText:'ضمان قطع الغيار الجديدة المبدلة في المركز 3 شهور أو 5 آلاف كم أيهما أقرب\nضمان قطع الغيار الاستيراد المبدلة في المركز شهر واحد أو 5 آلاف كم أيهما أقرب\nشروط الضمان: عدم المساس بقطعة الغيار أو محاولة فكها خارج المركز', largeExpenseThreshold:20000, largeDiscountPct:15, highAdvancePct:50, highAbsenceDays:3, stagnantDays:90}
+  settings: {centerName:'Masters Auto Service', vatRate:0, whatsappTemplate:'سيارتك {plate} جاهزة للاستلام من {center}. شكراً لثقتك بينا 🚗', address:'العبور - الشباب - ميدان الصورة - منطقة حرفيين العبور', phone:'01146604611', warrantyText:'ضمان قطع الغيار الجديدة المبدلة في المركز 3 شهور أو 5 آلاف كم أيهما أقرب\nضمان قطع الغيار الاستيراد المبدلة في المركز شهر واحد أو 5 آلاف كم أيهما أقرب\nشروط الضمان: عدم المساس بقطعة الغيار أو محاولة فكها خارج المركز', largeExpenseThreshold:20000, largeDiscountPct:15, highAdvancePct:50, highAbsenceDays:3, stagnantDays:90, backupReminderDays:7, lastBackupAt:null}
 };
 function keyDefault(k){
   if(k==='users') return {...DATA_DEFAULTS.users};
@@ -1080,6 +1080,14 @@ function renderDashboard(){
   const recentJobs = [...DB.jobs].filter(j=>!isJobClosed(j)).sort((a,b)=>new Date(b.receivedAt)-new Date(a.receivedAt)).slice(0,4);
 
   return `
+    ${canScreen('settings') && backupStatus().overdue ? (()=>{ const b=backupStatus(); return `
+    <div class="card" style="margin-bottom:18px;border:1px solid var(--danger)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div><b style="color:var(--danger)">🛡️ نسخة احتياطية مستحقة</b>
+          <div class="muted" style="font-size:12.5px">${b.lastStr?'آخر نسخة من '+b.daysSince+' يوم — عدّى موعد التذكير ('+b.intervalDays+' يوم).':'لسه معملتش أي نسخة احتياطية لبياناتك.'} اعملها دلوقتي واحفظها في مكان آمن.</div></div>
+        <button class="btn btn-accent btn-sm" onclick="exportBackup()">⬇ اعمل نسخة احتياطية</button>
+      </div>
+    </div>` })() : ''}
     <div class="grid g4" style="margin-bottom:24px">${cards}</div>
     ${canScreen('notifications') ? renderNotifCenterWidget() : ''}
     ${['reception','owner'].includes(session.role) ? `
@@ -7226,9 +7234,18 @@ function renderSettings(){
   </div>
   <div class="card" style="max-width:520px;margin-top:18px">
     <h3 style="margin-top:0">نسخة احتياطية من البيانات</h3>
-    <p class="muted" style="font-size:12.5px;margin-top:0">حمّل نسخة كاملة من كل بيانات المركز (عملاء، أوامر شغل، فواتير، مخزون...) بشكل دوري كأمان إضافي، وتقدر تسترجعها في أي وقت.</p>
-    <button class="btn" onclick="exportBackup()">⬇ تحميل نسخة احتياطية</button>
-    <div style="margin-top:10px">
+    <p class="muted" style="font-size:12.5px;margin-top:0">حمّل نسخة كاملة من كل بيانات المركز (عملاء، أوامر شغل، فواتير، مخزون، موظفين، عهد...) بشكل دوري كأمان إضافي، وتقدر تسترجعها في أي وقت.</p>
+    ${(()=>{ const b=backupStatus(); return `<div class="muted" style="font-size:12.5px;margin-bottom:8px">آخر نسخة احتياطية: <b style="${b.overdue?'color:var(--danger)':''}">${b.lastStr?fmtDateTime(b.lastStr)+' (من '+b.daysSince+' يوم)':'لم تعمل نسخة احتياطية بعد'}</b></div>`; })()}
+    <button class="btn btn-accent" onclick="exportBackup()">⬇ تحميل نسخة احتياطية دلوقتي</button>
+    <div class="form-row" style="margin-top:12px"><label class="f-label">ذكّرني بعمل نسخة احتياطية كل</label>
+      <div style="display:flex;gap:8px">
+        <select class="f" id="backupIntervalSel">
+          ${[[7,'أسبوع'],[14,'أسبوعين'],[30,'شهر']].map(([d,l])=>`<option value="${d}" ${(((DB.settings&&DB.settings.backupReminderDays)||7)===d)?'selected':''}>${l} (${d} يوم)</option>`).join('')}
+        </select>
+        <button class="btn" onclick="saveBackupInterval()">حفظ</button>
+      </div>
+    </div>
+    <div style="margin-top:12px">
       <label class="f-label">استرجاع نسخة احتياطية</label>
       <input class="f" type="file" id="restoreFile" accept="application/json">
       <button class="btn btn-danger" style="margin-top:8px" onclick="importBackup()">استرجاع البيانات (سيستبدل كل شيء)</button>
@@ -7397,21 +7414,42 @@ async function saveNotifThresholds(){
   await logAction('تعديل عتبات الإشعارات — مصروف كبير: '+money(exp)+' · خصم عالي: '+disc+'%');
   toast('تم حفظ العتبات');
 }
+// بناء كائن النسخة الاحتياطية — كل أنواع البيانات (DATA_KEYS) + المستخدمين والإعدادات (KV_KEYS)
+function buildBackupObject(){
+  const backup = { exportedAt: new Date().toISOString(), appVersion: APP_VERSION };
+  DATA_KEYS.forEach(k=>{ backup[k] = DB[k]; });
+  KV_KEYS.forEach(k=>{ backup[k] = DB[k]; });
+  return backup;
+}
 function exportBackup(){
-  const backup = {
-    exportedAt: new Date().toISOString(),
-    customers:DB.customers, cars:DB.cars, jobs:DB.jobs, inventory:DB.inventory, stockMoves:DB.stockMoves,
-    invoices:DB.invoices, expenses:DB.expenses, suppliers:DB.suppliers, purchases:DB.purchases,
-    supplierReturns:DB.supplierReturns, inventoryCounts:DB.inventoryCounts, warehouses:DB.warehouses, staff:DB.staff, finAccounts:DB.finAccounts, finMoves:DB.finMoves, appointments:DB.appointments, cannedServices:DB.cannedServices,
-    activityLog:DB.activityLog, users:DB.users, settings:DB.settings
-  };
+  const backup = buildBackupObject();
   const blob = new Blob([JSON.stringify(backup,null,2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = 'garage-backup-'+new Date().toISOString().slice(0,10)+'.json';
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  toast('تم تحميل النسخة الاحتياطية');
+  const total = DATA_KEYS.reduce((s,k)=>s+((DB[k]||[]).length||0),0);
+  // سجّل تاريخ آخر نسخة احتياطية (لتذكير الـ backup الدوري)
+  DB.settings.lastBackupAt = new Date().toISOString();
+  saveKey('settings', DB.settings);
+  toast('تم تحميل النسخة الاحتياطية الكاملة ('+total+' سجل)');
+  refreshContent();
+}
+/* حالة تذكير النسخة الاحتياطية: المدة المختارة، آخر نسخة، وهل فات الموعد */
+function backupStatus(){
+  const days = (DB.settings && DB.settings.backupReminderDays) || 7;
+  const lastStr = DB.settings && DB.settings.lastBackupAt;
+  const last = lastStr ? new Date(lastStr) : null;
+  const daysSince = last ? Math.floor((Date.now() - last.getTime())/86400000) : null;
+  const overdue = !last || daysSince >= days;
+  return { intervalDays: days, last, lastStr, daysSince, overdue };
+}
+async function saveBackupInterval(){
+  const v = parseInt((document.getElementById('backupIntervalSel')||{}).value) || 7;
+  DB.settings.backupReminderDays = v;
+  await saveKey('settings', DB.settings);
+  toast('تم ضبط تذكير النسخة الاحتياطية كل '+v+' يوم'); refreshContent();
 }
 async function importBackup(){
   const fileInput = document.getElementById('restoreFile');
@@ -7421,7 +7459,7 @@ async function importBackup(){
     try{
       const text = await file.text();
       const data = JSON.parse(text);
-      for(const key of ['customers','cars','jobs','inventory','stockMoves','invoices','expenses','suppliers','purchases','supplierReturns','inventoryCounts','warehouses','staff','finAccounts','finMoves','appointments','cannedServices','activityLog','users','settings']){
+      for(const key of [...DATA_KEYS, ...KV_KEYS]){
         if(data[key]!==undefined){ DB[key] = data[key]; await saveKey(key, DB[key]); }
       }
       toast('تم استرجاع البيانات بنجاح'); render();
