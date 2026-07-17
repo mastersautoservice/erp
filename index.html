@@ -295,7 +295,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v47';
+const APP_VERSION = 'v48';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -2211,7 +2211,7 @@ function customerMatchesSearch(cust, term){
   return haystack.includes(t);
 }
 
-let mvFilters = { dateFrom:'', dateTo:'', supplierId:'', type:'', partId:'', jobNo:'', carCust:'' };
+let mvFilters = { dateFrom:'', dateTo:'', supplierId:'', type:'', partId:'', jobNo:'', carCust:'', reqById:'' };
 function renderStockMoves(){
   const openJobs = DB.jobs.filter(j=>!isJobClosed(j)).filter(j=>jobMatchesSearch(j,custSearchTerm));
   return `
@@ -2322,8 +2322,13 @@ function renderStockMoves(){
       </div>
       <div class="form-row"><label class="f-label">رقم أمر الشغل</label><input class="f" placeholder="مثال: 0007" value="${mvFilters.jobNo}" oninput="mvFilters.jobNo=this.value;refreshMvTable()"></div>
       <div class="form-row"><label class="f-label">السيارة / العميل</label><input class="f" placeholder="اسم، موبايل، أو رقم لوحة" value="${mvFilters.carCust}" oninput="mvFilters.carCust=this.value;refreshMvTable()"></div>
-      <div class="form-row" style="align-self:flex-end"><button class="btn btn-sm" style="width:100%" onclick="resetMvFilters()">مسح الفلاتر</button></div>
+      <div class="form-row"><label class="f-label">طلبها الموظف</label>
+        <select class="f" onchange="mvFilters.reqById=this.value;refreshMvTable()">
+          <option value="">الكل</option>
+          ${DB.employees.map(e=>`<option value="${e.id}" ${mvFilters.reqById===e.id?'selected':''}>${e.name}</option>`).join('')}
+        </select></div>
     </div>
+    <div style="margin-top:8px"><button class="btn btn-sm" onclick="resetMvFilters()">مسح الفلاتر</button></div>
   </div>
 
   <div class="section-head"><h3>سجل حركة المخزن</h3></div>
@@ -2331,6 +2336,15 @@ function renderStockMoves(){
     <table><thead><tr><th>التاريخ</th><th>الصنف</th><th>النوع</th><th>الكمية</th><th>ملاحظة</th></tr></thead>
     <tbody id="mvTableBody">${mvRowsHTML()}</tbody></table>
   </div>`;
+}
+/* الملاحظة 38: أجزاء عرض تتبع الحركة (طالب/أمر/سيارة/ملاحظات) */
+function moveTrackParts(m){
+  const parts = [];
+  if(m.reqByName) parts.push('طلبها: '+m.reqByName);
+  if(m.forJobNo) parts.push('لأمر #'+m.forJobNo);
+  if(m.forCarLbl) parts.push('لسيارة: '+m.forCarLbl);
+  if(m.notes) parts.push('📝 '+m.notes);
+  return parts;
 }
 function moveMatchesFilters(m){
   const f = mvFilters;
@@ -2340,9 +2354,13 @@ function moveMatchesFilters(m){
   else if(f.type && m.type!==f.type) return false;
   if(f.supplierId && m.supplierId!==f.supplierId) return false;
   if(f.partId && m.partId!==f.partId) return false;
+  if(f.reqById && m.reqById!==f.reqById) return false;
   if(f.jobNo){
+    const jn = f.jobNo.trim();
     const job = m.jobId ? DB.jobs.find(j=>j.id===m.jobId) : null;
-    if(!job || !job.jobNo.includes(f.jobNo.trim())) return false;
+    const matchConsumed = job && job.jobNo.includes(jn);
+    const matchRelated = m.forJobNo && String(m.forJobNo).includes(jn);
+    if(!matchConsumed && !matchRelated) return false;
   }
   if(f.carCust){
     const t = f.carCust.trim().toLowerCase();
@@ -2354,7 +2372,7 @@ function moveMatchesFilters(m){
   }
   return true;
 }
-function resetMvFilters(){ mvFilters = { dateFrom:'', dateTo:'', supplierId:'', type:'', partId:'', jobNo:'', carCust:'' }; refreshContent(); }
+function resetMvFilters(){ mvFilters = { dateFrom:'', dateTo:'', supplierId:'', type:'', partId:'', jobNo:'', carCust:'', reqById:'' }; refreshContent(); }
 function refreshMvTable(){ const b=document.getElementById('mvTableBody'); if(b) b.innerHTML = mvRowsHTML(); }
 function mvRowsHTML(){
   const moves = [...DB.stockMoves].filter(moveMatchesFilters).sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -2390,6 +2408,7 @@ function mvRowsHTML(){
       } else if(m.payMethod){ extra.push(m.payMethod); }
     }
     if(m.note) extra.push(m.note);
+    moveTrackParts(m).forEach(x=>extra.push(x));
     const noteTxt = extra.join(' — ');
     const clickable = m.jobId ? `onclick="openWorkOrderReport('${m.jobId}')" style="cursor:pointer"` : '';
     return `<tr ${clickable}><td>${fmtDateTime(m.date)}</td><td>${itemName}</td>
@@ -2993,6 +3012,7 @@ function itemLedgerRowsHTML(partId){
       if(supplier) details.push('مورد: '+supplier.name);
     }
     if(m.note) details.push(m.note);
+    moveTrackParts(m).forEach(x=>details.push(x));
     const price = m.unitCost!=null ? 'شراء: '+money(m.unitCost) : (m.unitPrice!=null ? 'بيع: '+money(m.unitPrice) : '—');
     const clickable = job ? `onclick="openWorkOrderReport('${job.id}')" style="cursor:pointer"` : '';
     return `<tr ${clickable}><td>${fmtDateTime(m.date)}</td><td>${typeTagMap[m.type]||m.type}</td>
@@ -3682,7 +3702,7 @@ function renderNewPurchaseInvoice(){
       const exPart = l.partId ? DB.inventory.find(p=>p.id===l.partId) : null;
       const whLbl = exPart ? whName(partWhId(exPart)) : whName(l.warehouseId||defaultWhId());
       return `
-      <tr><td>${l.name}${l.partId?'':' <span class="tag tag-ready" style="margin-right:6px">صنف جديد</span>'}</td>
+      <tr><td>${l.name}${l.partId?'':' <span class="tag tag-ready" style="margin-right:6px">صنف جديد</span>'}${(()=>{const t=moveTrackParts(l);return t.length?`<div class="muted" style="font-size:11px;margin-top:3px">${t.join(' · ')}</div>`:'';})()}</td>
       <td class="muted">${l.category||'—'}</td><td class="muted">${l.unit||'—'}</td>
       <td>📦 ${whLbl}</td>
       <td>${l.qty}</td><td>${money(l.costPrice)}</td><td>${money(l.qty*l.costPrice)}</td>
@@ -3692,6 +3712,38 @@ function renderNewPurchaseInvoice(){
   </div>
   <button class="btn btn-accent" style="width:100%;margin-top:18px;padding:14px" onclick="savePurchaseInvoice()">💾 حفظ الفاتورة وتحديث المخزون وحساب المورد</button>
   `;
+}
+/* الملاحظة 38: حقول تتبع اختيارية للأصناف المشتراة (ملاحظات + طالب + أمر شغل + سيارة) */
+function purchaseTrackFieldsHTML(){
+  const emps = DB.employees.filter(e=>e.status==='نشط').sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+  const jobs = DB.jobs.filter(j=>!isJobClosed(j));
+  return `
+    <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px">
+      <label class="f-label" style="font-weight:700">📝 معلومات إضافية للتتبع (كلها اختيارية — مش لازم تملا حاجة)</label>
+      <div class="form-row"><textarea class="f" id="plNotes" rows="2" placeholder="مثال: مشتراة لتشخيص شكوى العميل · طلب المهندس أحمد · قطعة خارجية لعمرة موتور..."></textarea></div>
+      <div class="grid g3">
+        <div class="form-row" style="margin:0"><label class="f-label">طلبها الموظف</label>
+          <select class="f" id="plReqBy"><option value="">— بدون —</option>${emps.map(e=>`<option value="${e.id}">${e.name}</option>`).join('')}</select></div>
+        <div class="form-row" style="margin:0"><label class="f-label">مرتبطة بأمر شغل</label>
+          <select class="f" id="plJob"><option value="">— بدون —</option>${jobs.map(j=>{const c=DB.cars.find(x=>x.id===j.carId);return `<option value="${j.id}">#${j.jobNo}${c?' — '+c.plate:''}</option>`}).join('')}</select></div>
+        <div class="form-row" style="margin:0"><label class="f-label">السيارة المقصودة</label>
+          <select class="f" id="plCar"><option value="">— بدون —</option>${DB.cars.map(c=>{const cu=DB.customers.find(x=>x.id===c.customerId);return `<option value="${c.id}">${c.plate}${cu?' — '+cu.name:''}</option>`}).join('')}</select></div>
+      </div>
+    </div>`;
+}
+function readPurchaseTrackFields(){
+  const reqById=(document.getElementById('plReqBy')||{}).value||'';
+  const forJobId=(document.getElementById('plJob')||{}).value||'';
+  const forCarId=(document.getElementById('plCar')||{}).value||'';
+  const emp=reqById?DB.employees.find(e=>e.id===reqById):null;
+  const job=forJobId?DB.jobs.find(j=>j.id===forJobId):null;
+  const car=forCarId?DB.cars.find(c=>c.id===forCarId):null;
+  return {
+    notes:((document.getElementById('plNotes')||{}).value||'').trim(),
+    reqById, reqByName:emp?emp.name:'',
+    forJobId, forJobNo:job?job.jobNo:'',
+    forCarId, forCarLbl:car?(car.plate+(carLabel(car)?' — '+carLabel(car):'')):''
+  };
 }
 function openAddPurchaseLineModal(){
   openModal(`
@@ -3723,6 +3775,7 @@ function openAddPurchaseLineModal(){
         <select class="f" id="plNewWh">${whOptions(defaultWhId())}</select></div>
       <button class="btn btn-accent" style="width:100%" onclick="addNewItemLine()">إضافة الصنف للفاتورة</button>
     </div>
+    ${purchaseTrackFieldsHTML()}
   `);
   filterPartsLive('');
 }
@@ -3761,7 +3814,7 @@ function addExistingItemLine(partId){
   const costPrice = parseFloat(document.getElementById('plExCost').value)||0;
   const sellPrice = parseFloat(document.getElementById('plExSell').value)||0;
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
-  purchaseDraft.lines.push({partId:p.id, name:p.name, category:p.category, unit:p.unit, qty, costPrice, sellPrice});
+  purchaseDraft.lines.push({partId:p.id, name:p.name, category:p.category, unit:p.unit, qty, costPrice, sellPrice, ...readPurchaseTrackFields()});
   closeModal(); refreshContent();
 }
 function addNewItemLine(){
@@ -3776,7 +3829,8 @@ function addNewItemLine(){
     unit:document.getElementById('plNewUnit').value.trim()||'قطعة',
     qty, costPrice: parseFloat(document.getElementById('plNewCost').value)||0,
     sellPrice: parseFloat(document.getElementById('plNewSell').value)||0,
-    warehouseId: (document.getElementById('plNewWh')||{}).value || defaultWhId()
+    warehouseId: (document.getElementById('plNewWh')||{}).value || defaultWhId(),
+    ...readPurchaseTrackFields()
   });
   closeModal(); refreshContent();
 }
@@ -3802,7 +3856,8 @@ async function savePurchaseInvoice(){
       part = {id:uid('p'), name:line.name, sku:line.sku||'', category:line.category||'', unit:line.unit||'قطعة', qty:line.qty, minQty:2, costPrice:line.costPrice, sellPrice:line.sellPrice, warehouseId:line.warehouseId||defaultWhId(), createdAt:new Date().toISOString()};
       DB.inventory.push(part);
     }
-    DB.stockMoves.push({id:uid('mv'), partId:part.id, type:'in', qty:line.qty, unitCost:line.costPrice, warehouseId:partWhId(part), date:new Date().toISOString(), note:'فاتورة شراء #'+(purchaseDraft.invoiceNo||'—')+' — '+purchaseDraft.paymentMethod+' — مخزن: '+whName(partWhId(part)), supplierId:purchaseDraft.supplierId, purchaseId});
+    DB.stockMoves.push({id:uid('mv'), partId:part.id, type:'in', qty:line.qty, unitCost:line.costPrice, warehouseId:partWhId(part), date:new Date().toISOString(), note:'فاتورة شراء #'+(purchaseDraft.invoiceNo||'—')+' — '+purchaseDraft.paymentMethod+' — مخزن: '+whName(partWhId(part)), supplierId:purchaseDraft.supplierId, purchaseId,
+      notes:line.notes||'', reqById:line.reqById||'', reqByName:line.reqByName||'', forJobId:line.forJobId||'', forJobNo:line.forJobNo||'', forCarId:line.forCarId||'', forCarLbl:line.forCarLbl||''});
     invoiceItems.push({partId:part.id, name:part.name, qty:line.qty, unitCost:line.costPrice});
   }
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
