@@ -295,7 +295,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v48';
+const APP_VERSION = 'v53';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -328,7 +328,10 @@ const DEPT_SCREENS = {
 const ACTION_GROUPS = [
   ['أوامر الشغل', [
     ['jobs.create','إنشاء أمر شغل'],
-    ['jobs.edit','تعديل الأمر وإضافة خدمات'],
+    ['jobs.edit','تعديل الأمر وإضافة خدمات وقطع'],
+    ['jobs.status','تغيير حالة أمر الشغل'],
+    ['jobs.item_delete','حذف بنود من أمر الشغل'],
+    ['jobs.print','طباعة وتحميل أمر الشغل'],
     ['jobs.cancel','إلغاء أمر شغل'],
     ['jobs.delete','حذف أمر شغل نهائياً'],
   ]],
@@ -357,6 +360,7 @@ const ACTION_GROUPS = [
     ['bill.collect','تحصيل دفعات'],
     ['bill.discount','عمل خصم على الفاتورة'],
     ['bill.cancel','إلغاء فاتورة'],
+    ['bill.print','طباعة وتحميل الفاتورة'],
   ]],
   ['المالية', [
     ['fin.expenses','تسجيل مصروفات'],
@@ -384,28 +388,89 @@ function actionLabel(key){
   for(const g of ACTION_GROUPS){ const f = g[1].find(a=>a[0]===key); if(f) return f[1]; }
   return key;
 }
+/* الملاحظة 41: شرح كل صلاحية (يظهر في أيقونة ⓘ جنب الصلاحية في المحرر) */
+const PERM_INFO = {
+  'jobs.create':'إنشاء أوامر شغل جديدة للسيارات. مايسمحش بتعديل أو إلغاء أوامر موجودة.',
+  'jobs.edit':'إضافة خدمات/مصنعيات وقطع خارجية وتعديل بنود أمر الشغل وبياناته. مايسمحش بحذف البنود ولا تغيير الحالة (ليهم صلاحيات مستقلة).',
+  'jobs.status':'تغيير حالة أمر الشغل (مستلمة/جاري الفحص/جاري الشغل/جاهزة/تم التسليم). الإلغاء ليه صلاحية منفصلة.',
+  'jobs.item_delete':'حذف بنود (خدمات أو قطع) من أمر الشغل. مايسمحش بإضافة أو تعديل بنود.',
+  'jobs.print':'طباعة أمر الشغل وتحميله كملف. عرض فقط — مفيش أي تعديل.',
+  'jobs.cancel':'إلغاء أمر شغل بسبب موثق. الأوامر اللي عليها معاملات مالية/مخزنية إلغاؤها لصاحب المركز فقط.',
+  'jobs.delete':'حذف أمر الشغل الملغي نهائياً من السجلات (صاحب المركز فقط عملياً).',
+  'customers.create':'إضافة عملاء جدد وسياراتهم وتعديل بياناتهم.',
+  'customers.archive':'أرشفة عميل (إخفاؤه من القوائم مع الاحتفاظ بسجله).',
+  'customers.delete':'حذف عميل نهائياً بكل سجلاته. خطيرة — يفضل تفضل لصاحب المركز.',
+  'inv.issue':'صرف قطع من المخزون على أوامر الشغل. بيخصم من الرصيد فوراً.',
+  'inv.receive':'تسجيل توريدات ومشتريات وفواتير شراء الموردين. بيزوّد الرصيد.',
+  'inv.return':'تسجيل مرتجعات العملاء للمخزون.',
+  'inv.item_create':'إضافة أصناف جديدة للمخزون.',
+  'inv.item_edit':'تعديل بيانات الأصناف (اسم/كود/أسعار/مخازن). مايسمحش بتعديل الكميات (دي تسوية).',
+  'inv.transfer':'تحويل كميات بين المخازن.',
+  'inv.adjust':'تسوية كمية صنف يدوياً بعد جرد أو خطأ. حساسة — بتغير الأرصدة مباشرة.',
+  'inv.scrap':'تسجيل هالك وتالف. بيخصم من الرصيد وبيتسجل كخسارة.',
+  'inv.count_approve':'اعتماد نتيجة الجرد وتطبيق التسويات النهائية.',
+  'tools.issue':'صرف واستلام العدد الخاصة للفنيين.',
+  'tools.manage':'إضافة وتعديل وحذف العدد الخاصة نفسها.',
+  'bill.create':'إصدار فواتير من أوامر الشغل. الإصدار بيسلّم السيارة تلقائياً.',
+  'bill.collect':'تحصيل دفعات من العملاء على الفواتير.',
+  'bill.discount':'عمل خصم على الفاتورة وقت الإصدار. الخصومات العالية بتوصل لصاحب المركز كإشعار.',
+  'bill.cancel':'إلغاء فاتورة صادرة. مايرجعش المخزون تلقائياً.',
+  'bill.print':'طباعة الفاتورة وتحميلها كملف. عرض فقط.',
+  'fin.expenses':'تسجيل مصروفات المركز. بتتخصم من الحساب المختار.',
+  'fin.manage':'إدارة الخزنة والحسابات: أرصدة افتتاحية وتحويلات وإيداعات.',
+  'sup.pay':'سداد مستحقات الموردين من حسابات المركز.',
+  'fin.custody_create':'إصدار عهد مالية للموظفين. بتتخصم من المصدر فوراً.',
+  'fin.custody_settle':'تسوية العهد: تحويل المصروفات الفعلية ورجوع الباقي لحساب.',
+  'rep.profit':'رؤية التكاليف والأرباح وهوامش الربح في كل الشاشات. من غيرها بيشوف أسعار البيع بس.',
+  'rep.financial':'رؤية التقارير المالية المجمعة.',
+  'hr.employees':'إدارة ملفات الموظفين: إضافة وتعديل بيانات.',
+  'hr.approve':'اعتماد أو رفض الإجازات والأذونات.',
+  'hr.payroll':'رؤية وحساب كشوف المرتبات والرواتب.',
+  'hr.penalties':'تسجيل جزاءات وخصومات على الموظفين.',
+  'settings.users':'إدارة المستخدمين والصلاحيات — أخطر صلاحية، لصاحب المركز فقط.',
+};
+/* توافق: الحسابات المحفوظة قبل الصلاحيات التفصيلية الجديدة بتاخد الصلاحيات اللي كانت ضمنية عندها
+   (عشان محدش يفقد قدرة كان بيستخدمها). الحسابات الجديدة بتتحفظ صريحة ومستقلة تماماً. */
+const LEGACY_ACTION_EXPANSION = [
+  ['jobs.edit', ['jobs.status','jobs.item_delete','jobs.print']],
+  ['jobs.create', ['jobs.print']],
+  ['bill.create', ['bill.print']],
+  ['bill.collect', ['bill.print']],
+];
+function expandLegacyActions(list){
+  const set = new Set(list||[]);
+  LEGACY_ACTION_EXPANSION.forEach(([base, extras])=>{ if(set.has(base)) extras.forEach(x=>set.add(x)); });
+  return [...set];
+}
+/* كل القوالب: الجاهزة + المخصصة اللي صاحب المركز حفظها */
+function allTemplates(){
+  const merged = {};
+  Object.entries(ROLE_TEMPLATES).forEach(([k,t])=>{ merged[k]=t; });
+  Object.entries((DB.settings&&DB.settings.customTemplates)||{}).forEach(([k,t])=>{ merged[k]={...t, custom:true}; });
+  return merged;
+}
 const ROLE_TEMPLATES = {
   reception_engineer: { label:'مهندس استقبال', dept:'reception',
     screens:['dashboard','customers','jobs','appointments','hr'],
-    actions:['jobs.create','jobs.edit','customers.create'] },
+    actions:['jobs.create','jobs.edit','jobs.status','jobs.item_delete','jobs.print','customers.create'] },
   reception_supervisor: { label:'مشرف استقبال', dept:'reception',
     screens:['dashboard','customers','jobs','appointments','hr'],
-    actions:['jobs.create','jobs.edit','jobs.cancel','customers.create','customers.archive'] },
+    actions:['jobs.create','jobs.edit','jobs.status','jobs.item_delete','jobs.print','jobs.cancel','customers.create','customers.archive'] },
   warehouse_keeper: { label:'أمين مخزن', dept:'warehouse',
     screens:['dashboard','inventory','stockmoves','tools','suppliers'],
     actions:['inv.issue','inv.receive','inv.return','inv.item_create','tools.issue'] },
   warehouse_manager: { label:'مدير مخزن', dept:'warehouse',
     screens:['dashboard','inventory','stockmoves','tools','suppliers','jobs'],
-    actions:['inv.issue','inv.receive','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.adjust','inv.scrap','inv.count_approve','tools.issue','tools.manage'] },
+    actions:['inv.issue','inv.receive','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.adjust','inv.scrap','inv.count_approve','tools.issue','tools.manage','jobs.print'] },
   workshop_manager: { label:'مدير ورشة', dept:'warehouse',
     screens:['dashboard','jobs','inventory','stockmoves','tools'],
-    actions:['jobs.edit','inv.issue','tools.issue'] },
+    actions:['jobs.edit','jobs.status','jobs.item_delete','jobs.print','inv.issue','tools.issue'] },
   junior_accountant: { label:'محاسب', dept:'accounts',
     screens:['dashboard','jobs','invoices','receivables'],
-    actions:['bill.create','bill.collect'] },
+    actions:['bill.create','bill.collect','bill.print','jobs.print'] },
   senior_accountant: { label:'محاسب أول', dept:'accounts',
     screens:['dashboard','jobs','openjobs','invoices','receivables','finance','expenses','suppliers','services','reports','hr','tools'],
-    actions:['bill.create','bill.collect','bill.discount','bill.cancel','fin.expenses','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.payroll'] },
+    actions:['bill.create','bill.collect','bill.discount','bill.cancel','bill.print','jobs.print','fin.expenses','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.payroll'] },
   hr_officer: { label:'موظف موارد بشرية', dept:'hr',
     screens:['dashboard','hr'], actions:['hr.employees'] },
   hr_manager: { label:'مدير موارد بشرية', dept:'hr',
@@ -417,9 +482,9 @@ const ROLE_TEMPLATES = {
    القسم يشوف كل شاشاته وينفّذ عملياته العادية، والإجراءات الحساسة (تسوية/اعتماد جرد/
    إدارة العدد/الجزاءات/حذف نهائي/إدارة المستخدمين) تفضل لصاحب المركز فقط. */
 const DEPT_DEFAULT_ACTIONS = {
-  reception: ['jobs.create','jobs.edit','jobs.cancel','customers.create','customers.archive'],
-  warehouse: ['inv.issue','inv.receive','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.scrap','tools.issue'],
-  accounts: ['bill.create','bill.collect','bill.discount','bill.cancel','fin.expenses','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.payroll'],
+  reception: ['jobs.create','jobs.edit','jobs.status','jobs.item_delete','jobs.print','jobs.cancel','customers.create','customers.archive'],
+  warehouse: ['inv.issue','inv.receive','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.scrap','tools.issue','jobs.print'],
+  accounts: ['bill.create','bill.collect','bill.discount','bill.cancel','bill.print','jobs.print','fin.expenses','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.payroll'],
   hr: ['hr.employees','hr.approve','hr.payroll','hr.penalties'],
 };
 function fullDeptPerms(dept){
@@ -451,8 +516,8 @@ function canScreen(tab){
 function visibleTabs(){
   if(!session) return [];
   if(isOwnerSession()) return ROLE_TABS.owner;
-  const pool = DEPT_SCREENS[session.role] || [];
-  return ROLE_TABS.owner.filter(t=>pool.includes(t) && canScreen(t));
+  // الملاحظة 41: أي شاشة ممنوحة بتظهر — حتى لو مش من شاشات القسم الافتراضية (شاشات إضافية)
+  return ROLE_TABS.owner.filter(t=>canScreen(t));
 }
 function firstVisibleTab(){
   const tabs = visibleTabs();
@@ -462,13 +527,16 @@ function buildSession(dept, staff){
   const perms = (staff && Array.isArray(staff.screens) && Array.isArray(staff.actions))
     ? { screens:staff.screens, actions:staff.actions }
     : fullDeptPerms(dept);   // حسابات قديمة أو دخول بالرقم السري ⇒ صلاحيات القسم كاملة
+  // توافق: حساب اتحفظ قبل الصلاحيات التفصيلية (v51) بياخد الصلاحيات اللي كانت ضمنية عنده.
+  // الحسابات المحفوظة بالمحرر الجديد (permsV>=2) صلاحياتها صريحة ومستقلة 100%.
+  const actions = (staff && !(staff.permsV>=2)) ? expandLegacyActions(perms.actions) : perms.actions;
   return {
     role: dept,
     staffId: staff ? staff.id : null,
     staffName: staff ? staff.name : null,
     template: staff ? staff.template : null,
     screens: new Set(perms.screens),
-    actions: new Set(perms.actions)
+    actions: new Set(actions)
   };
 }
 
@@ -1538,10 +1606,19 @@ function jobDetailHTML(jobId){
 
   <div class="form-row">
     <label class="f-label">الحالة</label>
-    ${can('jobs.edit')||can('jobs.cancel') ? `<select class="f" onchange="handleStatusChange('${job.id}', this.value)">
+    ${can('jobs.status')||can('jobs.cancel') ? `<select class="f" onchange="handleStatusChange('${job.id}', this.value)">
       ${STATUSES.map(s=>`<option value="${s}" ${job.status===s?'selected':''}>${s}</option>`).join('')}
       ${can('jobs.cancel')?`<option value="ملغاة" ${job.status==='ملغاة'?'selected':''}>ملغاة</option>`:''}
     </select>` : `<div style="font-weight:700">${job.status}</div>`}
+  </div>
+
+  <div class="form-row">
+    <label class="f-label">👤 الموظف المسؤول عن أمر الشغل</label>
+    ${job.responsibleName ? `<div style="font-weight:700;font-size:13.5px;margin-bottom:4px">${job.responsibleName}</div>` : ''}
+    ${can('jobs.edit') ? `
+      <input class="f" id="jdRespSearch" autocomplete="off" placeholder="${job.responsibleName?'اكتب اسم موظف تاني لو عايز تغيّره...':'اكتب اسم الموظف — بحث ذكي في كل موظفين المركز...'}" oninput="jdRespFilter('${job.id}', this.value)">
+      <div id="jdRespResults" style="max-height:160px;overflow-y:auto;margin-top:4px"></div>`
+      : (job.responsibleName ? '' : '<div class="muted" style="font-size:12.5px">غير محدد</div>')}
   </div>
 
   ${job.status==='ملغاة' ? `
@@ -1563,24 +1640,57 @@ function jobDetailHTML(jobId){
         <button class="btn btn-sm" onclick="openExtItemModal('${job.id}','ext_work')">${ICONS.plus} أعمال خارجية</button>
       </span>` : ''}
     </div>
-    <table class="items-table"><thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th>${can('jobs.edit')?'<th></th>':''}</tr></thead>
-    <tbody>
-      ${job.items.length ? job.items.map(it=>`
+    ${(()=>{
+      // الملاحظة 40: تصنيف البنود تلقائياً — قطع غيار (مخزن + خارجي) / خدمات ومصنعيات (داخلي + خارجي)
+      // الملاحظة 41: التعديل والحذف صلاحيتان مستقلتان
+      const canEditIt = can('jobs.edit'), canDelIt = can('jobs.item_delete');
+      const hasActCol = canEditIt || canDelIt;
+      const cols = hasActCol ? 5 : 4;
+      const rowHTML = it => `
         <tr><td>${it.name} <span class="muted" style="font-size:11px">(${kindLabel(it)})</span>
-        ${(it.technicianId || it.technician) ? `<div style="font-size:11px;color:var(--accent)">👨‍🔧 الفني: ${itemTechLabel(it, job)}</div>` : ''}
+        ${(it.kind==='service'||it.kind==='ext_work') && (it.technicianId || it.technician) ? `<div style="font-size:11px;color:var(--accent)">👨‍🔧 الفني: ${itemTechLabel(it, job)}</div>` : ''}
         ${(it.kind==='ext_part'||it.kind==='ext_work') && can('rep.profit') ? `<div class="muted" style="font-size:11px">${it.supplierId?('المورد: '+((DB.suppliers.find(s=>s.id===it.supplierId)||{}).name||'—')+' · '):''}التكلفة: ${money(it.costPrice||0)} · ${it.payMethod||'كاش'}</div>` : ''}
         ${it.kind==='part' && it.costPrice!==undefined && can('rep.profit') ? `<div class="muted" style="font-size:11px">سعر الشراء: ${money(it.costPrice)}</div>` : ''}
         </td>
         <td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td>
-        ${can('jobs.edit') ? `<td style="white-space:nowrap">
-          <button class="btn btn-sm" onclick="openEditJobItemModal('${job.id}','${it.id}')">تعديل</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteJobItem('${job.id}','${it.id}')">حذف</button>
+        ${hasActCol ? `<td style="white-space:nowrap">
+          ${canEditIt ? `<button class="btn btn-sm" onclick="openEditJobItemModal('${job.id}','${it.id}')">تعديل</button>` : ''}
+          ${canDelIt ? `<button class="btn btn-sm btn-danger" onclick="deleteJobItem('${job.id}','${it.id}')">حذف</button>` : ''}
         </td>` : ''}
-        </tr>
-      `).join('') : `<tr><td colspan="${can('jobs.edit')?5:4}" class="muted" style="text-align:center">مفيش بنود لسه</td></tr>`}
+        </tr>`;
+      const partsItems = job.items.filter(it=>it.kind==='part'||it.kind==='ext_part');
+      const laborItems = job.items.filter(it=>it.kind!=='part'&&it.kind!=='ext_part');
+      const partsSale = partsItems.reduce((s,it)=>s+it.qty*it.unitPrice,0);
+      const laborSale = laborItems.reduce((s,it)=>s+it.qty*it.unitPrice,0);
+      const section = (title, items, sale) => items.length ? `
+        <tr><td colspan="${cols}" style="background:var(--surface-2);font-weight:800;font-size:12.5px">${title} (${items.length})</td></tr>
+        ${items.map(rowHTML).join('')}
+        <tr><td colspan="${cols-1}" style="font-weight:700;font-size:12px" class="muted">إجمالي ${title}</td><td style="font-weight:800">${money(sale)}</td></tr>` : '';
+      return `
+    <table class="items-table"><thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th>${hasActCol?'<th></th>':''}</tr></thead>
+    <tbody>
+      ${job.items.length ? section('🔩 قطع الغيار', partsItems, partsSale) + section('🛠 الخدمات والمصنعيات', laborItems, laborSale)
+        : `<tr><td colspan="${cols}" class="muted" style="text-align:center">مفيش بنود لسه</td></tr>`}
     </tbody></table>
-    <div class="flex-between" style="margin-top:10px"><span>الإجمالي</span><span class="total-row">${money(total)}</span></div>
+    <div class="flex-between" style="margin-top:10px"><span>الإجمالي</span><span class="total-row">${money(total)}</span></div>`;
+    })()}
   </div>
+
+  ${can('rep.profit') && job.items.length ? (()=>{
+    // ملخص التكاليف والربحية (نفس معادلات jobCostBreakdown — مفيش أي تغيير حسابي)
+    const b = jobCostBreakdown(job);
+    return `
+  <div class="card" style="margin-bottom:6px">
+    <label class="f-label">💰 ملخص التكاليف والربحية</label>
+    <table style="margin-top:6px"><tbody>
+      <tr><td>إجمالي تكلفة قطع الغيار (مخزن + خارجي)</td><td style="font-weight:700">${money(b.inParts + b.extParts)}</td></tr>
+      <tr><td>إجمالي تكلفة المصنعيات الخارجية</td><td style="font-weight:700">${money(b.extWork)}</td></tr>
+      <tr><td>🎨 إجمالي تكلفة خامات الدهان</td><td style="font-weight:700">${money(b.paint)}</td></tr>
+      <tr><td style="font-weight:800">إجمالي التكلفة</td><td style="font-weight:800">${money(b.total)}</td></tr>
+      <tr><td style="font-weight:800">الربحية (بيع − تكلفة)</td><td style="font-weight:800;${b.profit<0?'color:var(--danger)':'color:var(--accent)'}">${money(b.profit)}</td></tr>
+    </tbody></table>
+  </div>`;
+  })() : ''}
 
   ${can('rep.profit') && (job.internalCosts||[]).length ? `
   <div class="form-row">
@@ -1595,11 +1705,38 @@ function jobDetailHTML(jobId){
       ${hasInvoice?'تم إصدار الفاتورة':'إصدار فاتورة'}
     </button>` : ''}
   ${cust.phone ? `<button class="btn" style="width:100%;margin-top:8px" onclick="notifyCustomerWhatsapp('${job.id}')">📱 إشعار العميل واتساب</button>` : ''}
-  <div style="display:flex;gap:8px;margin-top:8px">
+  ${can('jobs.print') ? `<div style="display:flex;gap:8px;margin-top:8px">
     <button class="btn" style="flex:1" onclick="printJobTicket('${job.id}')">🖨 طباعة أمر الشغل</button>
     <button class="btn" style="flex:1" onclick="downloadJobTicket('${job.id}')">⬇ تحميل أمر الشغل</button>
-  </div>
+  </div>` : ''}
   `;
+}
+/* الملاحظة 40: الموظف المسؤول عن أمر الشغل — بحث ذكي في كل موظفي المركز (مش الفنيين بس) */
+function jdRespFilter(jobId, val){
+  const box = document.getElementById('jdRespResults');
+  if(!box) return;
+  const q = normSearch(val);
+  if(!q){ box.innerHTML=''; return; }
+  const emps = DB.employees
+    .filter(e=>e.status==='نشط' && normSearch(e.name).includes(q))
+    .sort((a,b)=>a.name.localeCompare(b.name,'ar')).slice(0,8);
+  box.innerHTML = emps.length
+    ? emps.map(e=>`<div class="btn" style="width:100%;text-align:right;margin-bottom:4px;justify-content:space-between;display:flex" onclick="setJobResponsible('${jobId}','${e.id}')">
+        <span>${e.name}</span><span class="muted" style="font-size:11px">${e.job||''}</span>
+      </div>`).join('')
+    : `<div class="muted" style="font-size:12px">مفيش موظف بالاسم ده</div>`;
+}
+async function setJobResponsible(jobId, empId){
+  if(!can('jobs.edit')){ toast('مالكش صلاحية تعديل أوامر الشغل', true); return; }
+  const job = DB.jobs.find(j=>j.id===jobId);
+  const emp = DB.employees.find(e=>e.id===empId);
+  if(!job || !emp) return;
+  job.responsibleId = emp.id;
+  job.responsibleName = emp.name;
+  await saveKey('jobs', DB.jobs);
+  await logAction('تحديد الموظف المسؤول عن أمر الشغل #'+job.jobNo+': '+emp.name);
+  toast('تم تحديد الموظف المسؤول: '+emp.name);
+  openJobDetail(jobId);
 }
 function notifyCustomerWhatsapp(jobId){
   const job = DB.jobs.find(j=>j.id===jobId);
@@ -1649,10 +1786,12 @@ function brandedJobHTML(job){
   </div>`;
 }
 function printJobTicket(jobId){
+  if(!can('jobs.print')){ toast('مالكش صلاحية طباعة أوامر الشغل', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   printHTML(`<style>${brandedInvoiceCSS()}</style>`+brandedJobHTML(job));
 }
 function downloadJobTicket(jobId){
+  if(!can('jobs.print')){ toast('مالكش صلاحية طباعة أوامر الشغل', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   downloadHTML(brandedJobHTML(job), 'أمر-شغل-'+job.jobNo);
 }
@@ -1660,12 +1799,18 @@ function openEditJobItemModal(jobId, itemId){
   const job = DB.jobs.find(j=>j.id===jobId);
   const it = job.items.find(i=>i.id===itemId);
   const isPart = it.kind==='part';
+  // الملاحظة 42: القطعة الخارجية قطعة غيار مش مصنعية — اسم + تكلفة (عرض) + سعر بيع، ومفيش فني
+  const isExtPart = it.kind==='ext_part';
   openModal(`
-    <h3>تعديل البند</h3>
-    <div class="form-row"><label class="f-label">الاسم الظاهر للعميل</label><input class="f" id="editItName" value="${it.name}"></div>
+    <h3>تعديل البند ${isExtPart?'<span class="muted" style="font-size:12px">— قطعة غيار خارجية</span>':''}</h3>
+    <div class="form-row"><label class="f-label">${isExtPart?'اسم القطعة (الظاهر للعميل)':'الاسم الظاهر للعميل'}</label><input class="f" id="editItName" value="${it.name}"></div>
     ${isPart ? `
       <div class="muted" style="font-size:12.5px;margin-bottom:10px">الكمية (${it.qty}) وسعر الشراء (${money(it.costPrice||0)}) من اختصاص المخزن ومش قابلة للتعديل هنا.</div>
       <div class="form-row"><label class="f-label">سعر البيع للوحدة</label><input class="f" id="editItPrice" type="number" min="0" value="${it.unitPrice}"></div>
+    ` : isExtPart ? `
+      ${can('rep.profit') ? `<div class="form-row"><label class="f-label">سعر التكلفة (اتسجل وقت الشراء — للعرض فقط)</label><input class="f" value="${money(it.costPrice||0)}" disabled style="opacity:.6"></div>` : ''}
+      <div class="muted" style="font-size:12px;margin-bottom:8px">الكمية: ${it.qty} — اتسجلت وقت الشراء ومش قابلة للتعديل هنا.</div>
+      <div class="form-row"><label class="f-label">سعر البيع للوحدة (حسب المعاينة اللي وافق عليها العميل)</label><input class="f" id="editItPrice" type="number" min="0" value="${it.unitPrice}"></div>
     ` : `
       <div class="grid g2">
         <div class="form-row"><label class="f-label">الكمية</label><input class="f" id="editItQty" type="number" min="1" value="${it.qty}"></div>
@@ -1686,7 +1831,8 @@ async function saveEditJobItem(jobId, itemId){
   if(!name){ toast('اكتب اسم صحيح', true); return; }
   it.name = name;
   it.unitPrice = price;
-  if(it.kind!=='part'){
+  // الملاحظة 42: الكمية والفني للخدمات والمصنعيات الخارجية بس — القطع (مخزن/خارجية) اسم وسعر بيع فقط
+  if(it.kind==='service' || it.kind==='ext_work'){
     const qtyEl = document.getElementById('editItQty');
     if(qtyEl) it.qty = parseFloat(qtyEl.value)||1;
     const techEl = document.getElementById('editItTech');
@@ -1700,7 +1846,7 @@ async function saveEditJobItem(jobId, itemId){
   closeModal(); toast('تم حفظ التعديل'); openJobDetail(jobId); refreshContent();
 }
 function deleteJobItem(jobId, itemId){
-  if(!can('jobs.edit')){ toast('مالكش صلاحية تعديل أوامر الشغل', true); return; }
+  if(!can('jobs.item_delete')){ toast('مالكش صلاحية حذف بنود أوامر الشغل', true); return; }
   askConfirm('هل أنت متأكد من حذف هذا البند؟', async ()=>{
     const job = DB.jobs.find(j=>j.id===jobId);
     job.items = job.items.filter(i=>i.id!==itemId);
@@ -1847,7 +1993,7 @@ function deleteJobOrder(jobId){
   });
 }
 async function changeJobStatus(jobId, status){
-  if(!can('jobs.edit')){ toast('مالكش صلاحية تغيير حالة أمر الشغل', true); refreshContent(); return; }
+  if(!can('jobs.status')){ toast('مالكش صلاحية تغيير حالة أمر الشغل', true); refreshContent(); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   job.status = status;
   if(status==='تم التسليم') job.deliveredAt = new Date().toISOString();
@@ -2640,8 +2786,8 @@ function workOrderReportHTML(jobId){
   <div style="margin-bottom:14px"><span class="muted" style="font-size:12px">الحالة:</span> <span class="tag ${STATUS_TAGCLASS[job.status]}">${job.status}</span></div>
   <div class="muted" style="font-size:12.5px;margin-bottom:14px">الفني: ${job.technicianId ? techLabelOf(job.technicianId) : (job.technician||'غير محدد')}</div>
   <label class="f-label">الخدمات المنفذة</label>
-  <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>الخدمة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
-  <tbody>${services.length? services.map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>`).join('') : `<tr><td colspan="4" class="empty">لا توجد خدمات</td></tr>`}</tbody></table>
+  <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>الخدمة</th><th>الفني المنفذ</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+  <tbody>${services.length? services.map(it=>`<tr><td>${it.name}</td><td>${(it.technicianId||it.technician)?itemTechLabel(it, job):'—'}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>`).join('') : `<tr><td colspan="5" class="empty">لا توجد خدمات</td></tr>`}</tbody></table>
   <label class="f-label">قطع الغيار المصروفة</label>
   <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>القطعة</th><th>الكمية</th><th>سعر البيع</th><th>الإجمالي</th></tr></thead>
   <tbody>${parts.length? parts.map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>`).join('') : `<tr><td colspan="4" class="empty">لا توجد قطع مصروفة</td></tr>`}</tbody></table>
@@ -2671,6 +2817,10 @@ function workOrderReportHTML(jobId){
     ${stat(money(totalCost),'إجمالي التكاليف (الشراء)')}
     ${stat(money(realProfit),'صافي الربح الحقيقي'+(inv?'':' المتوقع'), realProfit<0)}
     ${stat((totalRevenue>0?Math.round(realProfit/totalRevenue*1000)/10:0)+'%','هامش الربح'+(inv?'':' المتوقع'), realProfit<0)}
+  </div>
+  <div class="card" style="margin-top:12px">
+    <span class="muted" style="font-size:12px">👤 الموظف المسؤول عن أمر الشغل:</span>
+    <span style="font-weight:800;margin-right:6px">${job.responsibleName||'غير محدد'}</span>
   </div>
   <button class="btn" style="width:100%;margin-top:16px" onclick="printJobTicket('${job.id}')">🖨 طباعة</button>
   `;
@@ -2869,6 +3019,11 @@ function openEditItemModal(partId){
       <div class="form-row"><label class="f-label">الوحدة</label><input class="f" id="eiUnit" value="${p.unit||'قطعة'}"></div>
     </div>
     <div class="grid g2">
+      <div class="form-row"><label class="f-label">رقم OEM (اختياري)</label><input class="f" id="eiOem" value="${p.oemNo||''}"></div>
+      <div class="form-row"><label class="f-label">رقم المورد للقطعة (اختياري)</label><input class="f" id="eiSupNo" value="${p.supplierPartNo||''}"></div>
+    </div>
+    <div class="form-row"><label class="f-label">كلمات بحث بديلة (اختياري) — بتساعد البحث الذكي يلاقي الصنف بأي اسم</label><input class="f" id="eiKeywords" value="${p.keywords||''}" placeholder="مثال: بواجي، شمعات، spark plugs"></div>
+    <div class="grid g2">
       <div class="form-row"><label class="f-label">الحد الأدنى للمخزون</label><input class="f" id="eiMin" type="number" min="0" value="${p.minQty}"></div>
       <div class="form-row"><label class="f-label">موقع التخزين</label><input class="f" id="eiLocation" value="${p.location||''}" placeholder="مثال: رف 3 - درج ب"></div>
     </div>
@@ -2894,6 +3049,9 @@ async function saveEditItem(partId){
   p.sku = document.getElementById('eiSku').value.trim();
   p.category = document.getElementById('eiCategory').value.trim();
   p.brand = document.getElementById('eiBrand').value.trim();
+  p.oemNo = ((document.getElementById('eiOem')||{}).value||'').trim();
+  p.supplierPartNo = ((document.getElementById('eiSupNo')||{}).value||'').trim();
+  p.keywords = ((document.getElementById('eiKeywords')||{}).value||'').trim();
   p.unit = document.getElementById('eiUnit').value.trim()||'قطعة';
   p.minQty = parseFloat(document.getElementById('eiMin').value)||0;
   p.location = document.getElementById('eiLocation').value.trim();
@@ -3745,6 +3903,165 @@ function readPurchaseTrackFields(){
     forCarId, forCarLbl:car?(car.plate+(carLabel(car)?' — '+carLabel(car):'')):''
   };
 }
+/* ============ الملاحظة 39: بحث ذكي في المخزون + منع تكرار الأصناف ============ */
+/* تطبيع النص للبحث: توحيد الألف/الياء/التاء المربوطة، شيل التشكيل، أرقام عربية→إنجليزية، lowercase */
+function normSearch(s){
+  return String(s||'')
+    .toLowerCase()
+    .replace(/[ً-ْـ]/g,'')
+    .replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/ؤ/g,'و').replace(/ئ/g,'ي').replace(/ء/g,'')
+    .replace(/[٠-٩]/g, d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[^a-z0-9؀-ۿ]+/g,' ')
+    .trim();
+}
+/* مسافة تحرير بسيطة بسقف (للأخطاء الإملائية) */
+function editDist(a,b,max){
+  if(Math.abs(a.length-b.length)>max) return max+1;
+  let dp=[...Array(b.length+1).keys()];
+  for(let i=1;i<=a.length;i++){
+    let prev=dp[0]; dp[0]=i; let rowMin=dp[0];
+    for(let j=1;j<=b.length;j++){
+      const t=dp[j];
+      dp[j]=Math.min(dp[j]+1, dp[j-1]+1, prev+(a[i-1]===b[j-1]?0:1));
+      prev=t; if(dp[j]<rowMin) rowMin=dp[j];
+    }
+    if(rowMin>max) return max+1;
+  }
+  return dp[b.length];
+}
+/* نص البحث المجمّع لكل صنف (اسم + كود + OEM + رقم المورد + ماركة + كلمات بديلة + فئة + وصف) — بكاش للأداء */
+const _partHayCache = new WeakMap();
+function partHaystack(p){
+  const sig = [p.name,p.sku,p.oemNo,p.supplierPartNo,p.brand,p.keywords,p.category,p.description].join('|');
+  const c = _partHayCache.get(p);
+  if(c && c.sig===sig) return c.text;
+  const text = normSearch([p.name,p.sku,p.oemNo,p.supplierPartNo,p.brand,p.keywords,p.category,p.description].filter(Boolean).join(' '));
+  _partHayCache.set(p,{sig,text});
+  return text;
+}
+/* درجة تطابق 0..1: نسبة كلمات البحث اللي لقيناها (جزئي أو بخطأ إملائي بسيط) */
+function partMatchScore(qTokens, p){
+  const hayTokens = partHaystack(p).split(' ');
+  if(!hayTokens.length) return 0;
+  let matched = 0;
+  for(const qt of qTokens){
+    let hit = false;
+    for(const ht of hayTokens){
+      if(ht.includes(qt) || (qt.length>=3 && qt.includes(ht) && ht.length>=3)){ hit=true; break; }
+      if(qt.length>=4){ const cap=qt.length>=7?2:1; if(editDist(qt,ht,cap)<=cap){ hit=true; break; } }
+    }
+    if(hit) matched++;
+  }
+  return matched/qTokens.length;
+}
+/* البحث الذكي: يرجّع [{part, score}] مرتبة بالأفضل */
+function smartSearchParts(query, limit){
+  const qTokens = normSearch(query).split(' ').filter(t=>t.length>=2);
+  if(!qTokens.length) return [];
+  const scored = [];
+  for(const p of DB.inventory){
+    const score = partMatchScore(qTokens, p);
+    if(score>0) scored.push({part:p, score});
+  }
+  scored.sort((a,b)=> b.score-a.score || a.part.name.localeCompare(b.part.name,'ar'));
+  return scored.slice(0, limit||8);
+}
+/* حركات التوريد بسعر (الأحدث أولاً) — لآخر سعر شراء ومتوسط التكلفة والتاريخ */
+function partInMoves(partId){
+  return DB.stockMoves.filter(m=>m.partId===partId && m.type==='in' && m.unitCost!=null)
+    .sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+function lastPurchaseInfo(partId){
+  const mv = partInMoves(partId)[0];
+  if(!mv){ const p=DB.inventory.find(x=>x.id===partId); return { price:p?p.costPrice:0, date:null, supplierName:null }; }
+  const s = mv.supplierId ? DB.suppliers.find(x=>x.id===mv.supplierId) : null;
+  return { price:mv.unitCost, date:mv.date, supplierName:s?s.name:null };
+}
+function avgPurchaseCost(partId){
+  const ms = partInMoves(partId);
+  if(!ms.length){ const p=DB.inventory.find(x=>x.id===partId); return p?p.costPrice:0; }
+  const tq = ms.reduce((s,m)=>s+m.qty,0)||1;
+  return ms.reduce((s,m)=>s+m.qty*m.unitCost,0)/tq;
+}
+function partPurchaseHistory(partId, n){
+  return partInMoves(partId).slice(0, n||3).map(mv=>({
+    date:mv.date, price:mv.unitCost,
+    supplier:(mv.supplierId && (DB.suppliers.find(x=>x.id===mv.supplierId)||{}).name)||'—'
+  }));
+}
+/* نفس الصنف في مخازن تانية (بنفس الاسم بعد التطبيع) */
+function partSiblings(p){ const key=normSearch(p.name); return DB.inventory.filter(x=>normSearch(x.name)===key); }
+/* صفوف نتائج البحث المبسطة: كود · اسم · متاح · آخر شراء · [تفاصيل] */
+function smartRowsHTML(parts){
+  return parts.map(p=>{
+    const lp = lastPurchaseInfo(p.id);
+    return `<div class="card" style="padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <div style="cursor:pointer;flex:1" onclick="usePartFromDetails('${p.id}')" title="اضغط لاستخدام الصنف ده">
+        <div style="font-weight:700;font-size:12.5px">${p.sku?`<span class="muted" style="font-size:11px">${p.sku}</span> · `:''}${p.name}</div>
+        <div class="muted" style="font-size:11.5px">متاح: ${p.qty} ${p.unit||''} · آخر شراء: ${money(lp.price)}${p.brand?' · '+p.brand:''}</div>
+      </div>
+      <button class="btn btn-sm" onclick="openPartDetailsPopup('${p.id}')">تفاصيل</button>
+    </div>`;
+  }).join('');
+}
+/* البحث اللحظي أثناء كتابة اسم الصنف الجديد + تحذير التشابه (70%+) */
+window._plNewName = '';
+function plNewSmartSearch(val){
+  window._plNewName = val;
+  const warn = document.getElementById('plNewWarn'), box = document.getElementById('plNewSimilar');
+  if(!warn || !box) return;
+  const q = String(val||'').trim();
+  if(q.length<2){ warn.innerHTML=''; box.innerHTML=''; return; }
+  const res = smartSearchParts(q, 6);
+  box.innerHTML = res.length ? `<label class="f-label" style="margin-top:8px">🔎 أصناف مشابهة موجودة بالفعل — اضغط على أي صنف لاستخدامه:</label>`+smartRowsHTML(res.map(r=>r.part)) : '';
+  warn.innerHTML = (res[0] && res[0].score>=0.7)
+    ? `<div class="card" style="border:1px solid var(--danger);padding:8px 10px;margin-top:8px;font-size:12.5px;color:var(--danger);font-weight:700">⚠️ فيه قطع غيار مشابهة موجودة بالفعل في المخزون — راجعها قبل ما تنشئ صنف جديد (وتقدر تكمل عادي لو الصنف مختلف فعلاً).</div>`
+    : '';
+}
+/* نافذة التفاصيل الكاملة للصنف (من نتائج البحث) */
+function openPartDetailsPopup(partId){
+  const p = DB.inventory.find(x=>x.id===partId); if(!p) return;
+  const lp = lastPurchaseInfo(partId), avg = avgPurchaseCost(partId), hist = partPurchaseHistory(partId,3);
+  const sibs = partSiblings(p);
+  openModal(`
+    <h3>📦 ${p.name} ${p.sku?`<span class="muted" style="font-size:12px">— ${p.sku}</span>`:''}</h3>
+    <table style="margin-bottom:12px"><tbody>
+      <tr><td class="muted">الفئة</td><td>${p.category||'—'}</td><td class="muted">الماركة</td><td>${p.brand||'—'}</td></tr>
+      <tr><td class="muted">رقم OEM</td><td>${p.oemNo||'—'}</td><td class="muted">رقم المورد للقطعة</td><td>${p.supplierPartNo||'—'}</td></tr>
+    </tbody></table>
+    <label class="f-label">الكميات في المخازن</label>
+    <table style="margin:6px 0 12px"><tbody>
+      ${sibs.map(x=>`<tr><td>📦 ${whName(partWhId(x))}</td><td style="font-weight:700">${x.qty} ${x.unit||''}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="grid g3" style="margin-bottom:12px">
+      ${stat(money(lp.price),'آخر سعر شراء')}
+      ${stat(money(avg),'متوسط تكلفة الشراء')}
+      ${stat(money(p.sellPrice||0),'سعر البيع')}
+    </div>
+    <label class="f-label">آخر ${hist.length||''} مشتريات</label>
+    <table style="margin:6px 0 14px"><tbody>
+      ${hist.length? hist.map(h=>`<tr><td>${fmtDate(h.date)}</td><td class="muted">${h.supplier}</td><td style="font-weight:700">${money(h.price)}</td></tr>`).join('') : '<tr><td class="empty">لسه مفيش مشتريات مسجلة بسعر</td></tr>'}
+    </tbody></table>
+    <div style="display:flex;gap:8px">
+      <button class="btn" style="flex:1" onclick="backToAddLine()">رجوع</button>
+      <button class="btn btn-accent" style="flex:1" onclick="usePartFromDetails('${p.id}')">✅ استخدم الصنف ده</button>
+    </div>
+  `);
+}
+/* رجوع لنافذة الإضافة مع الاحتفاظ بالاسم المكتوب */
+function backToAddLine(){
+  openAddPurchaseLineModal(); switchPlTab('new');
+  const el = document.getElementById('plNewName');
+  if(el){ el.value = window._plNewName||''; plNewSmartSearch(el.value); }
+}
+/* "استخدم الصنف ده": يقفل التفاصيل ويحوّل لوضع الصنف الموجود ويختاره فوراً */
+function usePartFromDetails(partId){
+  const p = DB.inventory.find(x=>x.id===partId); if(!p) return;
+  openAddPurchaseLineModal(); switchPlTab('search');
+  const s = document.getElementById('plSearch'); if(s) s.value = p.name;
+  filterPartsLive(p.name);
+  selectExistingPart(partId);
+}
 function openAddPurchaseLineModal(){
   openModal(`
     <h3>إضافة صنف للفاتورة</h3>
@@ -3758,10 +4075,16 @@ function openAddPurchaseLineModal(){
       <div id="plConfirmArea"></div>
     </div>
     <div id="plNewMode" style="display:none">
-      <div class="form-row"><label class="f-label">اسم الصنف</label><input class="f" id="plNewName"></div>
+      <div class="form-row"><label class="f-label">اسم الصنف</label><input class="f" id="plNewName" autocomplete="off" oninput="plNewSmartSearch(this.value)" placeholder="ابدأ اكتب — والنظام هيدوّر لوحده لو الصنف موجود قبل كده"></div>
+      <div id="plNewWarn"></div>
+      <div id="plNewSimilar" style="max-height:230px;overflow-y:auto"></div>
       <div class="grid g2">
         <div class="form-row"><label class="f-label">الكود (اختياري)</label><input class="f" id="plNewSku"></div>
         <div class="form-row"><label class="f-label">الفئة (اختياري)</label><input class="f" id="plNewCategory" placeholder="مثال: فلاتر، زيوت"></div>
+      </div>
+      <div class="grid g2">
+        <div class="form-row"><label class="f-label">الماركة (اختياري)</label><input class="f" id="plNewBrand" placeholder="مثال: NGK، Bosch"></div>
+        <div class="form-row"><label class="f-label">رقم OEM (اختياري)</label><input class="f" id="plNewOem"></div>
       </div>
       <div class="grid g2">
         <div class="form-row"><label class="f-label">الوحدة</label><input class="f" id="plNewUnit" value="قطعة"></div>
@@ -3786,13 +4109,12 @@ function switchPlTab(mode){
   document.getElementById('plTabNewBtn').className = 'btn btn-sm '+(mode==='new'?'btn-accent':'');
 }
 function filterPartsLive(term){
-  const t = term.trim().toLowerCase();
-  const results = t ? DB.inventory.filter(p=>p.name.toLowerCase().includes(t) || (p.sku&&p.sku.toLowerCase().includes(t))) : DB.inventory.slice(0,8);
+  const t = String(term||'').trim();
+  const results = t ? smartSearchParts(t, 10).map(r=>r.part) : DB.inventory.slice(0,8);
   const box = document.getElementById('plResults');
-  box.innerHTML = results.length ? results.map(p=>`
-    <div class="btn" style="width:100%;text-align:right;margin-bottom:6px;justify-content:space-between;display:flex" onclick="selectExistingPart('${p.id}')">
-      <span>${p.name}</span><span class="muted" style="font-size:11.5px">متاح: ${p.qty} ${p.unit||''} | شراء: ${money(p.costPrice)}</span>
-    </div>`).join('') : `<div class="muted" style="font-size:12.5px">لا يوجد صنف مطابق — استخدم "صنف جديد كلياً"</div>`;
+  if(!box) return;
+  box.innerHTML = results.length ? smartRowsHTML(results)
+    : `<div class="muted" style="font-size:12.5px">لا يوجد صنف مطابق — استخدم "صنف جديد كلياً"</div>`;
 }
 function selectExistingPart(partId){
   const p = DB.inventory.find(x=>x.id===partId);
@@ -3825,6 +4147,8 @@ function addNewItemLine(){
   purchaseDraft.lines.push({
     partId:null, name,
     sku:document.getElementById('plNewSku').value.trim(),
+    brand:((document.getElementById('plNewBrand')||{}).value||'').trim(),
+    oemNo:((document.getElementById('plNewOem')||{}).value||'').trim(),
     category:document.getElementById('plNewCategory').value.trim(),
     unit:document.getElementById('plNewUnit').value.trim()||'قطعة',
     qty, costPrice: parseFloat(document.getElementById('plNewCost').value)||0,
@@ -3853,7 +4177,7 @@ async function savePurchaseInvoice(){
       part.costPrice = line.costPrice;
       if(line.sellPrice) part.sellPrice = line.sellPrice;
     } else {
-      part = {id:uid('p'), name:line.name, sku:line.sku||'', category:line.category||'', unit:line.unit||'قطعة', qty:line.qty, minQty:2, costPrice:line.costPrice, sellPrice:line.sellPrice, warehouseId:line.warehouseId||defaultWhId(), createdAt:new Date().toISOString()};
+      part = {id:uid('p'), name:line.name, sku:line.sku||'', brand:line.brand||'', oemNo:line.oemNo||'', category:line.category||'', unit:line.unit||'قطعة', qty:line.qty, minQty:2, costPrice:line.costPrice, sellPrice:line.sellPrice, warehouseId:line.warehouseId||defaultWhId(), createdAt:new Date().toISOString()};
       DB.inventory.push(part);
     }
     DB.stockMoves.push({id:uid('mv'), partId:part.id, type:'in', qty:line.qty, unitCost:line.costPrice, warehouseId:partWhId(part), date:new Date().toISOString(), note:'فاتورة شراء #'+(purchaseDraft.invoiceNo||'—')+' — '+purchaseDraft.paymentMethod+' — مخزن: '+whName(partWhId(part)), supplierId:purchaseDraft.supplierId, purchaseId,
@@ -4052,7 +4376,7 @@ function invRowsHTML(){
       <td>${inv.cancelled?'<span class="tag tag-cancel">ملغاة</span>':`<span class="tag ${map[st][1]}">${map[st][0]}</span>`}</td>
       <td>${!inv.cancelled && st!=='paid'?`<button class="btn btn-sm btn-accent" onclick="openPaymentModal('${inv.id}')">تحصيل</button>`:''}
       ${!inv.cancelled && paid===0 && can('bill.cancel')?` <button class="btn btn-sm btn-danger" onclick="cancelInvoice('${inv.id}')">إلغاء</button>`:''}</td>
-      <td style="white-space:nowrap">${job?`<button class="btn btn-sm" onclick="openWorkOrderReport('${job.id}')">📈 الربحية</button> `:''}<button class="btn btn-sm" onclick="printInvoice('${inv.id}')">🖨</button> <button class="btn btn-sm" onclick="downloadInvoice('${inv.id}')">⬇ تحميل</button></td>
+      <td style="white-space:nowrap">${job?`<button class="btn btn-sm" onclick="openWorkOrderReport('${job.id}')">📈 الربحية</button> `:''}${can('bill.print')?`<button class="btn btn-sm" onclick="printInvoice('${inv.id}')">🖨</button> <button class="btn btn-sm" onclick="downloadInvoice('${inv.id}')">⬇ تحميل</button>`:''}</td>
     </tr>`;
   }).join('');
 }
@@ -4227,10 +4551,12 @@ function brandedInvoiceHTML(inv){
   </div>`;
 }
 function printInvoice(invId){
+  if(!can('bill.print')){ toast('مالكش صلاحية طباعة الفواتير', true); return; }
   const inv = DB.invoices.find(i=>i.id===invId);
   printHTML(`<style>${brandedInvoiceCSS()}</style>`+brandedInvoiceHTML(inv));
 }
 function downloadInvoice(invId){
+  if(!can('bill.print')){ toast('مالكش صلاحية طباعة الفواتير', true); return; }
   const inv = DB.invoices.find(i=>i.id===invId);
   downloadHTML(brandedInvoiceHTML(inv), 'فاتورة-'+inv.invNo);
 }
@@ -5747,21 +6073,34 @@ async function saveEmployeeEdit(id){
   await logAction('تعديل ملف الموظف: '+e.name);
   closeModal(); toast('تم حفظ التعديلات'); refreshContent();
 }
+/* الملاحظة 43: فلتر فترة جوه ملف الموظف — للسلف والجزاءات والحوافز والغياب */
+let empDetailPeriod = { emp:null, from:'', to:'' };
+function setEmpDetailPeriod(empId, k, v){
+  if(empDetailPeriod.emp!==empId) empDetailPeriod = { emp:empId, from:'', to:'' };
+  if(k==='clear'){ empDetailPeriod.from=''; empDetailPeriod.to=''; }
+  else empDetailPeriod[k] = v;
+  openEmployeeDetail(empId);
+}
 function openEmployeeDetail(empId){
   const e = DB.employees.find(x=>x.id===empId);
   if(!e) return;
+  if(empDetailPeriod.emp!==empId) empDetailPeriod = { emp:empId, from:'', to:'' };
+  const fp = empDetailPeriod;
+  const fltOn = !!(fp.from || fp.to);
+  const inP = d => (!fp.from || new Date(d) >= new Date(fp.from)) && (!fp.to || new Date(d) <= new Date(new Date(fp.to).getTime()+86399999));
   const st = empLeaveStats(empId);
   const history = [...DB.leaveRequests.filter(r=>r.employeeId===empId)].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const absences = [...(e.absences||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const advances = [...(e.advances||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const penalties = [...(e.penalties||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const absences = [...(e.absences||[])].filter(a=>inP(a.date)).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const advances = [...(e.advances||[])].filter(a=>inP(a.date)).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const penalties = [...(e.penalties||[])].filter(p=>inP(p.date)).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const empPermits = DB.permits.filter(p=>p.employeeId===empId).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const earlyPermits = empPermits.filter(p=>p.kind==='early');
   const errands = empPermits.filter(p=>p.kind==='errand');
-  const bonuses = [...(e.bonuses||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const bonuses = [...(e.bonuses||[])].filter(b=>inP(b.date)).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const totAdv = advances.reduce((s,a)=>s+(a.amount||0),0);
   const totPen = penalties.reduce((s,p)=>s+(p.amount||0),0);
   const totBon = bonuses.reduce((s,b)=>s+(b.amount||0),0);
+  const inPeriodLbl = fltOn ? ' (في الفترة)' : '';
   openModal(`
     <h3>${e.name} <span class="muted" style="font-size:12px">#${e.empNo} — ${e.job||'—'} (${e.dept||'—'})</span></h3>
     <div style="margin-bottom:10px">${empStatusTag(e.status)}
@@ -5778,10 +6117,19 @@ function openEmployeeDetail(empId){
       ${stat(String(st.absenceNoPermission),'أيام غياب بدون إذن', st.absenceNoPermission>0)}
     </div>
     <div class="grid g4" style="margin-bottom:12px">
-      ${stat(money(totAdv),'إجمالي السلف', totAdv>0)}
-      ${stat(money(totPen),'إجمالي الجزاءات', totPen>0)}
-      ${stat(money(totBon),'إجمالي الحوافز')}
+      ${stat(money(totAdv),'إجمالي السلف'+inPeriodLbl, totAdv>0)}
+      ${stat(money(totPen),'إجمالي الجزاءات'+inPeriodLbl, totPen>0)}
+      ${stat(money(totBon),'إجمالي الحوافز'+inPeriodLbl)}
       ${stat(String(earlyPermits.filter(p=>p.status==='approved').length)+' / '+String(errands.filter(p=>p.status==='approved').length),'أذونات / مأموريات معتمدة')}
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <label class="f-label">📅 فلترة بفترة (بتفلتر: السلف · الجزاءات · الحوافز · الغياب — وإجمالياتهم فوق)</label>
+      <div class="grid g3" style="margin-top:4px">
+        <div class="form-row" style="margin:0"><label class="f-label">من تاريخ</label><input class="f" type="date" value="${fp.from}" onchange="setEmpDetailPeriod('${empId}','from',this.value)"></div>
+        <div class="form-row" style="margin:0"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${fp.to}" onchange="setEmpDetailPeriod('${empId}','to',this.value)"></div>
+        <div class="form-row" style="margin:0;display:flex;align-items:flex-end"><button class="btn btn-sm" style="width:100%" onclick="setEmpDetailPeriod('${empId}','clear','')">عرض الكل</button></div>
+      </div>
+      ${fltOn?`<div style="font-size:12px;margin-top:6px;color:var(--accent);font-weight:700">معروض دلوقتي: من ${fp.from?fmtDate(fp.from):'البداية'} إلى ${fp.to?fmtDate(fp.to):'النهاردة'}</div>`:''}
     </div>
     <div class="muted" style="font-size:12px;margin-bottom:14px">دوري: متبقي ${st.remRoutine} من ${st.balRoutine} · طارئ: متبقي ${st.remEmergency} من ${st.balEmergency}${st.usedOther?` · إجازات أخرى (مرضية/بدون راتب): ${st.usedOther} يوم`:''}</div>
     ${hrCanManage()?`
@@ -5800,14 +6148,14 @@ function openEmployeeDetail(empId){
       <td>${r.type} (${r.days} يوم)</td><td>${leaveStatusTag(r.status)}</td>
       <td class="muted" style="font-size:11.5px">${r.reason||'—'}</td></tr>`).join('') : '<tr><td class="empty">مفيش إجازات مسجلة</td></tr>'}
     </tbody></table>
-    <label class="f-label">سجل الغياب (${absences.length})</label>
+    <label class="f-label">سجل الغياب (${absences.length})${inPeriodLbl}</label>
     <table style="margin:6px 0 14px"><tbody>
     ${absences.length? absences.map(a=>`<tr>
       <td style="font-size:12px;white-space:nowrap">${fmtDate(a.date)}</td><td>${a.days||1} يوم</td>
       <td>${a.noPermission?'<span class="tag tag-unpaid">بدون إذن</span>':'<span class="muted">بإذن</span>'}</td>
       <td class="muted" style="font-size:11.5px">${a.note||'—'}</td></tr>`).join('') : '<tr><td class="empty">مفيش غياب مسجل 👏</td></tr>'}
     </tbody></table>
-    <label class="f-label">السلف (${advances.length})</label>
+    <label class="f-label">السلف (${advances.length})${inPeriodLbl}</label>
     <table style="margin:6px 0 14px"><tbody>
     ${advances.length? advances.map(a=>`<tr>
       <td style="font-size:12px;white-space:nowrap">${fmtDate(a.date)}</td>
@@ -5815,7 +6163,7 @@ function openEmployeeDetail(empId){
       <td class="muted" style="font-size:11.5px">${a.reason||'—'}</td>
       <td class="muted" style="font-size:11.5px">${a.note||'—'}</td></tr>`).join('') : '<tr><td class="empty">مفيش سلف مسجلة</td></tr>'}
     </tbody></table>
-    <label class="f-label">الجزاءات (${penalties.length})</label>
+    <label class="f-label">الجزاءات (${penalties.length})${inPeriodLbl}</label>
     <table style="margin:6px 0 14px"><tbody>
     ${penalties.length? penalties.map(p=>`<tr>
       <td style="font-size:12px;white-space:nowrap">${fmtDate(p.date)}</td>
@@ -5823,7 +6171,7 @@ function openEmployeeDetail(empId){
       <td class="muted" style="font-size:11.5px">${p.reason||'—'}</td>
       <td class="muted" style="font-size:11.5px">${p.note||'—'}</td></tr>`).join('') : '<tr><td class="empty">مفيش جزاءات 👏</td></tr>'}
     </tbody></table>
-    <label class="f-label">الحوافز والمكافآت (${bonuses.length})</label>
+    <label class="f-label">الحوافز والمكافآت (${bonuses.length})${inPeriodLbl}</label>
     <table style="margin:6px 0 14px"><tbody>
     ${bonuses.length? bonuses.map(b=>`<tr>
       <td style="font-size:12px;white-space:nowrap">${fmtDate(b.date)}</td>
@@ -7308,9 +7656,11 @@ function renderSettings(){
   </div>`;
 }
 function templateOptionsFor(dept){
-  const list = Object.entries(ROLE_TEMPLATES).filter(([,t])=>t.dept===dept);
+  const tpls = allTemplates();
+  const list = Object.entries(tpls).filter(([,t])=>t.dept===dept || t.custom);
   if(list.length===0) return `<option value="">— بدون قالب —</option>`;
-  return list.map(([k,t])=>`<option value="${k}">${t.label}</option>`).join('');
+  return `<option value="">— بدون قالب (افتراضي القسم) —</option>`+
+    list.map(([k,t])=>`<option value="${k}">${t.custom?'⭐ ':''}${t.label}</option>`).join('');
 }
 function onStDeptChange(){
   const dept = (document.getElementById('stDept')||{}).value || 'reception';
@@ -7327,74 +7677,130 @@ async function saveNewStaff(){
   if(!name || !username || !password){ toast('اكتب اسم الموظف واسم المستخدم وكلمة المرور', true); return; }
   if(password.length<4){ toast('كلمة المرور لازم تكون 4 حروف/أرقام على الأقل', true); return; }
   if(DB.staff.some(s=>s.username.toLowerCase()===username.toLowerCase())){ toast('اسم المستخدم ده موجود بالفعل', true); return; }
-  const tpl = ROLE_TEMPLATES[template];
+  const tpl = allTemplates()[template];
   const perms = tpl ? { screens:[...tpl.screens], actions:[...tpl.actions] } : fullDeptPerms(dept);
   const emp = DB.employees.find(e=>e.name===name && e.status==='نشط');
   DB.staff.push({ id:uid('st'), name, username, password,
     dept, role: dept, template, employeeId: emp?emp.id:null,
-    screens: perms.screens, actions: perms.actions,
+    screens: perms.screens, actions: perms.actions, permsV: 2,
     active:true, createdAt:new Date().toISOString() });
   await saveKey('staff', DB.staff);
   await logAction('إنشاء مستخدم: '+name+' — القسم: '+(ROLE_LABEL[dept]||dept)+(tpl?' — القالب: '+tpl.label:'')+' — '+perms.screens.length+' شاشة و'+perms.actions.length+' إجراء');
   toast('تم إنشاء حساب '+name); refreshContent();
 }
-/* ---- محرر الصلاحيات التفصيلي ---- */
+/* ---- محرر الصلاحيات ثلاثي المستويات (الملاحظة 41) ----
+   المستوى 1: الشاشات الأساسية (افتراضي القسم) · المستوى 2: شاشات إضافية (أي شاشة في السيستم)
+   المستوى 3: الصلاحيات التفصيلية لكل إجراء — مع بحث وⓘ شرح وقوالب مخصصة */
+function permRowHTML(id, checked, label, info){
+  const searchKey = normSearch(label+' '+(info||''));
+  return `<label class="permrow" data-search="${searchKey}" style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;cursor:pointer">
+    <input type="checkbox" id="${id}" ${checked?'checked':''} style="width:16px;height:16px"> <span>${label}</span>
+    ${info?`<span title="${info.replace(/"/g,'&quot;')}" onclick="event.preventDefault();toast(this.getAttribute('title'))" style="cursor:help;color:var(--accent-2);font-size:12px;font-weight:800">ⓘ</span>`:''}
+  </label>`;
+}
+function filterPermsUI(q){
+  const key = normSearch(q||'');
+  if(typeof document.querySelectorAll !== 'function') return; // بيئة الاختبار
+  document.querySelectorAll('.permrow').forEach(el=>{
+    el.style.display = (!key || (el.getAttribute('data-search')||'').includes(key)) ? 'flex' : 'none';
+  });
+}
+/* هل النص بيطابق صلاحية معينة؟ (منطق البحث — مفصول للاختبار) */
+function permMatchesSearch(q, label, info){
+  const key = normSearch(q||'');
+  if(!key) return true;
+  return normSearch(label+' '+(info||'')).includes(key);
+}
 function openPermsModal(staffId){
   if(!can('settings.users')){ toast('مالكش صلاحية إدارة المستخدمين', true); return; }
   const st = DB.staff.find(s=>s.id===staffId);
   if(!st) return;
   const dept = st.dept || st.role;
+  const rawActions = Array.isArray(st.actions) ? st.actions : fullDeptPerms(dept).actions;
   const cur = {
     screens: Array.isArray(st.screens) ? st.screens : fullDeptPerms(dept).screens,
-    actions: Array.isArray(st.actions) ? st.actions : fullDeptPerms(dept).actions
+    // الحسابات القديمة بتتعرض بصلاحياتها الفعلية (بعد التوافق) عشان الأدمن يشوف الحقيقة ويعدل عليها
+    actions: (st.permsV>=2) ? rawActions : expandLegacyActions(rawActions)
   };
   const pool = DEPT_SCREENS[dept] || [];
-  const chk = (id, checked, label)=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;cursor:pointer">
-    <input type="checkbox" id="${id}" ${checked?'checked':''} style="width:16px;height:16px"> <span>${label}</span></label>`;
+  const extraScreens = Object.keys(SCREEN_LABELS).filter(s=>!pool.includes(s));
+  const tpls = allTemplates();
   openModal(`
     <h3>🔐 صلاحيات — ${st.name} <span class="muted" style="font-size:12px">(${ROLE_LABEL[dept]||dept})</span></h3>
     ${dept==='owner'?`<div class="muted" style="font-size:12.5px;margin-bottom:12px">⚠️ حساب بصلاحيات كاملة (أدمن) — عنده كل الشاشات وكل الإجراءات بدون قيود.</div>`:''}
+    <div class="form-row"><input class="f" id="pmSearch" autocomplete="off" placeholder="🔎 دوّر في الصلاحيات... (مثال: فاتورة، مرتجع، جرد)" oninput="filterPermsUI(this.value)"></div>
     <div class="form-row"><label class="f-label">تطبيق قالب جاهز (بيستبدل الاختيارات تحت)</label>
       <select class="f" id="pmTemplate" onchange="applyPermTemplate(this.value)">
         <option value="">— بدون تغيير —</option>
-        ${Object.entries(ROLE_TEMPLATES).filter(([,t])=>t.dept===dept).map(([k,t])=>`<option value="${k}" ${st.template===k?'selected':''}>${t.label}</option>`).join('')}
+        ${Object.entries(tpls).filter(([,t])=>t.dept===dept||t.custom).map(([k,t])=>`<option value="${k}" ${st.template===k?'selected':''}>${t.custom?'⭐ ':''}${t.label}</option>`).join('')}
       </select></div>
     <div class="card" style="margin-bottom:12px">
-      <label class="f-label" style="font-weight:800">📺 الشاشات اللي يشوفها (${pool.length} متاحة لقسمه)</label>
+      <label class="f-label" style="font-weight:800">📺 المستوى 1 — الشاشات الأساسية (افتراضي قسم ${ROLE_LABEL[dept]||dept})</label>
       <div style="columns:2;margin-top:6px">
-        ${pool.map(s=>chk('pm_scr_'+s, cur.screens.includes(s), SCREEN_LABELS[s]||s)).join('')}
+        ${pool.map(s=>permRowHTML('pm_scr_'+s, cur.screens.includes(s), SCREEN_LABELS[s]||s, 'شاشة أساسية في قسم '+(ROLE_LABEL[dept]||dept))).join('')}
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <label class="f-label" style="font-weight:800">➕ المستوى 2 — شاشات إضافية (أي شاشة في السيستم لأي موظف)</label>
+      <div style="columns:2;margin-top:6px">
+        ${extraScreens.map(s=>permRowHTML('pm_scr_'+s, cur.screens.includes(s), SCREEN_LABELS[s]||s, 'شاشة إضافية من خارج شاشات قسمه — بتظهر له عادي أول ما تتعلّم')).join('')}
       </div>
     </div>
     <div class="card" style="margin-bottom:12px;max-height:38vh;overflow:auto">
-      <label class="f-label" style="font-weight:800">⚙️ الإجراءات المسموحة</label>
+      <label class="f-label" style="font-weight:800">⚙️ المستوى 3 — الصلاحيات التفصيلية (كل زرار بصلاحية مستقلة)</label>
       ${ACTION_GROUPS.map(g=>`
         <div style="margin-top:10px">
           <div class="muted" style="font-size:11.5px;font-weight:800;color:var(--accent)">${g[0]}</div>
-          ${g[1].map(a=>chk('pm_act_'+a[0].replace(/\./g,'_'), cur.actions.includes(a[0]), a[1])).join('')}
+          ${g[1].map(a=>permRowHTML('pm_act_'+a[0].replace(/\./g,'_'), cur.actions.includes(a[0]), a[1], PERM_INFO[a[0]]||'')).join('')}
         </div>`).join('')}
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <label class="f-label">⭐ حفظ الاختيارات الحالية كقالب جديد (تستخدمه لأي موظف بعدين)</label>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <input class="f" id="pmNewTplName" placeholder="اسم القالب — مثال: كاشير، مشرف ورشة...">
+        <button class="btn" onclick="saveCustomTemplate('${staffId}')">حفظ كقالب</button>
+      </div>
     </div>
     <button class="btn btn-accent" style="width:100%" onclick="savePerms('${staffId}')">حفظ الصلاحيات</button>
   `);
 }
+function collectPermSelections(){
+  const screens = Object.keys(SCREEN_LABELS).filter(s=>{ const el = document.getElementById('pm_scr_'+s); return el && el.checked; });
+  const actions = ALL_ACTIONS.filter(k=>{ const el = document.getElementById('pm_act_'+k.replace(/\./g,'_')); return el && el.checked; });
+  return { screens, actions };
+}
 function applyPermTemplate(tplKey){
-  const tpl = ROLE_TEMPLATES[tplKey];
+  const tpl = allTemplates()[tplKey];
   if(!tpl) return;
   Object.keys(SCREEN_LABELS).forEach(s=>{ const el = document.getElementById('pm_scr_'+s); if(el) el.checked = tpl.screens.includes(s); });
   ALL_ACTIONS.forEach(k=>{ const el = document.getElementById('pm_act_'+k.replace(/\./g,'_')); if(el) el.checked = tpl.actions.includes(k); });
   toast('اتطبّق قالب: '+tpl.label+' — دوس حفظ للتأكيد');
+}
+async function saveCustomTemplate(staffId){
+  if(!can('settings.users')){ toast('مالكش صلاحية إدارة المستخدمين', true); return; }
+  const name = ((document.getElementById('pmNewTplName')||{}).value||'').trim();
+  if(!name){ toast('اكتب اسم القالب الأول', true); return; }
+  const sel = collectPermSelections();
+  DB.settings.customTemplates = DB.settings.customTemplates || {};
+  const key = 'custom_'+uid('tpl');
+  DB.settings.customTemplates[key] = { label:name, screens:sel.screens, actions:sel.actions };
+  await saveKey('settings', DB.settings);
+  await logAction('حفظ قالب صلاحيات مخصص: «'+name+'» — '+sel.screens.length+' شاشة و'+sel.actions.length+' إجراء');
+  toast('اتحفظ القالب «'+name+'» — هيظهر في قوائم القوالب');
 }
 async function savePerms(staffId){
   if(!can('settings.users')){ toast('مالكش صلاحية إدارة المستخدمين', true); return; }
   const st = DB.staff.find(s=>s.id===staffId);
   if(!st) return;
   const dept = st.dept || st.role;
-  const pool = DEPT_SCREENS[dept] || [];
   const oldScreens = Array.isArray(st.screens) ? [...st.screens] : fullDeptPerms(dept).screens;
   const oldActions = Array.isArray(st.actions) ? [...st.actions] : fullDeptPerms(dept).actions;
-  const screens = pool.filter(s=>{ const el = document.getElementById('pm_scr_'+s); return el && el.checked; });
-  const actions = ALL_ACTIONS.filter(k=>{ const el = document.getElementById('pm_act_'+k.replace(/\./g,'_')); return el && el.checked; });
+  // الملاحظة 41: بنقرا كل شاشات السيستم (أساسية + إضافية) مش شاشات القسم بس
+  const sel = collectPermSelections();
+  const screens = sel.screens, actions = sel.actions;
   const tplSel = (document.getElementById('pmTemplate')||{}).value || '';
   st.screens = screens; st.actions = actions;
+  st.permsV = 2;   // صلاحيات صريحة ومستقلة — مفيش توسعة توافق بعد كده
   if(tplSel) st.template = tplSel;
   st.dept = dept; st.role = dept;
   await saveKey('staff', DB.staff);
