@@ -295,7 +295,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v56';
+const APP_VERSION = 'v58';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -2131,24 +2131,45 @@ async function restoreInventoryItem(partId){
   await logAction('♻️ استرجاع صنف من الأرشيف: '+p.name);
   closeModal(); toast('رجع الصنف «'+p.name+'» نشط تاني'); refreshContent();
 }
+/* الملاحظة 46: فلتر المتاح — الكل / المتاح فقط (كمية > 0) / تحت الحد الأدنى / المتصفر */
+let invAvailFilter = '';
+function setInvAvailFilter(v){ invAvailFilter = v; refreshContent(); }
+function invAvailMatch(p){
+  if(invAvailFilter==='available') return (p.qty||0) > 0;
+  if(invAvailFilter==='low') return (p.qty||0) <= (p.minQty||0);
+  if(invAvailFilter==='zero') return (p.qty||0) <= 0;
+  return true;
+}
 function visibleInventory(){
   const t = invSearchTerm.trim().toLowerCase();
   return [...DB.inventory]
     .filter(p=> invShowArchived ? true : !p.archived)
     .filter(p=> !invWhFilter || partWhId(p)===invWhFilter)
+    .filter(invAvailMatch)
     .filter(p=> !t || p.name.toLowerCase().includes(t) || (p.sku&&p.sku.toLowerCase().includes(t)) || (p.category&&p.category.toLowerCase().includes(t)))
     .sort((a,b)=>a.name.localeCompare(b.name,'ar'));
 }
+/* نطاق المخزن المختار (مخزن + بحث + أرشيف) — من غير فلتر المتاح، عشان الكروت تدي الصورة الكاملة دايماً */
+function inventoryScope(){
+  const t = invSearchTerm.trim().toLowerCase();
+  return DB.inventory
+    .filter(p=> invShowArchived ? true : !p.archived)
+    .filter(p=> !invWhFilter || partWhId(p)===invWhFilter)
+    .filter(p=> !t || p.name.toLowerCase().includes(t) || (p.sku&&p.sku.toLowerCase().includes(t)) || (p.category&&p.category.toLowerCase().includes(t)));
+}
 function inventoryValueHTML(){
-  const items = visibleInventory();
+  const items = inventoryScope();
   const value = items.reduce((s,p)=>s+p.qty*(p.costPrice||0),0);
-  // المؤرشف عمره ما يتحسب "تحت الحد الأدنى" حتى لو معروض بالتوجّل
-  const low = items.filter(p=>!p.archived && p.qty<=p.minQty).length;
+  const live = items.filter(p=>!p.archived);   // المؤرشف مايدخلش الحسابات التشغيلية
+  const avail = live.filter(p=>(p.qty||0) > 0).length;
+  const low = live.filter(p=>(p.qty||0) <= (p.minQty||0) && (p.qty||0) > 0).length;
+  const zero = live.filter(p=>(p.qty||0) <= 0).length;
   const scope = invWhFilter ? whName(invWhFilter) : 'جميع المخازن';
-  return `<div class="grid g3">
-    ${stat(money(value),'إجمالي قيمة المخزون — '+scope)}
-    ${stat(String(items.length),'عدد الأصناف — '+scope)}
-    ${stat(String(low),'أصناف تحت الحد الأدنى', low>0)}
+  return `<div class="grid g4">
+    ${stat(money(value),'قيمة المخزون — '+scope)}
+    ${stat(String(avail)+' من '+live.length,'✅ أصناف متاحة — '+scope)}
+    ${stat(String(low),'⚠️ تحت الحد الأدنى (لسه فيه كمية)', low>0)}
+    ${stat(String(zero),'⛔ أصناف متصفرة', zero>0)}
   </div>`;
 }
 function inventoryRowsHTML(){
@@ -2176,11 +2197,15 @@ function renderInventory(){
       ${can('inv.item_create')?`<button class="btn btn-accent" onclick="openNewPartModal()">${ICONS.plus} صنف جديد</button>`:''}
     </div></div>
   <div id="invValueBox" style="margin-bottom:16px">${inventoryValueHTML()}</div>
-  <div class="grid g2" style="max-width:640px;margin-bottom:4px">
+  <div class="grid g3" style="max-width:920px;margin-bottom:4px">
     <div class="form-row"><input class="f" placeholder="ابحث بأي جزء من اسم الصنف أو الكود أو الفئة..." value="${invSearchTerm}" oninput="filterInventoryLive(this.value)" autocomplete="off"></div>
     <div class="form-row"><select class="f" onchange="setInvWhFilter(this.value)">
       <option value="">جميع المخازن</option>
       ${DB.warehouses.map(w=>`<option value="${w.id}" ${invWhFilter===w.id?'selected':''}>${w.name}</option>`).join('')}
+    </select></div>
+    <div class="form-row"><select class="f" onchange="setInvAvailFilter(this.value)">
+      ${[['','كل الأصناف'],['available','✅ المتاح فقط (كمية أكبر من صفر)'],['low','⚠️ تحت الحد الأدنى'],['zero','⛔ المتصفر فقط']]
+        .map(([v,l])=>`<option value="${v}" ${invAvailFilter===v?'selected':''}>${l}</option>`).join('')}
     </select></div>
   </div>
   <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-bottom:8px">
@@ -3676,13 +3701,70 @@ function stockStatsHTML(){
 }
 
 /* ======================= SUPPLIERS ======================= */
+/* ---- الملاحظة 47: سجل حركات المورد (خصومات + تسويات) — بيتخزن على المورد نفسه زي سلف الموظفين ---- */
+function supLedger(sup){ return (sup && sup.ledger) ? sup.ledger : []; }
+/* الرصيد الافتتاحي بإشارته: "علينا للمورد" موجب · "له عندنا" سالب */
+function supOpeningSigned(sup){
+  if(!sup || !sup.openingBalance) return 0;
+  const v = Math.abs(parseFloat(sup.openingBalance)||0);
+  return sup.openingType==='debit' ? -v : v;
+}
 function supplierBalance(supplierId){
+  const sup = DB.suppliers.find(s=>s.id===supplierId);
   const purchases = DB.purchases.filter(p=>p.supplierId===supplierId);
   const totalPurchased = purchases.reduce((s,p)=>s+p.total,0);
   const totalPaid = purchases.reduce((s,p)=>s+(p.payments||[]).reduce((a,x)=>a+x.amount,0),0);
   const returns = DB.supplierReturns.filter(r=>r.supplierId===supplierId);
   const totalReturns = returns.reduce((s,r)=>s+r.total,0);
-  return { totalPurchased, totalPaid, totalReturns, balance: totalPurchased-totalPaid-totalReturns, count: purchases.length, returnsCount: returns.length };
+  const led = supLedger(sup);
+  const totalDiscounts = led.filter(e=>e.kind==='discount').reduce((s,e)=>s+(e.amount||0),0);
+  const totalAdjust = led.filter(e=>e.kind==='adjustment').reduce((s,e)=>s+(e.amount||0),0);
+  const opening = supOpeningSigned(sup);
+  const balance = opening + totalPurchased - totalPaid - totalReturns - totalDiscounts + totalAdjust;
+  return { opening, totalPurchased, totalPaid, totalReturns, totalDiscounts, totalAdjust,
+    discountsCount: led.filter(e=>e.kind==='discount').length,
+    balance, count: purchases.length, returnsCount: returns.length };
+}
+/* عليه أي حركة مالية؟ (لو أيوة → الرصيد الافتتاحي بيتقفل للحفاظ على سلامة الحسابات) */
+function supplierHasTransactions(supplierId){
+  const sup = DB.suppliers.find(s=>s.id===supplierId);
+  if(DB.purchases.some(p=>p.supplierId===supplierId)) return true;
+  if(DB.supplierReturns.some(r=>r.supplierId===supplierId)) return true;
+  if(supLedger(sup).length>0) return true;
+  return false;
+}
+/* متوسط فترة السداد بالأيام (من تاريخ الفاتورة لتاريخ آخر دفعة عليها) */
+function supAvgPaymentDays(supplierId){
+  const paid = DB.purchases.filter(p=>p.supplierId===supplierId && (p.payments||[]).length>0);
+  if(!paid.length) return null;
+  const days = paid.map(p=>{
+    const last = [...p.payments].sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+    return Math.max(0, Math.round((new Date(last.date)-new Date(p.date))/86400000));
+  });
+  return Math.round(days.reduce((s,d)=>s+d,0)/days.length);
+}
+/* كشف حساب موحّد بالترتيب الزمني: افتتاحي + فواتير + مدفوعات + مرتجعات + خصومات + تسويات */
+function supplierStatement(supplierId){
+  const sup = DB.suppliers.find(s=>s.id===supplierId);
+  const rows = [];
+  const op = supOpeningSigned(sup);
+  if(op !== 0) rows.push({ date: sup.createdAt||'2000-01-01', type:'رصيد افتتاحي', desc: sup.openingType==='debit'?'له عندنا':'علينا له', amount: op });
+  DB.purchases.filter(p=>p.supplierId===supplierId).forEach(p=>{
+    rows.push({ date:p.date, type:'فاتورة شراء', desc:'#'+p.purchaseNo, amount:p.total });
+    (p.payments||[]).forEach(pay=>rows.push({ date:pay.date, type:'سداد', desc:'على فاتورة #'+p.purchaseNo, amount:-pay.amount }));
+  });
+  DB.supplierReturns.filter(r=>r.supplierId===supplierId).forEach(r=>{
+    rows.push({ date:r.date, type:'مرتجع للمورد', desc:r.name||'—', amount:-(r.total||0) });
+  });
+  supLedger(sup).forEach(e=>{
+    rows.push({ date:e.date, type: e.kind==='discount'?'خصم من المورد':'تسوية رصيد',
+      desc:(e.reason||'')+(e.notes?' — '+e.notes:'')+' · بواسطة '+(e.by||'—'),
+      amount: e.kind==='discount' ? -(e.amount||0) : (e.amount||0) });
+  });
+  rows.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  let run = 0;
+  rows.forEach(r=>{ run += r.amount; r.running = run; });
+  return rows;
 }
 /* الملاحظة 44: أرشفة المورد — بشرط رصيد صفر (مفيش مستحقات معلقة) */
 let supShowArchived = false;
@@ -3707,11 +3789,41 @@ async function restoreSupplier(supplierId){
   await logAction('♻️ استرجاع مورد من الأرشيف: '+sup.name);
   closeModal(); toast('رجع المورد «'+sup.name+'» نشط تاني'); refreshContent();
 }
+/* الملاحظة 47: فلتر ثلاثي (نشط/مؤرشف/الكل) + بحث بالاسم والتليفون ومسؤول التواصل والمنطقة والملاحظات */
+let supStatusFilter = 'active';   // active | archived | all
+let supSearchTerm = '';
+function setSupStatusFilter(v){ supStatusFilter = v; refreshContent(); }
+function setSupSearch(v){ supSearchTerm = v; const b=document.getElementById('supListBox'); if(b) b.innerHTML = supplierCardsHTML(); }
+function supMatchesSearch(sup){
+  const q = normSearch(supSearchTerm);
+  if(!q) return true;
+  return normSearch([sup.name, sup.phone, sup.phone2, sup.contactPerson, sup.area, sup.city, sup.address, sup.note, sup.email].filter(Boolean).join(' ')).includes(q);
+}
+function visibleSuppliers(){
+  return [...DB.suppliers]
+    .filter(s=> supStatusFilter==='all' ? true : (supStatusFilter==='archived' ? !!s.archived : !s.archived))
+    .filter(supMatchesSearch)
+    .sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+}
+function supplierCardsHTML(){
+  const list = visibleSuppliers();
+  if(!list.length) return emptyState(supSearchTerm?'مفيش مورد مطابق للبحث':'لسه مفيش موردين مسجلين');
+  return list.map(sup=>{
+    const b = supplierBalance(sup.id);
+    return `
+    <div class="card" style="cursor:pointer${sup.archived?';opacity:.55':''}" onclick="openSupplierDetail('${sup.id}')">
+      <div style="font-weight:800;font-size:15px">${sup.name}${sup.archived?' <span class="muted" style="font-size:11px">🗄️ مؤرشف</span>':''}</div>
+      <div class="muted" style="font-size:12.5px;margin-top:2px">${sup.phone||'—'}${sup.contactPerson?' · '+sup.contactPerson:''}${sup.area?' · '+sup.area:''}</div>
+      <div class="flex-between" style="margin-top:14px">
+        <span class="muted" style="font-size:12px">فواتير: ${b.count}${b.discountsCount?' · خصومات: '+b.discountsCount:''}</span>
+        <span style="font-weight:800;${b.balance>0.005?'color:var(--danger)':(b.balance<-0.005?'color:var(--accent-2)':'color:var(--success)')}">${money(b.balance)}</span>
+      </div>
+      ${sup.archived && isOwnerSession() ? `<button class="btn btn-sm btn-accent" style="width:100%;margin-top:10px" onclick="event.stopPropagation(); restoreSupplier('${sup.id}')">♻️ استرجاع المورد</button>` : ''}
+    </div>`;
+  }).join('');
+}
 function renderSuppliers(){
   const archivedCount = DB.suppliers.filter(s=>s.archived).length;
-  const list = [...DB.suppliers]
-    .filter(s=> supShowArchived ? true : !s.archived)
-    .sort((a,b)=>a.name.localeCompare(b.name,'ar'));
   const totalOwed = activeSuppliers().reduce((s,sup)=>s+supplierBalance(sup.id).balance,0);
   return `
   <div class="section-head"><h3>الموردين (${activeSuppliers().length}${archivedCount?` + ${archivedCount} مؤرشف`:''}) — إجمالي المستحق ${money(totalOwed)}</h3>
@@ -3719,42 +3831,104 @@ function renderSuppliers(){
       <button class="btn" onclick="openNewPurchaseInvoicePage()">🧾 فاتورة شراء جديدة</button>
       <button class="btn btn-accent" onclick="openNewSupplierModal()">${ICONS.plus} مورد جديد</button>
     </div></div>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-bottom:10px">
-    <input type="checkbox" ${supShowArchived?'checked':''} onchange="toggleSupArchived()" style="width:15px;height:15px"> عرض الموردين المؤرشفين 🗄️
-  </label>
-  <div class="grid g3">
-    ${list.length? list.map(sup=>{
-      const b = supplierBalance(sup.id);
-      return `
-      <div class="card" style="cursor:pointer${sup.archived?';opacity:.55':''}" onclick="openSupplierDetail('${sup.id}')">
-        <div style="font-weight:800;font-size:15px">${sup.name}${sup.archived?' <span class="muted" style="font-size:11px">🗄️ مؤرشف</span>':''}</div>
-        <div class="muted" style="font-size:12.5px;margin-top:2px">${sup.phone||'—'}</div>
-        <div class="flex-between" style="margin-top:14px">
-          <span class="muted" style="font-size:12px">عدد فواتير الشراء: ${b.count}</span>
-          <span style="font-weight:800;${b.balance>0?'color:var(--danger)':'color:var(--success)'}">${money(b.balance)}</span>
-        </div>
-        ${sup.archived && isOwnerSession() ? `<button class="btn btn-sm btn-accent" style="width:100%;margin-top:10px" onclick="event.stopPropagation(); restoreSupplier('${sup.id}')">♻️ استرجاع المورد</button>` : ''}
-      </div>`;
-    }).join('') : emptyState('لسه مفيش موردين مسجلين')}
-  </div>`;
+  <div class="grid g2" style="max-width:760px;margin-bottom:12px">
+    <div class="form-row" style="margin:0"><input class="f" placeholder="🔎 ابحث باسم المورد، تليفون، مسؤول التواصل، منطقة، ملاحظات..." value="${supSearchTerm}" oninput="setSupSearch(this.value)" autocomplete="off"></div>
+    <div class="form-row" style="margin:0"><select class="f" onchange="setSupStatusFilter(this.value)">
+      ${[['active','✅ الموردين النشطين'],['archived','🗄️ الموردين المؤرشفين'],['all','الكل (نشط + مؤرشف)']]
+        .map(([v,l])=>`<option value="${v}" ${supStatusFilter===v?'selected':''}>${l}</option>`).join('')}
+    </select></div>
+  </div>
+  <div class="grid g3" id="supListBox">${supplierCardsHTML()}</div>`;
+}
+/* ---- الملاحظة 47: نموذج بيانات المورد الكامل (إنشاء + تعديل) ---- */
+function supplierFormHTML(sup){
+  const s = sup || {};
+  const locked = sup ? supplierHasTransactions(sup.id) : false;   // الافتتاحي بيتقفل بعد أول حركة
+  return `
+    <label class="f-label" style="font-weight:800">البيانات الأساسية</label>
+    <div class="form-row"><label class="f-label">اسم المورد *</label><input class="f" id="supName" value="${s.name||''}"></div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">رقم الموبايل</label><input class="f" id="supPhone" inputmode="tel" value="${s.phone||''}"></div>
+      <div class="form-row"><label class="f-label">رقم إضافي (اختياري)</label><input class="f" id="supPhone2" inputmode="tel" value="${s.phone2||''}"></div>
+    </div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">الإيميل (اختياري)</label><input class="f" id="supEmail" value="${s.email||''}"></div>
+      <div class="form-row"><label class="f-label">مسؤول التواصل</label><input class="f" id="supContact" value="${s.contactPerson||''}"></div>
+    </div>
+    <div class="form-row"><label class="f-label">العنوان</label><input class="f" id="supAddress" value="${s.address||''}"></div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">المنطقة</label><input class="f" id="supArea" value="${s.area||''}" placeholder="مثال: حرفيين العبور"></div>
+      <div class="form-row"><label class="f-label">المدينة / المحافظة</label><input class="f" id="supCity" value="${s.city||''}"></div>
+    </div>
+    <div class="form-row"><label class="f-label">ملاحظات</label><textarea class="f" id="supNote" rows="2">${s.note||''}</textarea></div>
+
+    <label class="f-label" style="font-weight:800;margin-top:8px">البيانات المالية</label>
+    ${locked ? `<div class="muted" style="font-size:12px;margin-bottom:8px">🔒 الرصيد الافتتاحي مقفول للتعديل — المورد عليه حركات مالية مسجلة (فواتير/مدفوعات/مرتجعات/تسويات). لتصحيح الرصيد استخدم <b>تسوية رصيد المورد</b> عشان الحسابات تفضل سليمة.</div>` : ''}
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">الرصيد الافتتاحي</label>
+        <input class="f" id="supOpening" type="number" min="0" step="any" value="${Math.abs(s.openingBalance||0)}" ${locked?'disabled style="opacity:.55"':''}></div>
+      <div class="form-row"><label class="f-label">نوع الرصيد الافتتاحي</label>
+        <select class="f" id="supOpeningType" ${locked?'disabled style="opacity:.55"':''}>
+          <option value="credit" ${s.openingType!=='debit'?'selected':''}>علينا للمورد (دائن)</option>
+          <option value="debit" ${s.openingType==='debit'?'selected':''}>للمورد عندنا (مدين)</option>
+        </select></div>
+    </div>
+
+    <label class="f-label" style="font-weight:800;margin-top:8px">بيانات إضافية</label>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">شروط السداد</label><input class="f" id="supTerms" value="${s.paymentTerms||''}" placeholder="مثال: 30 يوم، كاش، على دفعتين"></div>
+      <div class="form-row"><label class="f-label">حد الائتمان (اختياري)</label><input class="f" id="supCredit" type="number" min="0" step="any" value="${s.creditLimit||''}"></div>
+    </div>`;
+}
+function readSupplierForm(){
+  const v = id => ((document.getElementById(id)||{}).value||'').trim();
+  return {
+    name: v('supName'), phone: v('supPhone'), phone2: v('supPhone2'), email: v('supEmail'),
+    contactPerson: v('supContact'), address: v('supAddress'), area: v('supArea'), city: v('supCity'),
+    note: v('supNote'), paymentTerms: v('supTerms'),
+    creditLimit: parseFloat(v('supCredit'))||0
+  };
 }
 function openNewSupplierModal(){
   openModal(`
     <h3>مورد جديد</h3>
-    <div class="form-row"><label class="f-label">اسم المورد</label><input class="f" id="supName"></div>
-    <div class="form-row"><label class="f-label">رقم الموبايل</label><input class="f" id="supPhone" inputmode="tel"></div>
-    <div class="form-row"><label class="f-label">العنوان / ملاحظات (اختياري)</label><input class="f" id="supNote"></div>
-    <button class="btn btn-accent" style="width:100%" onclick="saveNewSupplier()">حفظ المورد</button>
+    ${supplierFormHTML(null)}
+    <button class="btn btn-accent" style="width:100%;margin-top:10px" onclick="saveNewSupplier()">حفظ المورد</button>
   `);
 }
 async function saveNewSupplier(){
-  const name = document.getElementById('supName').value.trim();
-  const phone = document.getElementById('supPhone').value.trim();
-  const note = document.getElementById('supNote').value.trim();
-  if(!name){ toast('اكتب اسم المورد', true); return; }
-  DB.suppliers.push({id:uid('sup'), name, phone, note});
+  const f = readSupplierForm();
+  if(!f.name){ toast('اكتب اسم المورد', true); return; }
+  if(DB.suppliers.some(s=>s.name===f.name && !s.archived)){ toast('فيه مورد بنفس الاسم موجود بالفعل', true); return; }
+  const opening = Math.abs(parseFloat((document.getElementById('supOpening')||{}).value)||0);
+  const openingType = (document.getElementById('supOpeningType')||{}).value || 'credit';
+  DB.suppliers.push({ id:uid('sup'), ...f, openingBalance:opening, openingType, ledger:[], createdAt:new Date().toISOString() });
   await saveKey('suppliers', DB.suppliers);
+  await logAction('إضافة مورد: '+f.name+(opening?' — رصيد افتتاحي '+money(opening)+' ('+(openingType==='debit'?'له عندنا':'علينا له')+')':''));
   closeModal(); toast('تم إضافة المورد'); refreshContent();
+}
+function openEditSupplierModal(supplierId){
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  openModal(`
+    <h3>تعديل بيانات المورد — ${sup.name}</h3>
+    ${supplierFormHTML(sup)}
+    <button class="btn btn-accent" style="width:100%;margin-top:10px" onclick="saveEditSupplier('${supplierId}')">حفظ التعديلات</button>
+  `);
+}
+async function saveEditSupplier(supplierId){
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  const f = readSupplierForm();
+  if(!f.name){ toast('اكتب اسم المورد', true); return; }
+  if(DB.suppliers.some(s=>s.id!==supplierId && s.name===f.name && !s.archived)){ toast('فيه مورد تاني بنفس الاسم', true); return; }
+  Object.assign(sup, f);
+  // الرصيد الافتتاحي بيتعدل بس لو مفيش أي حركة مالية (سلامة الحسابات)
+  if(!supplierHasTransactions(supplierId)){
+    sup.openingBalance = Math.abs(parseFloat((document.getElementById('supOpening')||{}).value)||0);
+    sup.openingType = (document.getElementById('supOpeningType')||{}).value || 'credit';
+  }
+  await saveKey('suppliers', DB.suppliers);
+  await logAction('تعديل بيانات المورد: '+sup.name);
+  closeModal(); toast('تم حفظ بيانات المورد'); openSupplierDetail(supplierId); refreshContent();
 }
 function openSupplierDetail(supplierId){
   openModal(supplierDetailHTML(supplierId));
@@ -3767,18 +3941,44 @@ function supplierDetailHTML(supplierId){
   const lastPurchase = purchases[0];
   let lastPayment = null;
   purchases.forEach(p=>(p.payments||[]).forEach(pay=>{ if(!lastPayment || new Date(pay.date)>new Date(lastPayment.date)) lastPayment = pay; }));
+  const avgDays = supAvgPaymentDays(supplierId);
+  const stmt = supplierStatement(supplierId);
   return `
-  <h3>كشف حساب المورد — ${sup.name}</h3>
-  <div class="muted" style="font-size:13px;margin-bottom:16px">${sup.phone||'—'} ${sup.note?' · '+sup.note:''}</div>
-  <div class="grid g3" style="margin-bottom:12px">
-    ${stat(money(b.totalPurchased),'إجمالي الفواتير')}
-    ${stat(money(b.totalPaid),'إجمالي المدفوعات')}
-    ${stat(money(b.totalReturns||0),'إجمالي المرتجعات')}
+  <h3>كشف حساب المورد — ${sup.name}${sup.archived?' <span class="muted" style="font-size:12px">🗄️ مؤرشف</span>':''}</h3>
+  <div class="muted" style="font-size:13px;margin-bottom:10px">
+    ${[sup.phone, sup.phone2, sup.contactPerson, sup.area, sup.city].filter(Boolean).join(' · ')||'—'}
+    ${sup.email?'<br>📧 '+sup.email:''}${sup.address?'<br>📍 '+sup.address:''}
+    ${sup.paymentTerms?'<br>🗓️ شروط السداد: '+sup.paymentTerms:''}${sup.creditLimit?' · 💳 حد الائتمان: '+money(sup.creditLimit):''}
+    ${sup.note?'<br>📝 '+sup.note:''}
   </div>
-  <div class="grid g3" style="margin-bottom:16px">
+  ${sup.creditLimit && b.balance > sup.creditLimit ? `<div class="card" style="border:1px solid var(--danger);margin-bottom:12px;font-size:12.5px;color:var(--danger);font-weight:700">⚠️ الرصيد المستحق (${money(b.balance)}) تعدّى حد الائتمان (${money(sup.creditLimit)})</div>` : ''}
+  <div class="grid g4" style="margin-bottom:12px">
+    ${stat(money(b.opening),'الرصيد الافتتاحي')}
+    ${stat(money(b.totalPurchased),'إجمالي المشتريات')}
+    ${stat(money(b.totalPaid),'إجمالي المدفوعات')}
+    ${stat(money(b.totalDiscounts),'💸 إجمالي الخصومات'+(b.discountsCount?` (${b.discountsCount})`:''), b.totalDiscounts>0)}
+  </div>
+  <div class="grid g4" style="margin-bottom:16px">
     ${stat(money(b.balance),'الرصيد الحالي (مستحق له)', b.balance>0)}
     ${stat(lastPurchase?fmtDate(lastPurchase.date):'—','آخر عملية شراء')}
     ${stat(lastPayment?fmtDate(lastPayment.date):'—','آخر عملية سداد')}
+    ${stat(avgDays!==null?avgDays+' يوم':'—','متوسط فترة السداد')}
+  </div>
+  ${b.totalAdjust!==0 || b.totalReturns>0 ? `<div class="muted" style="font-size:12px;margin-bottom:12px">إجمالي المرتجعات: ${money(b.totalReturns)}${b.totalAdjust!==0?' · إجمالي التسويات: '+(b.totalAdjust>0?'+':'')+money(b.totalAdjust):''}</div>`:''}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+    <button class="btn btn-sm" onclick="openEditSupplierModal('${supplierId}')">✏️ تعديل بيانات المورد</button>
+    ${isOwnerSession()?`<button class="btn btn-sm" onclick="openSupplierAdjustModal('${supplierId}')">⚖️ تسوية الرصيد</button>`:''}
+  </div>
+  <label class="f-label">📄 كشف الحساب الموحّد (${stmt.length} حركة)</label>
+  <div class="card" style="margin:6px 0 14px;max-height:32vh;overflow:auto">
+    <table><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th>المبلغ</th><th>الرصيد</th></tr></thead>
+    <tbody>${stmt.length? stmt.map(r=>`<tr>
+      <td style="font-size:12px;white-space:nowrap">${fmtDate(r.date)}</td>
+      <td>${r.type}</td>
+      <td class="muted" style="font-size:11.5px">${r.desc||'—'}</td>
+      <td style="font-weight:700;color:${r.amount>0?'var(--danger)':'var(--accent)'}">${r.amount>0?'+ ':'− '}${money(Math.abs(r.amount))}</td>
+      <td style="font-weight:800">${money(r.running)}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">مفيش حركات</td></tr>'}
+    </tbody></table>
   </div>
   <div class="flex-between" style="margin-bottom:8px">
     <label class="f-label" style="margin:0">فواتير الشراء (اضغط على الفاتورة لعرض بنودها)</label>
@@ -3860,19 +4060,56 @@ function openSupplierPaymentModal(supplierId){
   const b = supplierBalance(supplierId);
   openModal(`
     <h3>تسديد دفعة للمورد</h3>
-    <div class="muted" style="margin-bottom:12px">المستحق حالياً: ${money(b.balance)}</div>
-    <div class="form-row"><label class="f-label">المبلغ</label><input class="f" id="supPayAmt" type="number" min="0" max="${b.balance}" value="${b.balance}"></div>
+    <div class="card" style="margin-bottom:12px"><div class="flex-between"><span>رصيد المورد المستحق</span><span style="font-weight:800">${money(b.balance)}</span></div></div>
+    <div class="form-row"><label class="f-label">💸 خصم من المورد (اختياري)</label>
+      <input class="f" id="supDiscAmt" type="number" min="0" step="any" value="0" oninput="supPayRecalc(${b.balance})"></div>
+    <div class="form-row" id="supDiscReasonRow" style="display:none"><label class="f-label">سبب الخصم * (إلزامي مع أي خصم)</label>
+      <input class="f" id="supDiscReason" placeholder="مثال: خصم تسوية نهاية السنة، خصم كمية، تعويض عن تأخير"></div>
+    <div class="form-row"><label class="f-label">المبلغ المدفوع</label>
+      <input class="f" id="supPayAmt" type="number" min="0" step="any" value="${b.balance}" oninput="supPayRecalc(${b.balance})"></div>
+    <div class="card" id="supPayPreview" style="margin-bottom:12px"></div>
     <div class="form-row"><label class="f-label">الدفع من حساب</label>
       <select class="f" id="supPayAcc">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveSupplierPayment('${supplierId}')">تأكيد الدفع</button>
   `);
+  supPayRecalc(b.balance);
+}
+function supPayRecalc(bal){
+  const disc = Math.max(parseFloat((document.getElementById('supDiscAmt')||{}).value)||0, 0);
+  const pay = Math.max(parseFloat((document.getElementById('supPayAmt')||{}).value)||0, 0);
+  const row = document.getElementById('supDiscReasonRow');
+  if(row) row.style.display = disc>0 ? 'block' : 'none';
+  const after = Math.round((bal - disc - pay)*100)/100;
+  const box = document.getElementById('supPayPreview');
+  if(box) box.innerHTML = `
+    <div class="flex-between"><span class="muted">الرصيد قبل</span><span>${money(bal)}</span></div>
+    ${disc>0?`<div class="flex-between"><span class="muted">− خصم من المورد</span><span>${money(disc)}</span></div>`:''}
+    <div class="flex-between"><span class="muted">− المدفوع</span><span>${money(pay)}</span></div>
+    <div class="flex-between total-row" style="margin-top:6px;font-weight:800"><span>الرصيد بعد العملية</span><span style="${after<-0.005?'color:var(--danger)':''}">${money(after)}</span></div>`;
 }
 async function saveSupplierPayment(supplierId){
   if(!can('sup.pay')){ toast('مالكش صلاحية سداد الموردين', true); return; }
   let amount = parseFloat(document.getElementById('supPayAmt').value)||0;
-  if(amount<=0){ toast('اكتب مبلغ صحيح', true); return; }
+  // الملاحظة 47: الخصم حركة محاسبية مستقلة — مابيعدّلش قيم الفواتير أبداً
+  const discAmt = Math.max(parseFloat((document.getElementById('supDiscAmt')||{}).value)||0, 0);
+  const discReason = ((document.getElementById('supDiscReason')||{}).value||'').trim();
+  if(discAmt>0 && !discReason){ toast('اكتب سبب الخصم — إلزامي مع أي خصم', true); return; }
+  if(amount<=0 && discAmt<=0){ toast('اكتب مبلغ صحيح', true); return; }
   const bal = supplierBalance(supplierId).balance;
-  if(amount > bal + 0.001){ toast('المبلغ أكبر من المستحق للمورد ('+money(bal)+')', true); return; }
+  if(discAmt + amount > bal + 0.001){ toast('الخصم + المدفوع أكبر من المستحق للمورد ('+money(bal)+')', true); return; }
+  const supForDisc = DB.suppliers.find(s=>s.id===supplierId);
+  if(discAmt>0){
+    supForDisc.ledger = supForDisc.ledger || [];
+    supForDisc.ledger.push({ id:uid('sled'), kind:'discount', amount:discAmt, reason:discReason,
+      date:new Date().toISOString(), by:actorName() });
+    await saveKey('suppliers', DB.suppliers);
+    await logAction('💸 خصم من المورد '+supForDisc.name+' بقيمة '+money(discAmt)+' — السبب: '+discReason);
+    pushNotif({ category:'financial', type:'supplier_discount', priority:'high', amount:discAmt,
+      action:'خصم من المورد '+supForDisc.name+' بقيمة '+money(discAmt)+' — '+discReason, refType:'expense' });
+  }
+  if(amount<=0){
+    closeModal(); toast('اتسجل الخصم '+money(discAmt)+' على حساب المورد'); refreshContent(); return;
+  }
   // Apply payment across unpaid purchases, oldest first
   const purchases = DB.purchases.filter(p=>p.supplierId===supplierId).sort((a,b)=>new Date(a.date)-new Date(b.date));
   for(const p of purchases){
@@ -3897,6 +4134,60 @@ async function saveSupplierPayment(supplierId){
   await Promise.all([saveKey('expenses', DB.expenses), saveKey('finMoves', DB.finMoves)]);
   await logAction('سداد '+money(paidTotal)+' للمورد '+supName+(acc?' من '+acc.name:''));
   closeModal(); toast('تم تسجيل الدفعة للمورد'+(acc?' وخصمها من '+acc.name:'')); refreshContent();
+}
+
+/* ---- الملاحظة 47: تسوية رصيد المورد (صاحب المركز فقط) — بتضيف حركة جديدة، عمرها ما تعدّل تاريخ ---- */
+function openSupplierAdjustModal(supplierId){
+  if(!isOwnerSession()){ toast('تسوية أرصدة الموردين صلاحية صاحب المركز فقط', true); return; }
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  const cur = supplierBalance(supplierId).balance;
+  openModal(`
+    <h3>⚖️ تسوية رصيد المورد — ${sup.name}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px">بتستخدمها لتصحيح الرصيد بعد مراجعة حسابية. <b>مش بتمسح ولا بتعدّل أي حركة قديمة</b> — بتضيف حركة تسوية جديدة بالفرق، وكل حاجة بتتسجل في سجل التدقيق.</div>
+    <div class="form-row"><label class="f-label">الرصيد الحالي في النظام</label>
+      <input class="f" value="${money(cur)}" disabled style="opacity:.6"></div>
+    <div class="form-row"><label class="f-label">الرصيد الصحيح المفروض</label>
+      <input class="f" id="sadjCorrect" type="number" step="any" value="${cur}" oninput="sadjRecalc(${cur})"></div>
+    <div class="card" id="sadjDiff" style="margin-bottom:12px"></div>
+    <div class="form-row"><label class="f-label">سبب التسوية * (إلزامي)</label>
+      <input class="f" id="sadjReason" placeholder="مثال: فرق مراجعة كشف حساب، فاتورة قديمة مش مسجلة، خطأ إدخال"></div>
+    <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><textarea class="f" id="sadjNotes" rows="2"></textarea></div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveSupplierAdjust('${supplierId}')">تسجيل التسوية</button>
+  `);
+  sadjRecalc(cur);
+}
+function sadjRecalc(cur){
+  const correct = parseFloat((document.getElementById('sadjCorrect')||{}).value);
+  const box = document.getElementById('sadjDiff');
+  if(!box) return;
+  if(isNaN(correct)){ box.innerHTML = '<div class="muted" style="font-size:12px">اكتب الرصيد الصحيح</div>'; return; }
+  const diff = Math.round((correct - cur)*100)/100;
+  box.innerHTML = `
+    <div class="flex-between"><span class="muted">الرصيد الحالي</span><span>${money(cur)}</span></div>
+    <div class="flex-between"><span class="muted">الرصيد الصحيح</span><span>${money(correct)}</span></div>
+    <div class="flex-between total-row" style="margin-top:6px;font-weight:800">
+      <span>الفرق (هيتسجل كتسوية)</span>
+      <span style="color:${diff>0?'var(--danger)':'var(--accent)'}">${diff>0?'+ ':''}${money(diff)}</span></div>`;
+}
+async function saveSupplierAdjust(supplierId){
+  if(!isOwnerSession()){ toast('تسوية أرصدة الموردين صلاحية صاحب المركز فقط', true); return; }
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  const cur = supplierBalance(supplierId).balance;
+  const correct = parseFloat((document.getElementById('sadjCorrect')||{}).value);
+  const reason = ((document.getElementById('sadjReason')||{}).value||'').trim();
+  const notes = ((document.getElementById('sadjNotes')||{}).value||'').trim();
+  if(isNaN(correct)){ toast('اكتب الرصيد الصحيح', true); return; }
+  if(!reason){ toast('سبب التسوية إلزامي', true); return; }
+  const diff = Math.round((correct - cur)*100)/100;
+  if(Math.abs(diff) < 0.005){ toast('الرصيد الصحيح زي الحالي بالظبط — مفيش تسوية', true); return; }
+  sup.ledger = sup.ledger || [];
+  sup.ledger.push({ id:uid('sled'), kind:'adjustment', amount:diff, reason, notes,
+    date:new Date().toISOString(), by:actorName(), prevBalance:cur, newBalance:correct });
+  await saveKey('suppliers', DB.suppliers);
+  await logAction('⚖️ تسوية رصيد المورد '+sup.name+' — من '+money(cur)+' إلى '+money(correct)+' (فرق '+(diff>0?'+':'')+money(diff)+') — السبب: '+reason+(notes?' — '+notes:''));
+  pushNotif({ category:'financial', type:'supplier_adjust', priority:'critical', amount:Math.abs(diff),
+    action:'تسوية رصيد المورد '+sup.name+': '+money(cur)+' ← '+money(correct)+' — '+reason, refType:'expense' });
+  closeModal(); toast('اتسجلت التسوية — الرصيد بقى '+money(correct)); openSupplierDetail(supplierId); refreshContent();
 }
 
 /* ======================= NEW PURCHASE INVOICE (فاتورة شراء مورد) ======================= */
