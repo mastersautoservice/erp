@@ -295,7 +295,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v53';
+const APP_VERSION = 'v56';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1120,12 +1120,12 @@ function refreshContent(){ const c=document.getElementById('contentArea'); if(c)
 function renderDashboard(){
   const activeJobs = DB.jobs.filter(j=>!isJobClosed(j));
   const readyJobs = DB.jobs.filter(j=>j.status==='جاهزة للتسليم');
-  const lowStock = DB.inventory.filter(p=>p.qty<=p.minQty);
+  const lowStock = activeInventory().filter(p=>p.qty<=p.minQty);
   const todayStr = new Date().toDateString();
   const todayInvoices = DB.invoices.filter(i=>!i.cancelled && new Date(i.date).toDateString()===todayStr);
   const todayCollected = todayInvoices.reduce((s,i)=>s+(i.payments||[]).reduce((a,p)=>a+p.amount,0),0);
   const outstanding = DB.invoices.filter(i=>!i.cancelled).reduce((s,i)=>{ const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0); return s+(i.total-paid); },0);
-  const supplierPayable = DB.suppliers.reduce((s,sup)=>s+supplierBalance(sup.id).balance,0);
+  const supplierPayable = activeSuppliers().reduce((s,sup)=>s+supplierBalance(sup.id).balance,0);
 
   let cards = '';
   if(['reception','owner'].includes(session.role)) cards += stat(String(activeJobs.length),'أوامر شغل مفتوحة');
@@ -2106,9 +2106,35 @@ function filterInventoryLive(term){
   if(v) v.innerHTML = inventoryValueHTML();
 }
 function setInvWhFilter(v){ invWhFilter = v; refreshContent(); }
+/* ============ الملاحظة 44: أرشفة الأصناف والموردين (بديل الحذف النهائي) ============
+   المؤرشف بيختفي من الشغل اليومي وقوائم الاختيار، ويفضل موجود في كل التقارير والتاريخ. */
+function activeInventory(){ return DB.inventory.filter(p=>!p.archived); }
+function activeSuppliers(){ return DB.suppliers.filter(s=>!s.archived); }
+let invShowArchived = false;
+function toggleInvArchived(){ invShowArchived = !invShowArchived; refreshContent(); }
+function archiveInventoryItem(partId){
+  if(!isOwnerSession()){ toast('أرشفة الأصناف صلاحية صاحب المركز فقط', true); return; }
+  const p = DB.inventory.find(x=>x.id===partId); if(!p) return;
+  if((p.qty||0) !== 0){ toast('مينفعش أرشفة الصنف — الكمية مش صفر ('+p.qty+' '+(p.unit||'')+'). صفّر الرصيد الأول بصرف أو تسوية.', true); return; }
+  askConfirmReason('أرشفة الصنف «'+p.name+'»؟<br><span class="muted" style="font-size:12px">هيختفي من الشغل اليومي وقوائم الاختيار، وكل سجلاته القديمة (حركات/فواتير/تقارير) هتفضل زي ما هي. تقدر ترجّعه في أي وقت.</span>', async (reason)=>{
+    p.archived = true; p.archivedAt = new Date().toISOString(); p.archivedBy = actorName();
+    await saveKey('inventory', DB.inventory);
+    await logAction('🗄️ أرشفة صنف: '+p.name+(reason?' — السبب: '+reason:''));
+    closeModal(); toast('تم أرشفة الصنف «'+p.name+'»'); refreshContent();
+  });
+}
+async function restoreInventoryItem(partId){
+  if(!isOwnerSession()){ toast('استرجاع الأصناف صلاحية صاحب المركز فقط', true); return; }
+  const p = DB.inventory.find(x=>x.id===partId); if(!p) return;
+  p.archived = false; delete p.archivedAt; delete p.archivedBy;
+  await saveKey('inventory', DB.inventory);
+  await logAction('♻️ استرجاع صنف من الأرشيف: '+p.name);
+  closeModal(); toast('رجع الصنف «'+p.name+'» نشط تاني'); refreshContent();
+}
 function visibleInventory(){
   const t = invSearchTerm.trim().toLowerCase();
   return [...DB.inventory]
+    .filter(p=> invShowArchived ? true : !p.archived)
     .filter(p=> !invWhFilter || partWhId(p)===invWhFilter)
     .filter(p=> !t || p.name.toLowerCase().includes(t) || (p.sku&&p.sku.toLowerCase().includes(t)) || (p.category&&p.category.toLowerCase().includes(t)))
     .sort((a,b)=>a.name.localeCompare(b.name,'ar'));
@@ -2116,7 +2142,8 @@ function visibleInventory(){
 function inventoryValueHTML(){
   const items = visibleInventory();
   const value = items.reduce((s,p)=>s+p.qty*(p.costPrice||0),0);
-  const low = items.filter(p=>p.qty<=p.minQty).length;
+  // المؤرشف عمره ما يتحسب "تحت الحد الأدنى" حتى لو معروض بالتوجّل
+  const low = items.filter(p=>!p.archived && p.qty<=p.minQty).length;
   const scope = invWhFilter ? whName(invWhFilter) : 'جميع المخازن';
   return `<div class="grid g3">
     ${stat(money(value),'إجمالي قيمة المخزون — '+scope)}
@@ -2127,17 +2154,20 @@ function inventoryValueHTML(){
 function inventoryRowsHTML(){
   const items = visibleInventory();
   return items.length ? items.map(p=>`
-        <tr onclick="openItemCard('${p.id}')" style="cursor:pointer">
-          <td>${p.name}</td><td class="muted">${p.category||'—'}</td><td class="muted">${p.sku||'—'}</td>
+        <tr onclick="openItemCard('${p.id}')" style="cursor:pointer${p.archived?';opacity:.55':''}">
+          <td>${p.name}${p.archived?' <span class="muted" style="font-size:11px">🗄️ مؤرشف</span>':''}</td><td class="muted">${p.category||'—'}</td><td class="muted">${p.sku||'—'}</td>
           <td><span class="tag tag-inspect">${whName(partWhId(p))}</span></td>
-          <td class="${p.qty<=p.minQty?'low-stock':''}">${p.qty} ${p.unit||''}</td>
+          <td class="${!p.archived && p.qty<=p.minQty?'low-stock':''}">${p.qty} ${p.unit||''}</td>
           <td>${p.minQty}</td><td>${money(p.costPrice)}</td><td>${money(p.sellPrice)}</td>
-          <td><button class="btn btn-sm" onclick="event.stopPropagation(); openStockInModal('${p.id}')">توريد</button></td>
+          <td>${p.archived
+            ? (isOwnerSession()?`<button class="btn btn-sm btn-accent" onclick="event.stopPropagation(); restoreInventoryItem('${p.id}')">♻️ استرجاع</button>`:'')
+            : `<button class="btn btn-sm" onclick="event.stopPropagation(); openStockInModal('${p.id}')">توريد</button>`}</td>
         </tr>`).join('') : `<tr><td colspan="9" class="empty">لا يوجد أصناف مطابقة</td></tr>`;
 }
 function renderInventory(){
+  const archivedCount = DB.inventory.filter(p=>p.archived).length;
   return `
-  <div class="section-head"><h3>المخزون (${DB.inventory.length} صنف)</h3>
+  <div class="section-head"><h3>المخزون (${activeInventory().length} صنف${archivedCount?` + ${archivedCount} مؤرشف`:''})</h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${can('inv.item_edit')?`<button class="btn" onclick="openWarehousesModal()">🏬 إدارة المخازن</button>`:''}
       ${can('inv.transfer')?`<button class="btn" onclick="openTransferModal()">⇄ تحويل بين المخازن</button>`:''}
@@ -2153,6 +2183,9 @@ function renderInventory(){
       ${DB.warehouses.map(w=>`<option value="${w.id}" ${invWhFilter===w.id?'selected':''}>${w.name}</option>`).join('')}
     </select></div>
   </div>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-bottom:8px">
+    <input type="checkbox" ${invShowArchived?'checked':''} onchange="toggleInvArchived()" style="width:15px;height:15px"> عرض الأصناف المؤرشفة 🗄️
+  </label>
   <div class="card">
     <table>
       <thead><tr><th>الصنف</th><th>الفئة</th><th>الكود</th><th>المخزن</th><th>الكمية</th><th>الحد الأدنى</th><th>سعر الشراء</th><th>سعر البيع</th><th></th></tr></thead>
@@ -2166,7 +2199,7 @@ function openWarehousesModal(){
     <h3>🏬 إدارة المخازن</h3>
     <table style="margin-bottom:14px"><thead><tr><th>المخزن</th><th>عدد الأصناف</th><th>قيمة المخزون</th></tr></thead>
     <tbody>${DB.warehouses.map(w=>{
-      const items = DB.inventory.filter(p=>partWhId(p)===w.id);
+      const items = activeInventory().filter(p=>partWhId(p)===w.id);
       const val = items.reduce((s,p)=>s+p.qty*(p.costPrice||0),0);
       return `<tr><td>${w.name}</td><td>${items.length}</td><td>${money(val)}</td></tr>`;
     }).join('')}</tbody></table>
@@ -2187,15 +2220,16 @@ async function saveNewWarehouse(){
 /* ---- التحويل بين المخازن ---- */
 function openTransferModal(){
   if(DB.warehouses.length<2){ toast('أضف مخزن تاني الأول من "إدارة المخازن"', true); return; }
-  if(DB.inventory.length===0){ toast('مفيش أصناف في المخزون', true); return; }
+  const trItems = activeInventory();
+  if(trItems.length===0){ toast('مفيش أصناف في المخزون', true); return; }
   openModal(`
     <h3>⇄ تحويل مخزني بين المخازن</h3>
     <div class="form-row"><label class="f-label">الصنف</label>
       <select class="f" id="trPart" onchange="trShowInfo(this.value)">
-        ${DB.inventory.map(p=>`<option value="${p.id}">${p.name} — ${whName(partWhId(p))} (متاح: ${p.qty})</option>`).join('')}
+        ${trItems.map(p=>`<option value="${p.id}">${p.name} — ${whName(partWhId(p))} (متاح: ${p.qty})</option>`).join('')}
       </select>
     </div>
-    <div class="muted" style="font-size:12.5px;margin-bottom:10px" id="trInfo">المصدر: ${whName(partWhId(DB.inventory[0]))} · المتاح: ${DB.inventory[0].qty}</div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px" id="trInfo">المصدر: ${whName(partWhId(trItems[0]))} · المتاح: ${trItems[0].qty}</div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">إلى مخزن</label>
         <select class="f" id="trDest">${DB.warehouses.map(w=>`<option value="${w.id}">${w.name}</option>`).join('')}</select>
@@ -2218,12 +2252,15 @@ async function saveTransfer(){
   const qty = parseFloat(document.getElementById('trQty').value)||0;
   const note = document.getElementById('trNote').value.trim();
   const src = DB.inventory.find(x=>x.id===partId);
+  // الملاحظة 45: حماية خلفية — ممنوع تحويل من/إلى صنف مؤرشف
+  if(src && src.archived){ toast('الصنف مؤرشف — استرجعه من الأرشيف الأول قبل التحويل', true); return; }
   const srcWhId = partWhId(src);
   if(destWhId===srcWhId){ toast('اختار مخزن مختلف عن مخزن المصدر', true); return; }
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
   if(qty>src.qty){ toast('الكمية أكبر من المتاح في مخزن المصدر', true); return; }
   // إيجاد أو إنشاء نفس الصنف في المخزن الوجهة
   let dest = DB.inventory.find(p=>p.id!==src.id && partWhId(p)===destWhId && p.name===src.name && (p.sku||'')===(src.sku||''));
+  if(dest && dest.archived){ toast('نفس الصنف موجود مؤرشف في مخزن «'+whName(destWhId)+'» — استرجعه من الأرشيف الأول قبل التحويل ليه', true); return; }
   if(!dest){
     dest = {...src, id:uid('p'), warehouseId:destWhId, qty:0, createdAt:new Date().toISOString()};
     DB.inventory.push(dest);
@@ -2284,7 +2321,8 @@ async function saveNewPart(){
 }
 function openStockInModal(partId){
   const p = DB.inventory.find(x=>x.id===partId);
-  const supplierOpts = DB.suppliers.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  if(p && p.archived){ toast('الصنف مؤرشف — استرجعه الأول من الأرشيف قبل التوريد', true); return; }
+  const supplierOpts = activeSuppliers().map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
   openModal(`
     <h3>توريد مخزون — ${p.name}</h3>
     <div class="form-row"><label class="f-label">المورد</label>
@@ -2304,6 +2342,9 @@ function openStockInModal(partId){
 }
 async function saveStockIn(partId){
   if(!can('inv.receive')){ toast('مالكش صلاحية التوريد', true); return; }
+  // الملاحظة 45: حماية خلفية — ممنوع توريد على صنف مؤرشف حتى لو اتفتحت النافذة بأي طريقة
+  const pGuard = DB.inventory.find(x=>x.id===partId);
+  if(pGuard && pGuard.archived){ toast('الصنف مؤرشف — استرجعه من الأرشيف الأول قبل التوريد', true); return; }
   const qty = parseFloat(document.getElementById('inQty').value)||0;
   const cost = parseFloat(document.getElementById('inCost').value)||0;
   const note = document.getElementById('inNote').value.trim();
@@ -2370,7 +2411,7 @@ function renderStockMoves(){
       </div>
       <div class="form-row"><label class="f-label">القطعة</label>
         <input class="f" id="mvPartSearch" placeholder="ابحث بأي جزء من اسم القطعة..." oninput="filterMvPartSelect(this.value)" autocomplete="off" style="margin-bottom:6px">
-        <select class="f" id="mvPart">${DB.inventory.map(p=>`<option value="${p.id}">${p.name} (متاح: ${p.qty})</option>`).join('')}</select>
+        <select class="f" id="mvPart">${activeInventory().map(p=>`<option value="${p.id}">${p.name} (متاح: ${p.qty})</option>`).join('')}</select>
       </div>
       <div class="form-row"><label class="f-label">الكمية</label><input class="f" id="mvQty" type="number" min="1" value="1"></div>
     </div>
@@ -2386,7 +2427,7 @@ function renderStockMoves(){
       </div>
       <div class="form-row"><label class="f-label">اسم القطعة</label><input class="f" id="exName" placeholder="مثال: طرمبة بنزين" autocomplete="off"></div>
       <div class="form-row"><label class="f-label">المورد</label>
-        <select class="f" id="exSupplier"><option value="">— بدون (شراء نقدي مباشر) —</option>${DB.suppliers.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select>
+        <select class="f" id="exSupplier"><option value="">— بدون (شراء نقدي مباشر) —</option>${activeSuppliers().map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select>
       </div>
     </div>
     <div class="grid g4">
@@ -2565,7 +2606,7 @@ function mvRowsHTML(){
 function filterMvPartSelect(term){
   const t = term.trim().toLowerCase();
   const sel = document.getElementById('mvPart');
-  const filtered = DB.inventory.filter(p=>!t || p.name.toLowerCase().includes(t) || (p.sku&&p.sku.toLowerCase().includes(t)));
+  const filtered = activeInventory().filter(p=>!t || p.name.toLowerCase().includes(t) || (p.sku&&p.sku.toLowerCase().includes(t)));
   sel.innerHTML = filtered.length ? filtered.map(p=>`<option value="${p.id}">${p.name} (متاح: ${p.qty})</option>`).join('') : `<option value="">لا يوجد صنف مطابق</option>`;
 }
 function openStockAdjustmentModal(presetPartId){
@@ -2576,7 +2617,7 @@ function openStockAdjustmentModal(presetPartId){
     <div class="muted" style="font-size:12.5px;margin-bottom:12px">استخدمها لتصحيح كمية صنف بعد جرد فعلي أو خطأ في التسجيل. (صلاحية صاحب المركز فقط)</div>
     <div class="form-row"><label class="f-label">القطعة</label>
       <select class="f" id="adjPart" onchange="adjShowQty(this.value)">
-        ${DB.inventory.map(p=>`<option value="${p.id}" ${presetPartId===p.id?'selected':''}>${p.name}</option>`).join('')}
+        ${activeInventory().map(p=>`<option value="${p.id}" ${presetPartId===p.id?'selected':''}>${p.name}</option>`).join('')}
       </select>
     </div>
     <div class="muted" style="font-size:12.5px;margin-bottom:10px">الكمية الحالية بالمخزون: <span id="adjCurrentQty">${first?first.qty:0}</span></div>
@@ -2591,6 +2632,9 @@ async function saveStockAdjustment(){
   const newQty = parseFloat(document.getElementById('adjNewQty').value);
   const reason = document.getElementById('adjReason').value.trim();
   const p = DB.inventory.find(x=>x.id===partId);
+  if(!p){ toast('اختار الصنف الأول', true); return; }
+  // الملاحظة 45: حماية خلفية — ممنوع تسوية على صنف مؤرشف
+  if(p.archived){ toast('الصنف مؤرشف — استرجعه من الأرشيف الأول قبل التسوية', true); return; }
   if(isNaN(newQty) || newQty<0){ toast('اكتب كمية صحيحة', true); return; }
   const diff = newQty - p.qty;
   if(diff===0){ toast('الكمية زي الموجودة بالظبط، مفيش تغيير', true); return; }
@@ -2617,7 +2661,7 @@ function openCustomerReturnModal(){
     <div class="form-row"><label class="f-label">القطعة المرتجعة</label>
       <select class="f" id="crPart" onchange="crShowJobs()">
         <option value="">— اختار القطعة —</option>
-        ${DB.inventory.map(p=>`<option value="${p.id}">${p.name} (${whName(partWhId(p))})</option>`).join('')}
+        ${activeInventory().map(p=>`<option value="${p.id}">${p.name} (${whName(partWhId(p))})</option>`).join('')}
       </select>
     </div>
     <div id="crJobsArea"></div>
@@ -2676,6 +2720,8 @@ async function saveCustomerReturn(){
   const p = DB.inventory.find(x=>x.id===partId);
   const job = crSelectedJobId ? DB.jobs.find(j=>j.id===crSelectedJobId) : null;
   if(!p){ toast('اختار القطعة الأول', true); return; }
+  // الملاحظة 45: حماية خلفية — ممنوع مرتجع على صنف مؤرشف
+  if(p.archived){ toast('الصنف مؤرشف — استرجعه من الأرشيف الأول قبل تسجيل المرتجع', true); return; }
   if(!job){ toast('اختار أمر الشغل اللي اتصرفت عليه القطعة', true); return; }
   const avail = crDispensedQty(job, partId);
   if(avail<=0){ toast('القطعة دي مش مصروفة على الأمر ده', true); return; }
@@ -3037,6 +3083,9 @@ function openEditItemModal(partId){
         : `<div class="muted" style="font-size:11.5px;margin-top:6px">مالكش صلاحية تعديل الكميات المخزنية — ارجع لصاحب المركز.</div>`}
     </div>
     <button class="btn btn-accent" style="width:100%" onclick="saveEditItem('${partId}')">حفظ التعديلات</button>
+    ${isOwnerSession() ? (p.archived
+      ? `<button class="btn" style="width:100%;margin-top:8px" onclick="restoreInventoryItem('${partId}')">♻️ استرجاع الصنف من الأرشيف</button>`
+      : `<button class="btn" style="width:100%;margin-top:8px;border-color:var(--danger);color:var(--danger)" onclick="archiveInventoryItem('${partId}')">🗄️ أرشفة الصنف (بديل الحذف — بيتطلب رصيد صفر)</button>`) : ''}
   `);
 }
 async function saveEditItem(partId){
@@ -3189,7 +3238,7 @@ function openExtItemModal(jobId, kind){
       :'شغل اتنفذ خارج المركز عند طرف تالت (خراطة، سمكرة، دهان، برمجة...).'}</div>
     <div class="form-row"><label class="f-label">${isPart?'اسم القطعة':'اسم الخدمة الخارجية'}</label><input class="f" id="extName" placeholder="${isPart?'مثال: طرمبة بنزين':'مثال: خراطة ديسكات'}"></div>
     <div class="form-row"><label class="f-label">${isPart?'المورد':'الجهة المنفذة / المورد'}</label>
-      <select class="f" id="extSupplier"><option value="">— بدون (شراء نقدي مباشر) —</option>${DB.suppliers.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select>
+      <select class="f" id="extSupplier"><option value="">— بدون (شراء نقدي مباشر) —</option>${activeSuppliers().map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select>
     </div>
     <div class="grid g2">
       ${isPart?`<div class="form-row"><label class="f-label">الكمية</label><input class="f" id="extQty" type="number" min="1" value="1"></div>`:'<input type="hidden" id="extQty" value="1">'}
@@ -3261,7 +3310,7 @@ function openInventoryCount(){
   // لو فيه جرد مفتوح (غير معتمد) نكمل عليه
   const open = DB.inventoryCounts.find(ic=>ic.status!=='approved');
   if(open){ currentCountId = open.id; currentTab='inventoryCount'; render(); return; }
-  if(DB.inventory.length===0){ toast('مفيش أصناف في المخزون للجرد', true); return; }
+  if(activeInventory().length===0){ toast('مفيش أصناف في المخزون للجرد', true); return; }
   // اختيار المخزن المراد جرده
   openModal(`
     <h3>📋 جرد المخزن</h3>
@@ -3276,7 +3325,7 @@ function openInventoryCount(){
 }
 async function startInventoryCount(){
   const whId = document.getElementById('countWh').value || null;
-  const items = DB.inventory.filter(p=>!whId || partWhId(p)===whId);
+  const items = activeInventory().filter(p=>!whId || partWhId(p)===whId);
   if(items.length===0){ toast('مفيش أصناف في المخزن ده', true); return; }
   const ic = {
     id: uid('ic'), countNo: nextNo(DB.inventoryCounts,'countNo'), status:'draft',
@@ -3473,12 +3522,12 @@ function exportCountCSV(icId){
 const SCRAP_KINDS = ['هالك','تالف','فاقد تشغيل'];
 const SCRAP_REASONS = ['تركيب خاطئ من الفني','كسر أثناء التركيب','انتهاء صلاحية','تلف بالمخزن','أخرى'];
 function openScrapModal(){
-  if(DB.inventory.length===0){ toast('مفيش أصناف في المخزون', true); return; }
+  if(activeInventory().length===0){ toast('مفيش أصناف في المخزون', true); return; }
   openModal(`
     <h3>تسجيل هالك / تالف / فاقد</h3>
     <div class="muted" style="font-size:12.5px;margin-bottom:12px">القطعة هتتخصم من المخزون وقيمتها (بسعر الشراء) هتتسجل كخسارة في تقارير المركز.</div>
     <div class="form-row"><label class="f-label">القطعة</label>
-      <select class="f" id="scPart">${DB.inventory.map(p=>`<option value="${p.id}">${p.name} (متاح: ${p.qty})</option>`).join('')}</select>
+      <select class="f" id="scPart">${activeInventory().map(p=>`<option value="${p.id}">${p.name} (متاح: ${p.qty})</option>`).join('')}</select>
     </div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">التصنيف</label>
@@ -3493,7 +3542,7 @@ function openScrapModal(){
       <div class="form-row"><label class="f-label">الفني المتسبب (اختياري)</label>
         <select class="f" id="scTech">${techOptionsHTML()}</select></div>
       <div class="form-row"><label class="f-label">المورد (اختياري)</label>
-        <select class="f" id="scSupplier"><option value="">— بدون —</option>${DB.suppliers.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select>
+        <select class="f" id="scSupplier"><option value="">— بدون —</option>${activeSuppliers().map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select>
       </div>
     </div>
     <div class="form-row"><label class="f-label">ملاحظة (اختياري)</label><input class="f" id="scNote"></div>
@@ -3580,7 +3629,7 @@ function stockStatsHTML(){
   <div class="card" style="margin-bottom:14px">
     <table><thead><tr><th>المخزن</th><th>عدد الأصناف</th><th>قيمة المخزون (كمية × سعر شراء)</th><th>أصناف تحت الحد الأدنى</th></tr></thead>
     <tbody>${DB.warehouses.map(w=>{
-      const items = DB.inventory.filter(p=>partWhId(p)===w.id);
+      const items = activeInventory().filter(p=>partWhId(p)===w.id);
       const val = items.reduce((s,p)=>s+p.qty*(p.costPrice||0),0);
       const low = items.filter(p=>p.qty<=p.minQty).length;
       return `<tr><td>${w.name}</td><td>${items.length}</td><td>${money(val)}</td><td class="${low>0?'low-stock':''}">${low}</td></tr>`;
@@ -3635,26 +3684,56 @@ function supplierBalance(supplierId){
   const totalReturns = returns.reduce((s,r)=>s+r.total,0);
   return { totalPurchased, totalPaid, totalReturns, balance: totalPurchased-totalPaid-totalReturns, count: purchases.length, returnsCount: returns.length };
 }
+/* الملاحظة 44: أرشفة المورد — بشرط رصيد صفر (مفيش مستحقات معلقة) */
+let supShowArchived = false;
+function toggleSupArchived(){ supShowArchived = !supShowArchived; refreshContent(); }
+function archiveSupplier(supplierId){
+  if(!isOwnerSession()){ toast('أرشفة الموردين صلاحية صاحب المركز فقط', true); return; }
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  const b = supplierBalance(supplierId);
+  if(Math.abs(b.balance) > 0.005){ toast('مينفعش أرشفة المورد — عليه رصيد مستحق ('+money(b.balance)+'). سدّده الأول.', true); return; }
+  askConfirmReason('أرشفة المورد «'+sup.name+'»؟<br><span class="muted" style="font-size:12px">هيختفي من قوائم الاختيار والموردين النشطين، وكل تاريخه (مشتريات/كشف حساب/تقارير) هيفضل زي ما هو. تقدر ترجّعه في أي وقت.</span>', async (reason)=>{
+    sup.archived = true; sup.archivedAt = new Date().toISOString(); sup.archivedBy = actorName();
+    await saveKey('suppliers', DB.suppliers);
+    await logAction('🗄️ أرشفة مورد: '+sup.name+(reason?' — السبب: '+reason:''));
+    closeModal(); toast('تم أرشفة المورد «'+sup.name+'»'); refreshContent();
+  });
+}
+async function restoreSupplier(supplierId){
+  if(!isOwnerSession()){ toast('استرجاع الموردين صلاحية صاحب المركز فقط', true); return; }
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  sup.archived = false; delete sup.archivedAt; delete sup.archivedBy;
+  await saveKey('suppliers', DB.suppliers);
+  await logAction('♻️ استرجاع مورد من الأرشيف: '+sup.name);
+  closeModal(); toast('رجع المورد «'+sup.name+'» نشط تاني'); refreshContent();
+}
 function renderSuppliers(){
-  const list = [...DB.suppliers].sort((a,b)=>a.name.localeCompare(b.name,'ar'));
-  const totalOwed = DB.suppliers.reduce((s,sup)=>s+supplierBalance(sup.id).balance,0);
+  const archivedCount = DB.suppliers.filter(s=>s.archived).length;
+  const list = [...DB.suppliers]
+    .filter(s=> supShowArchived ? true : !s.archived)
+    .sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+  const totalOwed = activeSuppliers().reduce((s,sup)=>s+supplierBalance(sup.id).balance,0);
   return `
-  <div class="section-head"><h3>الموردين (${DB.suppliers.length}) — إجمالي المستحق ${money(totalOwed)}</h3>
+  <div class="section-head"><h3>الموردين (${activeSuppliers().length}${archivedCount?` + ${archivedCount} مؤرشف`:''}) — إجمالي المستحق ${money(totalOwed)}</h3>
     <div style="display:flex;gap:8px">
       <button class="btn" onclick="openNewPurchaseInvoicePage()">🧾 فاتورة شراء جديدة</button>
       <button class="btn btn-accent" onclick="openNewSupplierModal()">${ICONS.plus} مورد جديد</button>
     </div></div>
+  <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-bottom:10px">
+    <input type="checkbox" ${supShowArchived?'checked':''} onchange="toggleSupArchived()" style="width:15px;height:15px"> عرض الموردين المؤرشفين 🗄️
+  </label>
   <div class="grid g3">
     ${list.length? list.map(sup=>{
       const b = supplierBalance(sup.id);
       return `
-      <div class="card" style="cursor:pointer" onclick="openSupplierDetail('${sup.id}')">
-        <div style="font-weight:800;font-size:15px">${sup.name}</div>
+      <div class="card" style="cursor:pointer${sup.archived?';opacity:.55':''}" onclick="openSupplierDetail('${sup.id}')">
+        <div style="font-weight:800;font-size:15px">${sup.name}${sup.archived?' <span class="muted" style="font-size:11px">🗄️ مؤرشف</span>':''}</div>
         <div class="muted" style="font-size:12.5px;margin-top:2px">${sup.phone||'—'}</div>
         <div class="flex-between" style="margin-top:14px">
           <span class="muted" style="font-size:12px">عدد فواتير الشراء: ${b.count}</span>
           <span style="font-weight:800;${b.balance>0?'color:var(--danger)':'color:var(--success)'}">${money(b.balance)}</span>
         </div>
+        ${sup.archived && isOwnerSession() ? `<button class="btn btn-sm btn-accent" style="width:100%;margin-top:10px" onclick="event.stopPropagation(); restoreSupplier('${sup.id}')">♻️ استرجاع المورد</button>` : ''}
       </div>`;
     }).join('') : emptyState('لسه مفيش موردين مسجلين')}
   </div>`;
@@ -3737,12 +3816,15 @@ function supplierDetailHTML(supplierId){
   ${returns.map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${r.name} ×${r.qty}</td><td>${money(r.total)}</td><td class="muted">${r.note||'—'}</td></tr>`).join('')}
   </tbody></table>` : ''}
   ${b.balance>0 && can('sup.pay') ? `<button class="btn btn-accent" style="width:100%;margin-top:16px" onclick="openSupplierPaymentModal('${supplierId}')">تسديد دفعة للمورد</button>` : ''}
+  ${isOwnerSession() ? (sup.archived
+    ? `<button class="btn" style="width:100%;margin-top:8px" onclick="restoreSupplier('${supplierId}')">♻️ استرجاع المورد من الأرشيف</button>`
+    : `<button class="btn" style="width:100%;margin-top:8px;border-color:var(--danger);color:var(--danger)" onclick="archiveSupplier('${supplierId}')">🗄️ أرشفة المورد (بديل الحذف — بيتطلب رصيد صفر)</button>`) : ''}
   `;
 }
 function openSupplierReturnModal(supplierId){
   const purchasedPartIds = new Set(DB.purchases.filter(p=>p.supplierId===supplierId).flatMap(p=>p.items.map(i=>i.partId)));
-  const parts = DB.inventory.filter(p=>purchasedPartIds.has(p.id));
-  const partsToShow = parts.length ? parts : DB.inventory;
+  const parts = activeInventory().filter(p=>purchasedPartIds.has(p.id));
+  const partsToShow = parts.length ? parts : activeInventory();
   if(partsToShow.length===0){ toast('مفيش أصناف في المخزون أصلاً', true); return; }
   openModal(`
     <h3>تسجيل مرتجع للمورد</h3>
@@ -3838,7 +3920,7 @@ function renderNewPurchaseInvoice(){
       <div class="form-row"><label class="f-label">المورد</label>
         <select class="f" onchange="purchaseDraft.supplierId=this.value">
           <option value="">— اختار المورد —</option>
-          ${DB.suppliers.map(s=>`<option value="${s.id}" ${purchaseDraft.supplierId===s.id?'selected':''}>${s.name}</option>`).join('')}
+          ${activeSuppliers().map(s=>`<option value="${s.id}" ${purchaseDraft.supplierId===s.id?'selected':''}>${s.name}</option>`).join('')}
         </select>
       </div>
       <div class="form-row"><label class="f-label">رقم فاتورة المورد (اختياري)</label><input class="f" value="${purchaseDraft.invoiceNo}" oninput="purchaseDraft.invoiceNo=this.value"></div>
@@ -3959,7 +4041,7 @@ function smartSearchParts(query, limit){
   const qTokens = normSearch(query).split(' ').filter(t=>t.length>=2);
   if(!qTokens.length) return [];
   const scored = [];
-  for(const p of DB.inventory){
+  for(const p of activeInventory()){
     const score = partMatchScore(qTokens, p);
     if(score>0) scored.push({part:p, score});
   }
@@ -4110,7 +4192,7 @@ function switchPlTab(mode){
 }
 function filterPartsLive(term){
   const t = String(term||'').trim();
-  const results = t ? smartSearchParts(t, 10).map(r=>r.part) : DB.inventory.slice(0,8);
+  const results = t ? smartSearchParts(t, 10).map(r=>r.part) : activeInventory().slice(0,8);
   const box = document.getElementById('plResults');
   if(!box) return;
   box.innerHTML = results.length ? smartRowsHTML(results)
@@ -4166,7 +4248,11 @@ async function savePurchaseInvoice(){
   if(!can('inv.receive')){ toast('مالكش صلاحية تسجيل المشتريات', true); return; }
   if(!purchaseDraft.supplierId){ toast('اختار المورد أولاً', true); return; }
   if(purchaseDraft.lines.length===0){ toast('أضف صنف واحد على الأقل', true); return; }
+  // الملاحظة 45: حماية خلفية — لو صنف في الفاتورة اتأرشف (مثلاً من جهاز تاني) أو المورد اتأرشف، الحفظ يترفض قبل أي تعديل
+  const archivedLine = purchaseDraft.lines.find(l=>l.partId && (DB.inventory.find(p=>p.id===l.partId)||{}).archived);
+  if(archivedLine){ toast('الصنف «'+archivedLine.name+'» مؤرشف — استرجعه من الأرشيف الأول أو شيله من الفاتورة', true); return; }
   const supplier = DB.suppliers.find(s=>s.id===purchaseDraft.supplierId);
+  if(supplier && supplier.archived){ toast('المورد «'+supplier.name+'» مؤرشف — استرجعه من الأرشيف الأول', true); return; }
   const purchaseId = uid('pur');
   const invoiceItems = [];
   for(const line of purchaseDraft.lines){
@@ -5550,8 +5636,8 @@ function renderReports(){
   const totalExpenses = DB.expenses.reduce((s,e)=>s+e.amount,0);
   const scrapLoss = scrapTotals().total;
   const net = totalCollected - totalExpenses - scrapLoss;
-  const lowStock = DB.inventory.filter(p=>p.qty<=p.minQty).length;
-  const inventoryValue = DB.inventory.reduce((s,p)=>s+p.qty*p.costPrice,0);
+  const lowStock = activeInventory().filter(p=>p.qty<=p.minQty).length;
+  const inventoryValue = activeInventory().reduce((s,p)=>s+p.qty*p.costPrice,0);
 
   return `
   <div class="grid g4" style="margin-bottom:24px">
@@ -7031,7 +7117,7 @@ function toolFormHTML(x){
     </div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">المورد (اختياري)</label>
-        <select class="f" id="tlSupplier"><option value="">— بدون —</option>${DB.suppliers.map(s=>`<option value="${s.id}" ${x.supplierId===s.id?'selected':''}>${s.name}</option>`).join('')}</select></div>
+        <select class="f" id="tlSupplier"><option value="">— بدون —</option>${activeSuppliers().map(s=>`<option value="${s.id}" ${x.supplierId===s.id?'selected':''}>${s.name}</option>`).join('')}</select></div>
       <div class="form-row"><label class="f-label">الحالة</label>
         <select class="f" id="tlStatus">${TOOL_STATUS.map(s=>`<option value="${s}" ${(x.status||'متاحة')===s?'selected':''}>${s}</option>`).join('')}</select></div>
     </div>
@@ -7294,7 +7380,7 @@ function highAbsenceEmployees(){
 function stagnantParts(){
   const days = DB.settings.stagnantDays || 90;
   const cutoff = Date.now() - days*86400000;
-  return DB.inventory.filter(p=>{
+  return activeInventory().filter(p=>{
     if((p.qty||0) <= 0) return false;
     if(p.createdAt && new Date(p.createdAt).getTime() > cutoff) return false; // صنف جديد لسه
     const lastOut = DB.stockMoves.filter(m=>m.partId===p.id && (m.type==='out')).sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
@@ -7305,7 +7391,7 @@ function stagnantParts(){
     return { p, lastOut: lastOut?lastOut.date:null, value: (p.qty||0)*(p.costPrice||0) };
   }).sort((a,b)=>b.value-a.value);
 }
-function lowStockParts(){ return DB.inventory.filter(p=>(p.qty||0) <= (p.minQty||0)); }
+function lowStockParts(){ return activeInventory().filter(p=>(p.qty||0) <= (p.minQty||0)); }
 function overdueCustodiesAlert(){ return (typeof overdueCustodies==='function') ? overdueCustodies() : []; }
 function liveAlertsCount(){
   return debtReminders().length + pendingLeaveReqs().length + pendingPermits().length + damagedWaiting().length
