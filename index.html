@@ -346,7 +346,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v65';
+const APP_VERSION = 'v66';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -2684,7 +2684,10 @@ function customerMatchesSearch(cust, term){
 let mvFilters = { dateFrom:'', dateTo:'', supplierId:'', type:'', partId:'', jobNo:'', carCust:'', reqById:'', q:'' };
 function renderStockMoves(){
   const openJobs = DB.jobs.filter(j=>!isJobClosed(j)).filter(j=>jobMatchesSearch(j,custSearchTerm));
+  /* الملاحظة 66: نماذج الصرف تختفي لو الموظف مالوش الصلاحية — مايشوفش زرار بيرفضه */
+  const canIssue = can('inv.issue'), canJobEdit = can('jobs.edit');
   return `
+  ${!canIssue?'':`
   <div class="section-head"><h3>صرف قطعة لأمر شغل</h3></div>
   <div class="card" style="margin-bottom:18px">
     ${openJobs.length===0 ? `<div class="muted">مفيش أوامر شغل مطابقة للبحث حالياً</div>` : `
@@ -2700,7 +2703,8 @@ function renderStockMoves(){
     </div>
     <button class="btn btn-accent" onclick="saveStockOut()">${ICONS.arrows} صرف القطعة</button>
     `}
-  </div>
+  </div>`}
+  ${!canJobEdit?'':`
   <div class="section-head"><h3 style="color:var(--accent-2)">🔩 صرف قطع غيار خارجية (شراء مباشر للعميل — بدون تكويد)</h3></div>
   <div class="card" style="margin-bottom:18px;border-right:3px solid var(--accent-2)">
     ${openJobs.length===0 ? `<div class="muted">مفيش أوامر شغل مطابقة للبحث حالياً</div>` : `
@@ -2748,7 +2752,7 @@ function renderStockMoves(){
     <button class="btn btn-accent" onclick="savePaintOut()">🎨 تحميل التكلفة على أمر الشغل</button>
     <div class="muted" style="font-size:11.5px;margin-top:8px">التكلفة بتتسجل مباشرة على أمر الشغل وبتظهر في تقرير الربحية — من غير إنشاء صنف بالمخزن ولا تأثير على أي رصيد، ولا تظهر أبداً في فاتورة العميل.</div>
     `}
-  </div>
+  </div>`}
   <div style="display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap">
     ${can('inv.adjust')?`<button class="btn" onclick="openStockAdjustmentModal()">⚖ تسوية مخزون</button>`:''}
     ${can('inv.return')?`<button class="btn" onclick="openCustomerReturnModal()">↩ مرتجع عميل</button>`:''}
@@ -3892,6 +3896,8 @@ function countDiffLabel(line){
   return ['زيادة +'+diff,'tag-partial'];
 }
 function renderInventoryCount(){
+  /* الملاحظة 66: شاشة فرعية — بتتحقق من صلاحيتها بنفسها */
+  if(!canScreen('inventory')) return `<div class="card"><div class="empty">🔒 مالكش صلاحية على شاشة الجرد — كلّم صاحب المركز</div></div>`;
   const ic = DB.inventoryCounts.find(x=>x.id===currentCountId);
   if(!ic) return `<div class="empty">الجرد غير موجود</div>`;
   const editable = ic.status!=='approved';
@@ -4719,6 +4725,8 @@ function openNewPurchaseInvoicePage(){
   render();
 }
 function renderNewPurchaseInvoice(){
+  /* الملاحظة 66: الشاشات الفرعية مستثناة من حارس renderTab — فبتتحقق من صلاحيتها بنفسها */
+  if(!can('inv.receive')) return `<div class="card"><div class="empty">🔒 مالكش صلاحية استلام مشتريات — كلّم صاحب المركز</div></div>`;
   if(!purchaseDraft) resetPurchaseDraft();
   const total = purchaseDraft.lines.reduce((s,l)=>s+l.qty*l.costPrice,0);
   return `
@@ -8470,6 +8478,11 @@ function auditRowsHTML(){
 
 /* ======================= SETTINGS (owner only) ======================= */
 function renderSettings(){
+  /* الملاحظة 66: كروت الإعدادات الحساسة تختفي تماماً لغير أصحابها.
+     الثيم متاح للكل · بيانات المركز والأرقام السرية والنسخة الاحتياطية لصاحب المركز
+     · إدارة المستخدمين لحاملي صلاحية settings.users */
+  const isOwner = isOwnerSession();
+  const canUsers = can('settings.users');
   return `
   <div class="card" style="max-width:520px">
     <h3 style="margin-top:0">🎨 شكل النظام (Theme)</h3>
@@ -8478,6 +8491,7 @@ function renderSettings(){
       ${THEME_MODES.map(([v,l])=>`<button class="btn btn-sm ${getUserThemeMode()===v?'btn-accent':''}" onclick="setUserTheme('${v}')">${l}</button>`).join('')}
     </div>
   </div>
+  ${!isOwner?'':`
   <div class="card" style="max-width:520px;margin-top:18px">
     <h3 style="margin-top:0">اسم المركز</h3>
     <div class="form-row"><input class="f" id="setCenterName" value="${DB.settings.centerName}"></div>
@@ -8509,7 +8523,8 @@ function renderSettings(){
       <div class="form-row"><label class="f-label">حد ركود القطعة (أيام بدون صرف)</label><input class="f" id="setStagnant" type="number" min="1" value="${DB.settings.stagnantDays||90}"></div>
     </div>
     <button class="btn btn-accent" onclick="saveNotifThresholds()">حفظ العتبات</button>
-  </div>
+  </div>`}
+  ${!canUsers?'':`
   <div class="card" style="max-width:920px;margin-top:18px">
     <h3 style="margin-top:0">👥 المستخدمين والصلاحيات</h3>
     <div class="muted" style="font-size:12px;margin-bottom:12px">لكل مستخدم قسم + قالب صلاحيات، وتقدر تخصص بالظبط أي شاشة يشوفها وأي إجراء ينفذه من زرار "🔐 الصلاحيات". الشاشة الممنوعة بتختفي تماماً.</div>
@@ -8550,14 +8565,15 @@ function renderSettings(){
     </div>
     <div class="muted" style="font-size:12px;margin-bottom:10px">هيتطبق القالب المختار، وتقدر تعدّل التفاصيل بعد الإنشاء من "🔐 الصلاحيات".</div>
     <button class="btn btn-accent" onclick="saveNewStaff()">إضافة المستخدم</button>
-  </div>
+  </div>`}
+  ${!isOwner?'':`
   <div class="card" style="max-width:520px;margin-top:18px">
     <h3 style="margin-top:0">الأرقام السرية للدخول</h3>
     ${Object.keys(ROLE_LABEL).map(r=>`
       <div class="form-row"><label class="f-label">${ROLE_LABEL[r]}</label><input class="f" id="pin_${r}" value="${DB.users[r]}"></div>
     `).join('')}
     <button class="btn btn-accent" onclick="savePins()">حفظ الأرقام السرية</button>
-  </div>
+  </div>`}
   <div class="card" style="max-width:520px;margin-top:18px">
     <h3 style="margin-top:0">⚡ مؤشرات الأداء (الجلسة الحالية)</h3>
     ${(()=>{
@@ -8575,6 +8591,7 @@ function renderSettings(){
       <tbody>${[...log].reverse().slice(0,10).map(x=>`<tr><td class="muted" style="font-size:12px">${x.op}</td><td class="${x.ms>1500?'low-stock':''}">${x.ms} مللي</td></tr>`).join('')}</tbody></table>`;
     })()}
   </div>
+  ${!isOwner?'':`
   <div class="card" style="max-width:520px;margin-top:18px">
     <h3 style="margin-top:0">نسخة احتياطية من البيانات</h3>
     <p class="muted" style="font-size:12.5px;margin-top:0">حمّل نسخة كاملة من كل بيانات المركز (عملاء، أوامر شغل، فواتير، مخزون، موظفين، عهد...) بشكل دوري كأمان إضافي، وتقدر تسترجعها في أي وقت.</p>
@@ -8593,7 +8610,7 @@ function renderSettings(){
       <input class="f" type="file" id="restoreFile" accept="application/json">
       <button class="btn btn-danger" style="margin-top:8px" onclick="importBackup()">استرجاع البيانات (سيستبدل كل شيء)</button>
     </div>
-  </div>`;
+  </div>`}`;
 }
 function templateOptionsFor(dept){
   const tpls = allTemplates();
@@ -8757,14 +8774,21 @@ async function savePerms(staffId){
   closeModal(); toast('تم حفظ صلاحيات '+st.name); refreshContent();
 }
 async function toggleStaff(id){
+  if(!can('settings.users')){ toast('مالكش صلاحية إدارة المستخدمين', true); return; }
   const st = DB.staff.find(s=>s.id===id);
+  if(!st) return;
+  if(!isOwnerSession() && (st.dept||st.role)==='owner'){ toast('مينفعش تعدّل على حساب صاحب المركز', true); return; }
   st.active = st.active===false ? true : false;
   await saveKey('staff', DB.staff);
   await logAction((st.active?'تفعيل':'إيقاف')+' حساب الموظف: '+st.name);
   toast((st.active?'تم تفعيل ':'تم إيقاف ')+st.name); refreshContent();
 }
 function deleteStaff(id){
+  if(!can('settings.users')){ toast('مالكش صلاحية إدارة المستخدمين', true); return; }
   const st = DB.staff.find(s=>s.id===id);
+  if(!st) return;
+  if(!isOwnerSession() && (st.dept||st.role)==='owner'){ toast('مينفعش تحذف حساب صاحب المركز', true); return; }
+  if(session && session.staffId===id){ toast('مينفعش تحذف حسابك انت', true); return; }
   askConfirmReason('حذف حساب الموظف "'+st.name+'" نهائياً؟ عملياته السابقة هتفضل مسجلة باسمه في سجل العمليات.', async (reason)=>{
     DB.staff = DB.staff.filter(s=>s.id!==id);
     await saveKey('staff', DB.staff);
@@ -8779,7 +8803,10 @@ function deleteStaff(id){
   });
 }
 function openChangeStaffPass(id){
+  if(!can('settings.users')){ toast('مالكش صلاحية إدارة المستخدمين', true); return; }
   const st = DB.staff.find(s=>s.id===id);
+  if(!st) return;
+  if(!isOwnerSession() && (st.dept||st.role)==='owner'){ toast('مينفعش تغيّر كلمة سر صاحب المركز', true); return; }
   openModal(`
     <h3>تغيير كلمة سر — ${st.name}</h3>
     <div class="form-row"><label class="f-label">كلمة المرور الجديدة</label><input class="f" id="newStPass" type="text"></div>
@@ -8787,7 +8814,10 @@ function openChangeStaffPass(id){
   `);
 }
 async function saveStaffPass(id){
+  if(!can('settings.users')){ toast('مالكش صلاحية إدارة المستخدمين', true); return; }
   const st = DB.staff.find(s=>s.id===id);
+  if(!st) return;
+  if(!isOwnerSession() && (st.dept||st.role)==='owner'){ toast('مينفعش تغيّر كلمة سر صاحب المركز', true); return; }
   const p = document.getElementById('newStPass').value;
   if(p.length<4){ toast('كلمة المرور لازم تكون 4 حروف/أرقام على الأقل', true); return; }
   st.password = p;
@@ -8796,6 +8826,7 @@ async function saveStaffPass(id){
   closeModal(); toast('تم تغيير كلمة السر'); refreshContent();
 }
 async function saveInvoiceInfo(){
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
   DB.settings.address = document.getElementById('setAddress').value.trim();
   DB.settings.phone = document.getElementById('setPhone').value.trim();
   DB.settings.warrantyText = document.getElementById('setWarranty').value;
@@ -8803,6 +8834,7 @@ async function saveInvoiceInfo(){
   toast('تم حفظ بيانات الفاتورة');
 }
 async function saveTaxWa(){
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
   DB.settings.vatRate = parseFloat(document.getElementById('setVat').value)||0;
   DB.settings.whatsappTemplate = document.getElementById('setWa').value;
   await saveKey('settings', DB.settings);
@@ -8829,6 +8861,7 @@ function buildBackupObject(){
   return backup;
 }
 function exportBackup(){
+  if(!isOwnerSession()){ toast('النسخة الاحتياطية لصاحب المركز فقط', true); return; }
   const backup = buildBackupObject();
   const blob = new Blob([JSON.stringify(backup,null,2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -8853,12 +8886,14 @@ function backupStatus(){
   return { intervalDays: days, last, lastStr, daysSince, overdue };
 }
 async function saveBackupInterval(){
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
   const v = parseInt((document.getElementById('backupIntervalSel')||{}).value) || 7;
   DB.settings.backupReminderDays = v;
   await saveKey('settings', DB.settings);
   toast('تم ضبط تذكير النسخة الاحتياطية كل '+v+' يوم'); refreshContent();
 }
 async function importBackup(){
+  if(!isOwnerSession()){ toast('استرجاع النسخة الاحتياطية لصاحب المركز فقط', true); return; }
   const fileInput = document.getElementById('restoreFile');
   const file = fileInput.files[0];
   if(!file){ toast('اختار ملف النسخة الاحتياطية أولاً', true); return; }
@@ -8874,11 +8909,13 @@ async function importBackup(){
   });
 }
 async function saveCenterName(){
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
   DB.settings.centerName = document.getElementById('setCenterName').value.trim() || 'مركز الصيانة';
   await saveKey('settings', DB.settings);
   toast('تم الحفظ'); render();
 }
 async function savePins(){
+  if(!isOwnerSession()){ toast('الأرقام السرية لصاحب المركز فقط', true); return; }
   Object.keys(ROLE_LABEL).forEach(r=>{
     const v = document.getElementById('pin_'+r).value.trim();
     if(v) DB.users[r] = v;
