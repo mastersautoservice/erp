@@ -346,7 +346,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v63';
+const APP_VERSION = 'v65';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -688,7 +688,7 @@ function auditDetails(pairs){
 function describeJobItem(it, job){
   const kindTxt = kindLabelFull(it);
   const sup = it.supplierId ? (DB.suppliers.find(s=>s.id===it.supplierId)||{}).name : null;
-  const tech = (it.kind==='service'||it.kind==='ext_work') && (it.technicianId||it.technician) ? itemTechLabel(it, job) : null;
+  const tech = it.kind==='service' && (it.technicianId||it.technician) ? itemTechLabel(it, job) : null;
   const part = it.partId ? DB.inventory.find(p=>p.id===it.partId) : null;
   return kindTxt + ' «' + (it.name||'—') + '»' + auditDetails([
     ['الكمية', it.qty],
@@ -1678,10 +1678,8 @@ function openNewJobModal(carId){
   openModal(`
     <h3>أمر شغل جديد — ${car.plate}</h3>
     <div class="form-row"><label class="f-label">وصف الأعطال / المطلوب</label><textarea class="f" id="jobNotes" rows="3" placeholder="مثال: تغيير زيت + فحص فرامل"></textarea></div>
-    <div class="grid g2">
-      <div class="form-row"><label class="f-label">الفني المسؤول (اختياري)</label><select class="f" id="jobTech">${techOptionsHTML()}</select></div>
-      <div class="form-row"><label class="f-label">قراءة العداد الحالية (كم)</label><input class="f" id="jobOdo" type="number" min="0" value="${car.currentOdometer||''}"></div>
-    </div>
+    <div class="form-row"><label class="f-label">قراءة العداد الحالية (كم)</label><input class="f" id="jobOdo" type="number" min="0" value="${car.currentOdometer||''}"></div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">👨‍🔧 الفني بيتحدد مع كل <b>خدمة/مصنعية</b> على حدة جوه الأمر — مش هنا، عشان كل خدمة ممكن يعملها فني مختلف.</div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">الصيانة القادمة عند كم (اختياري)</label><input class="f" id="jobNextKm" type="number" min="0" value="${car.nextServiceKm||''}"></div>
       <div class="form-row"><label class="f-label">أو تاريخ الصيانة القادمة (اختياري)</label><input class="f" id="jobNextDate" type="date" value="${car.nextServiceDate||''}"></div>
@@ -1699,8 +1697,6 @@ async function saveNewJob(carId){
     return;
   }
   const notes = document.getElementById('jobNotes').value.trim();
-  const techId = (document.getElementById('jobTech')||{}).value || null;
-  const tech = techId ? techLabelOf(techId) : '';
   const odo = parseFloat(document.getElementById('jobOdo').value)||null;
   const nextKm = parseFloat(document.getElementById('jobNextKm').value)||null;
   const nextDate = document.getElementById('jobNextDate').value || null;
@@ -1711,7 +1707,7 @@ async function saveNewJob(carId){
   const job = {
     id: uid('job'), jobNo: nextNo(DB.jobs,'jobNo'),
     carId, customerId: car.customerId, status:'مستلمة',
-    receivedAt: new Date().toISOString(), notes, technicianId: techId, technician: tech, odometer: odo,
+    receivedAt: new Date().toISOString(), notes, odometer: odo,
     items: [], deliveredAt:null, customerApproved:false
   };
   DB.jobs.push(job);
@@ -1789,7 +1785,7 @@ function jobDetailHTML(jobId){
       const cols = hasActCol ? 5 : 4;
       const rowHTML = it => `
         <tr><td>${it.name} <span class="muted" style="font-size:11px">(${kindLabel(it)})</span>
-        ${(it.kind==='service'||it.kind==='ext_work') && (it.technicianId || it.technician) ? `<div style="font-size:11px;color:var(--accent)">👨‍🔧 الفني: ${itemTechLabel(it, job)}</div>` : ''}
+        ${it.kind==='service' && (it.technicianId || it.technician) ? `<div style="font-size:11px;color:var(--accent)">👨‍🔧 الفني: ${itemTechLabel(it, job)}</div>` : ''}
         ${(it.kind==='ext_part'||it.kind==='ext_work') && can('rep.profit') ? `<div class="muted" style="font-size:11px">${it.supplierId?('المورد: '+((DB.suppliers.find(s=>s.id===it.supplierId)||{}).name||'—')+' · '):''}التكلفة: ${money(it.costPrice||0)} · ${it.payMethod||'كاش'}</div>` : ''}
         ${it.kind==='part' && it.costPrice!==undefined && can('rep.profit') ? `<div class="muted" style="font-size:11px">سعر الشراء: ${money(it.costPrice)}</div>` : ''}
         </td>
@@ -2040,8 +2036,10 @@ function openEditJobItemModal(jobId, itemId){
   const isPart = it.kind==='part';
   // الملاحظة 42: القطعة الخارجية قطعة غيار مش مصنعية — اسم + تكلفة (عرض) + سعر بيع، ومفيش فني
   const isExtPart = it.kind==='ext_part';
+  // الملاحظة 53: الأعمال الخارجية مفيهاش فني (الشغل بيتنفذ بره المركز)
+  const isExtWork = it.kind==='ext_work';
   openModal(`
-    <h3>تعديل البند ${isExtPart?'<span class="muted" style="font-size:12px">— قطعة غيار خارجية</span>':''}</h3>
+    <h3>تعديل البند ${isExtPart?'<span class="muted" style="font-size:12px">— قطعة غيار خارجية</span>':(isExtWork?'<span class="muted" style="font-size:12px">— أعمال خارجية</span>':'')}</h3>
     <div class="form-row"><label class="f-label">${isExtPart?'اسم القطعة (الظاهر للعميل)':'الاسم الظاهر للعميل'}</label><input class="f" id="editItName" value="${it.name}"></div>
     ${isPart ? `
       <div class="muted" style="font-size:12.5px;margin-bottom:10px">الكمية (${it.qty}) وسعر الشراء (${money(it.costPrice||0)}) من اختصاص المخزن ومش قابلة للتعديل هنا.</div>
@@ -2050,6 +2048,13 @@ function openEditJobItemModal(jobId, itemId){
       ${can('rep.profit') ? `<div class="form-row"><label class="f-label">سعر التكلفة (اتسجل وقت الشراء — للعرض فقط)</label><input class="f" value="${money(it.costPrice||0)}" disabled style="opacity:.6"></div>` : ''}
       <div class="muted" style="font-size:12px;margin-bottom:8px">الكمية: ${it.qty} — اتسجلت وقت الشراء ومش قابلة للتعديل هنا.</div>
       <div class="form-row"><label class="f-label">سعر البيع للوحدة (حسب المعاينة اللي وافق عليها العميل)</label><input class="f" id="editItPrice" type="number" min="0" value="${it.unitPrice}"></div>
+    ` : isExtWork ? `
+      ${can('rep.profit') ? `<div class="form-row"><label class="f-label">سعر التكلفة (المدفوع للجهة الخارجية)</label><input class="f" value="${money(it.costPrice||0)}" disabled style="opacity:.6"></div>` : ''}
+      <div class="grid g2">
+        <div class="form-row"><label class="f-label">الكمية</label><input class="f" id="editItQty" type="number" min="1" value="${it.qty}"></div>
+        <div class="form-row"><label class="f-label">سعر البيع للعميل</label><input class="f" id="editItPrice" type="number" min="0" value="${it.unitPrice}"></div>
+      </div>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">🏭 الشغل ده اتنفذ بره المركز — مفيش فني داخلي بيتحدد له.</div>
     ` : `
       <div class="grid g2">
         <div class="form-row"><label class="f-label">الكمية</label><input class="f" id="editItQty" type="number" min="1" value="${it.qty}"></div>
@@ -2070,10 +2075,13 @@ async function saveEditJobItem(jobId, itemId){
   if(!name){ toast('اكتب اسم صحيح', true); return; }
   it.name = name;
   it.unitPrice = price;
-  // الملاحظة 42: الكمية والفني للخدمات والمصنعيات الخارجية بس — القطع (مخزن/خارجية) اسم وسعر بيع فقط
+  // الملاحظة 42: الكمية للخدمات والأعمال الخارجية — القطع (مخزن/خارجية) اسم وسعر بيع فقط
   if(it.kind==='service' || it.kind==='ext_work'){
     const qtyEl = document.getElementById('editItQty');
     if(qtyEl) it.qty = parseFloat(qtyEl.value)||1;
+  }
+  // الملاحظة 53: الفني للخدمة الداخلية بس — مفيش فني للأعمال الخارجية ولا القطع
+  if(it.kind==='service'){
     const techEl = document.getElementById('editItTech');
     if(techEl){
       it.technicianId = techEl.value || null;
@@ -3061,7 +3069,9 @@ async function saveStockAdjustment(){
   const diff = newQty - p.qty;
   if(diff===0){ toast('الكمية زي الموجودة بالظبط، مفيش تغيير', true); return; }
   p.qty = newQty;
-  DB.stockMoves.push({id:uid('mv'), partId, type:'adjustment', qty:Math.abs(diff), date:new Date().toISOString(), actor:actorName(),
+  // الملاحظة 54: نخزّن اتجاه التسوية وقيمها الفعلية عشان الرصيد الجاري يتحسب صح
+  DB.stockMoves.push({id:uid('mv'), partId, type:'adjustment', qty:Math.abs(diff), delta:diff,
+    qtyBefore:newQty-diff, qtyAfter:newQty, date:new Date().toISOString(), actor:actorName(),
     note:(diff>0?'زيادة':'نقص')+' بالتسوية '+Math.abs(diff)+(reason?' — '+reason:'')+(notes?' — '+notes:'')});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
   await logAction('تسوية مخزون: '+p.name+' من '+(p.qty-diff)+' إلى '+newQty+' (فرق '+(diff>0?'+':'')+diff+') — السبب: '+reason+(notes?' — '+notes:''));
@@ -3335,7 +3345,7 @@ function workOrderReportHTML(jobId){
     <div><span class="muted" style="font-size:12px">مدة الصيانة</span><div><b>${job.status==='ملغاة'?'—':durationText(job.receivedAt, job.deliveredAt)}</b></div></div>
   </div>
   <div style="margin-bottom:14px"><span class="muted" style="font-size:12px">الحالة:</span> <span class="tag ${STATUS_TAGCLASS[job.status]}">${job.status}</span></div>
-  <div class="muted" style="font-size:12.5px;margin-bottom:14px">الفني: ${job.technicianId ? techLabelOf(job.technicianId) : (job.technician||'غير محدد')}</div>
+  ${(job.technicianId||job.technician) ? `<div class="muted" style="font-size:12.5px;margin-bottom:14px">الفني المسجّل على الأمر (سجل قديم): ${job.technicianId ? techLabelOf(job.technicianId) : job.technician}</div>` : ''}
   <label class="f-label">الخدمات المنفذة</label>
   <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>الخدمة</th><th>الفني المنفذ</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
   <tbody>${services.length? services.map(it=>`<tr><td>${it.name}</td><td>${(it.technicianId||it.technician)?itemTechLabel(it, job):'—'}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>`).join('') : `<tr><td colspan="5" class="empty">لا توجد خدمات</td></tr>`}</tbody></table>
@@ -3682,8 +3692,32 @@ function refreshItemLedger(partId){
   const el = document.getElementById('itemLedgerBody');
   if(el) el.innerHTML = itemLedgerRowsHTML(partId);
 }
+/* الملاحظة 54: أثر الحركة على الرصيد (+ / − / تسوية مطلقة)
+   التسوية بتحدد الرصيد مباشرة (qtyAfter) أو بفرقها (delta)؛ والسجلات القديمة
+   بنستنتج اتجاهها من النص عشان الرصيد التاريخي يفضل صح. */
+function moveDelta(m){
+  if(m.type==='in' || m.type==='customer_return' || m.type==='transfer_in') return (m.qty||0);
+  if(m.type==='out' || m.type==='return' || m.type==='scrap' || m.type==='paint_out' || m.type==='transfer_out') return -(m.qty||0);
+  if(m.type==='adjustment'){
+    if(typeof m.delta === 'number') return m.delta;
+    // توافق مع الحركات القديمة: "نقص/عجز" = سالب، وإلا موجب
+    const note = String(m.note||'');
+    const negative = /نقص|عجز/.test(note);
+    return negative ? -(m.qty||0) : (m.qty||0);
+  }
+  return 0;
+}
 function itemLedgerRowsHTML(partId){
-  let moves = itemMoves(partId);
+  const all = itemMoves(partId);
+  // الرصيد الجاري بيتحسب على كل الحركات بالترتيب — مش على المفلترة بس
+  let running = 0;
+  const balanceById = new Map();
+  all.forEach(m=>{
+    if(m.type==='adjustment' && typeof m.qtyAfter === 'number') running = m.qtyAfter;  // التسوية بتحدد الرصيد مباشرة
+    else running += moveDelta(m);
+    balanceById.set(m.id, running);
+  });
+  let moves = all;
   const f = icFilters;
   if(f.dateFrom) moves = moves.filter(m=>new Date(m.date) >= new Date(f.dateFrom));
   if(f.dateTo) moves = moves.filter(m=>new Date(m.date) <= new Date(new Date(f.dateTo).getTime()+86399999));
@@ -3696,13 +3730,7 @@ function itemLedgerRowsHTML(partId){
     });
   }
   if(moves.length===0) return `<div class="empty">لا توجد حركات مطابقة</div>`;
-  let balance = 0;
-  const withBalance = moves.map(m=>{
-    if(m.type==='in' || m.type==='customer_return' || m.type==='transfer_in') balance += m.qty;
-    else if(m.type==='out' || m.type==='return' || m.type==='scrap' || m.type==='paint_out' || m.type==='transfer_out') balance -= m.qty;
-    else if(m.type==='adjustment'){ /* balance already reflects the corrected qty, approximate by not changing running calc precisely */ }
-    return {...m, balanceAfter: balance};
-  });
+  const withBalance = moves.map(m=>({...m, balanceAfter: balanceById.get(m.id)}));
   const typeTagMap = {
     in: '<span class="tag tag-ready">شراء</span>', out: '<span class="tag tag-cancel">صرف</span>',
     customer_return: '<span class="tag tag-inspect">مرتجع عميل</span>', return: '<span class="tag tag-partial">مرتجع مورد</span>',
@@ -3738,7 +3766,7 @@ function itemLedgerRowsHTML(partId){
     const clickable = job ? `onclick="openWorkOrderReport('${job.id}')" style="cursor:pointer"` : '';
     return `<tr ${clickable}><td>${fmtDateTime(m.date)}</td><td>${typeTagMap[m.type]||m.type}</td>
       <td class="muted" style="max-width:220px">${details.join(' · ')||'—'}</td>
-      <td>${m.qty}</td><td>${price}</td><td>${m.balanceAfter}</td></tr>`;
+      <td>${(()=>{ const dl=moveDelta(m); return dl>0?('+ '+Math.abs(dl)):(dl<0?('− '+Math.abs(dl)):m.qty); })()}</td><td>${price}</td><td style="font-weight:800">${m.balanceAfter}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -3965,7 +3993,8 @@ function approveCount(icId){
       const diff = after - before;
       p.qty = after;
       DB.stockMoves.push({
-        id: uid('mv'), partId: p.id, type:'adjustment', qty: Math.abs(diff), unitCost: p.costPrice,
+        id: uid('mv'), partId: p.id, type:'adjustment', qty: Math.abs(diff), delta: diff,
+        qtyBefore: before, qtyAfter: after, unitCost: p.costPrice,
         date: new Date().toISOString(),
         note: (diff<0?'تسوية مخزون - عجز جرد':'تسوية مخزون - زيادة جرد')
           +' #'+ic.countNo+' — قبل: '+before+' بعد: '+after+' (فرق '+(diff>0?'+':'')+diff+')'
