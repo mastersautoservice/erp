@@ -346,7 +346,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v66';
+const APP_VERSION = 'v70';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1277,8 +1277,8 @@ function renderDashboard(){
   if(['accounts','owner'].includes(session.role)) cards += stat(money(outstanding),'مستحقات غير محصلة');
   if(can('rep.profit')){
     const monthProfit = computeProfitStats(periodRange({preset:'this_month'}));
-    cards += stat(money(monthProfit.profit),'💰 صافي ربح هذا الشهر', monthProfit.profit<0);
-    cards += stat(monthProfit.margin.toFixed(1)+'%','نسبة الربحية هذا الشهر', monthProfit.margin<15 && monthProfit.sales>0);
+    cards += stat(money(monthProfit.netProfit),'💰 صافي ربح هذا الشهر', monthProfit.netProfit<0);
+    cards += stat(monthProfit.netMargin.toFixed(1)+'%','نسبة الربحية هذا الشهر', monthProfit.netMargin<15 && monthProfit.sales>0);
   }
   if(['reception','owner'].includes(session.role)) cards += stat(String(DB.customers.length),'إجمالي العملاء');
 
@@ -1397,18 +1397,25 @@ function customerHasHistory(custId){
   return (h.jobs + h.invoices) > 0;
 }
 function renderCustomers(){
-  const everyone = DB.customers;
+  const everyone = DB.customers.filter(c=>!c.merged);   // العملاء المدموجين مستبعدين تماماً من القوائم
   const archivedCount = everyone.filter(c=>c.archived).length;
-  let list = custShowArchived ? everyone : everyone.filter(c=>!c.archived);
+  // البحث بيدوّر في الكل (بما فيهم المؤرشفين) عشان تلاقي أي عميل حتى لو مؤرشف — والكارت بيبيّن إنه مؤرشف.
+  // من غير بحث: بنعرض النشطين، والمؤرشفين بيظهروا بزرار "عرض الأرشيف".
+  let list;
   if(custSearchTerm){
-    list = list.filter(c=>customerMatchesSearch(c, custSearchTerm));
+    list = everyone.filter(c=>customerMatchesSearch(c, custSearchTerm));
+  } else {
+    list = custShowArchived ? everyone : everyone.filter(c=>!c.archived);
   }
+  const archivedInResults = custSearchTerm ? list.filter(c=>c.archived).length : 0;
   return `
   <div class="section-head"><h3>العملاء (${everyone.filter(c=>!c.archived).length})</h3>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${isOwnerSession()?`<button class="btn" onclick="openMergeCustomers()">🔀 دمج مكررين</button>`:''}
       ${archivedCount?`<button class="btn" onclick="toggleCustArchive()">${custShowArchived?'إخفاء الأرشيف':'🗄️ عرض الأرشيف ('+archivedCount+')'}</button>`:''}
-      ${can('customers.create')?`<button class="btn btn-accent" onclick="openNewCustomerModal()">${ICONS.plus} عميل جديد</button>`:''}
+      ${can('customers.create')?`<button class="btn btn-accent" onclick="openNewCustomerSearch()">${ICONS.plus} عميل جديد</button>`:''}
     </div></div>
+  ${archivedInResults?`<div class="muted" style="font-size:12px;margin-bottom:10px">🗄️ من نتايج البحث دي ${archivedInResults} عميل مؤرشف — بيظهروا بعلامة الأرشيف وتقدر ترجّعهم من زرار ↩️.</div>`:''}
   <div class="grid g3">
     ${list.length? list.map(customerCard).join('') : emptyState(custSearchTerm?'مفيش نتائج مطابقة':'لسه مفيش عملاء مسجلين')}
   </div>`;
@@ -1522,43 +1529,185 @@ function customerHistoryHTML(customerId){
   }).join('')}</tbody></table>` : ''}
   `;
 }
-function openNewCustomerModal(){
+/* ============ الملاحظة 57: منع تكرار العملاء والمطابقة الذكية ============ */
+function activeCustomers(){ return DB.customers.filter(c=>!c.merged); }
+function normPhone(s){ return normSearch(s).replace(/\D/g,''); }
+function custHaystack(c){
+  const cars = DB.cars.filter(x=>x.customerId===c.id);
+  return normSearch([c.name, c.phone, c.phone2, c.nationalId, c.email,
+    ...cars.flatMap(car=>[car.plate, car.vin, car.make, car.model, car.year])].filter(Boolean).join(' '));
+}
+function smartSearchCustomers(query, limit){
+  const tokens = normSearch(query).split(' ').filter(t=>t.length>=2);
+  if(!tokens.length) return [];
+  const res = DB.customers.filter(c=>!c.merged).filter(c=>{ const h=custHaystack(c); return tokens.every(t=>h.includes(t)); });
+  return res.slice(0, limit||12);
+}
+/* منع قاطع: نفس الموبايل / الرقم القومي / الإيميل */
+function findCustomerDup(phone, nationalId, email, excludeId){
+  const np = normPhone(phone), nid = normSearch(nationalId||''), em = String(email||'').trim().toLowerCase();
+  return DB.customers.find(c=>c.id!==excludeId && !c.merged && (
+    (np && normPhone(c.phone)===np) ||
+    (nid && c.nationalId && normSearch(c.nationalId)===nid) ||
+    (em && c.email && String(c.email).trim().toLowerCase()===em)
+  ));
+}
+/* تحذير (مش منع): أسماء متشابهة ببيانات مختلفة */
+function similarNameCustomers(name, excludeId){
+  const key = normSearch(name); if(key.length<2) return [];
+  return DB.customers.filter(c=>c.id!==excludeId && !c.merged && !c.archived).filter(c=>{
+    const k2 = normSearch(c.name); if(!k2) return false;
+    return k2===key || k2.includes(key) || key.includes(k2) || editDist(k2, key, 2)<=2;
+  }).slice(0,6);
+}
+/* منع تكرار السيارة: الشاسيه أولاً ثم اللوحة */
+function findVehicleDup(vin, plate, excludeId){
+  const nv = normSearch(vin||''), npl = normSearch(plate||'');
+  if(nv){ const byVin = DB.cars.find(c=>c.id!==excludeId && c.vin && normSearch(c.vin)===nv); if(byVin) return {car:byVin, by:'الشاسيه'}; }
+  if(npl){ const byPl = DB.cars.find(c=>c.id!==excludeId && normSearch(c.plate)===npl); if(byPl) return {car:byPl, by:'رقم اللوحة'}; }
+  return null;
+}
+function openExistingCustomer(custId){ openCustomerHistory(custId); }
+/* (1)(2) نافذة بحث ذكي قبل إنشاء عميل جديد */
+function openNewCustomerSearch(){
+  if(!can('customers.create')){ toast('مالكش صلاحية إضافة عملاء', true); return; }
+  openModal(`
+    <h3>عميل جديد</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px">قبل ما تسجّل عميل جديد — دوّر الأول تتأكد إنه مش موجود (بالاسم · الموبايل · رقم اللوحة · الشاسيه · الرقم القومي · الإيميل). ده بيمنع تكرار العميل وتشتت سجله.</div>
+    <div class="form-row"><label class="f-label">🔎 دوّر على العميل</label>
+      <input class="f" id="ncsSearch" autocomplete="off" placeholder="اسم · موبايل · لوحة · شاسيه..." oninput="newCustSearch(this.value)">
+    </div>
+    <div id="ncsResults" style="max-height:300px;overflow-y:auto;margin-bottom:10px"></div>
+    <button class="btn btn-accent" style="width:100%" onclick="openNewCustomerModal(document.getElementById('ncsSearch').value.trim())">➕ مش موجود — سجّل عميل جديد</button>
+  `);
+  newCustSearch('');
+}
+function newCustSearch(term){
+  const box = document.getElementById('ncsResults'); if(!box) return;
+  const t = String(term||'').trim();
+  const list = t ? smartSearchCustomers(t, 12) : activeCustomers().filter(c=>!c.archived).slice(0,6);
+  if(!list.length){ box.innerHTML = `<div class="muted" style="font-size:12.5px;padding:8px">${t?'مفيش عميل مطابق — تقدر تسجّله جديد تحت 👇':'مفيش عملاء مسجلين'}</div>`; return; }
+  box.innerHTML = list.map(c=>{
+    const cars = DB.cars.filter(x=>x.customerId===c.id);
+    return `<div class="card" style="padding:10px;margin-bottom:8px">
+      <div style="font-weight:800;font-size:13.5px">${c.name}${c.archived?' <span class="muted" style="font-size:11px">🗄️ أرشيف</span>':''}</div>
+      <div class="muted" style="font-size:12px">${c.phone} · ${cars.length} سيارة</div>
+      ${cars.length?`<div style="margin-top:6px;display:flex;flex-direction:column;gap:3px">${cars.map(car=>`<div class="muted" style="font-size:11.5px">🚗 ${car.plate} — ${carLabel(car)}</div>`).join('')}</div>`:''}
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-accent" onclick="openExistingCustomer('${c.id}')">فتح العميل</button>
+        ${!c.archived && can('customers.create')?`<button class="btn btn-sm" onclick="openAddCarModal('${c.id}')">➕ سيارة جديدة</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+function openNewCustomerModal(prefillName){
+  if(!can('customers.create')){ toast('مالكش صلاحية إضافة عملاء', true); return; }
+  const pf = prefillName ? String(prefillName).replace(/"/g,'&quot;') : '';
   openModal(`
     <h3>عميل جديد</h3>
     <div class="form-row"><label class="f-label">نوع العميل</label>
       <select class="f" id="ncType"><option value="فرد">فرد</option><option value="شركة">شركة</option></select>
     </div>
-    <div class="form-row"><label class="f-label">الاسم / اسم الشركة</label><input class="f" id="ncName"></div>
-    <div class="form-row"><label class="f-label">رقم الموبايل</label><input class="f" id="ncPhone" inputmode="tel"></div>
+    <div class="form-row"><label class="f-label">الاسم / اسم الشركة *</label>
+      <input class="f" id="ncName" autocomplete="off" value="${pf}" oninput="ncLiveSearch(this.value)"></div>
+    <div id="ncMatches"></div>
+    <div class="form-row"><label class="f-label">رقم الموبايل *</label><input class="f" id="ncPhone" inputmode="tel"></div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">تليفون إضافي (اختياري)</label><input class="f" id="ncPhone2" inputmode="tel"></div>
+      <div class="form-row"><label class="f-label">الرقم القومي (اختياري)</label><input class="f" id="ncNid" inputmode="numeric"></div>
+    </div>
+    <div class="form-row"><label class="f-label">الإيميل (اختياري)</label><input class="f" id="ncEmail" inputmode="email"></div>
+    <div id="ncWarn"></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveNewCustomer()">حفظ العميل</button>
   `);
+  if(pf) ncLiveSearch(prefillName);
 }
-async function saveNewCustomer(){
+/* (3) كشف مباشر أثناء كتابة الاسم */
+function ncLiveSearch(name){
+  const box = document.getElementById('ncMatches'); if(!box) return;
+  const q = String(name||'').trim();
+  if(q.length<2){ box.innerHTML=''; return; }
+  const matches = smartSearchCustomers(q, 5);
+  box.innerHTML = matches.length ? `
+    <div class="card" style="background:var(--surface-2);padding:8px 10px;margin-bottom:10px;font-size:12px">
+      <div class="muted" style="margin-bottom:4px">🔎 فيه عملاء بأسماء قريبة — اتأكد إنك مش بتكرر:</div>
+      ${matches.map(c=>`<div class="flex-between" style="padding:3px 0"><span>${c.name} <span class="muted">· ${c.phone}</span></span>
+        <button class="btn btn-sm" onclick="openExistingCustomer('${c.id}')">فتح</button></div>`).join('')}
+    </div>` : '';
+}
+/* (4)(5) التحقق النهائي قبل الحفظ */
+async function saveNewCustomer(force){
   if(!can('customers.create')){ toast('مالكش صلاحية إضافة عملاء', true); return; }
   const name = document.getElementById('ncName').value.trim();
   const phone = document.getElementById('ncPhone').value.trim();
   const custType = document.getElementById('ncType').value;
+  const phone2 = ((document.getElementById('ncPhone2')||{}).value||'').trim();
+  const nationalId = ((document.getElementById('ncNid')||{}).value||'').trim();
+  const email = ((document.getElementById('ncEmail')||{}).value||'').trim();
+  const warn = document.getElementById('ncWarn');
   if(!name||!phone){ toast('اكتب الاسم والموبايل', true); return; }
-  const c = {id:uid('c'), name, phone, custType, createdAt:new Date().toISOString()};
+  // (4) منع قاطع: نفس الموبايل / الرقم القومي / الإيميل
+  const dup = findCustomerDup(phone, nationalId, email);
+  if(dup){
+    if(warn) warn.innerHTML = `<div class="card" style="border:1px solid var(--danger);padding:10px;margin-bottom:10px;font-size:12.5px">
+      <div style="color:var(--danger);font-weight:800;margin-bottom:4px">🚫 العميل ده موجود بالفعل في النظام</div>
+      <div><b>${dup.name}</b> · ${dup.phone}${dup.nationalId?' · قومي: '+dup.nationalId:''}</div>
+      <div style="margin-top:8px"><button class="btn btn-sm btn-accent" onclick="openExistingCustomer('${dup.id}')">فتح العميل الموجود</button></div>
+    </div>`;
+    else toast('العميل ده موجود بالفعل: '+dup.name, true);
+    return;
+  }
+  // (5) تشابه الأسماء — تحذير مع خيار المتابعة (مش منع)
+  if(!force && warn){
+    const sim = similarNameCustomers(name);
+    if(sim.length){
+      warn.innerHTML = `<div class="card" style="border:1px solid var(--accent-2);padding:10px;margin-bottom:10px;font-size:12.5px">
+        <div style="color:var(--accent-2);font-weight:800;margin-bottom:4px">⚠️ فيه عميل باسم قريب بالفعل</div>
+        ${sim.map(c=>`<div class="flex-between" style="padding:2px 0"><span>${c.name} <span class="muted">· ${c.phone}</span></span>
+          <button class="btn btn-sm" onclick="openExistingCustomer('${c.id}')">فتح</button></div>`).join('')}
+        <div style="margin-top:8px"><button class="btn btn-sm" onclick="saveNewCustomer(true)">متابعة وحفظ عميل جديد برضه</button></div>
+      </div>`;
+      return;
+    }
+  }
+  const c = {id:uid('c'), name, phone, phone2:phone2||undefined, nationalId:nationalId||undefined, email:email||undefined, custType, createdAt:new Date().toISOString()};
   DB.customers.push(c);
   await saveKey('customers', DB.customers);
+  await logAction('عميل جديد: '+name+' — '+phone);
   closeModal(); toast('تم حفظ العميل'); refreshContent();
 }
 function openAddCarModal(customerId){
+  if(!can('customers.create')){ toast('مالكش صلاحية إضافة سيارات', true); return; }
+  const cust = DB.customers.find(c=>c.id===customerId);
   openModal(`
-    <h3>سيارة جديدة</h3>
-    <div class="form-row"><label class="f-label">رقم اللوحة</label><input class="f" id="carPlate"></div>
+    <h3>سيارة جديدة${cust?' — '+cust.name:''}</h3>
+    <div class="form-row"><label class="f-label">رقم الشاسيه VIN (الأولوية في منع التكرار)</label><input class="f" id="carVin" autocomplete="off" oninput="carDupCheck()"></div>
+    <div class="form-row"><label class="f-label">رقم اللوحة *</label><input class="f" id="carPlate" autocomplete="off" oninput="carDupCheck()"></div>
+    <div id="carWarn"></div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">الماركة</label><input class="f" id="carMake" placeholder="مثال: هيونداي"></div>
-      <div class="form-row"><label class="f-label">الموديل</label><input class="f" id="carModel" placeholder="مثال: إلنترا"></div>
+      <div class="form-row"><label class="f-label">الموديل *</label><input class="f" id="carModel" placeholder="مثال: إلنترا"></div>
     </div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">سنة الصنع (اختياري)</label><input class="f" id="carYear" type="number" min="1970" max="2100"></div>
       <div class="form-row"><label class="f-label">اللون</label><input class="f" id="carColor"></div>
     </div>
-    <div class="form-row"><label class="f-label">رقم الشاسيه VIN (اختياري)</label><input class="f" id="carVin"></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveNewCar('${customerId}')">حفظ السيارة</button>
   `);
+}
+/* (6) كشف مباشر لتكرار السيارة أثناء الكتابة */
+function carDupCheck(){
+  const box = document.getElementById('carWarn'); if(!box) return;
+  const vin = (document.getElementById('carVin')||{}).value.trim();
+  const plate = (document.getElementById('carPlate')||{}).value.trim();
+  if(!vin && !plate){ box.innerHTML=''; return; }
+  const dup = findVehicleDup(vin, plate);
+  if(!dup){ box.innerHTML=''; return; }
+  const owner = DB.customers.find(c=>c.id===dup.car.customerId);
+  box.innerHTML = `<div class="card" style="border:1px solid var(--danger);padding:10px;margin-bottom:10px;font-size:12.5px">
+    <div style="color:var(--danger);font-weight:800">🚫 السيارة دي مسجلة بالفعل (${dup.by}) تحت العميل: ${owner?owner.name:'—'}</div>
+    ${owner?`<div style="margin-top:6px"><button class="btn btn-sm btn-accent" onclick="openExistingCustomer('${owner.id}')">فتح العميل صاحب السيارة</button></div>`:''}
+  </div>`;
 }
 async function saveNewCar(customerId){
   if(!can('customers.create')){ toast('مالكش صلاحية إضافة سيارات', true); return; }
@@ -1569,9 +1718,119 @@ async function saveNewCar(customerId){
   const color = document.getElementById('carColor').value.trim();
   const vin = document.getElementById('carVin').value.trim();
   if(!plate||!model){ toast('اكتب رقم اللوحة والموديل', true); return; }
+  // (6) منع تكرار السيارة — سيارة واحدة لعميل واحد فقط
+  const dup = findVehicleDup(vin, plate);
+  if(dup){
+    const owner = DB.customers.find(c=>c.id===dup.car.customerId);
+    carDupCheck();
+    toast('السيارة دي مسجلة بالفعل ('+dup.by+') تحت العميل: '+(owner?owner.name:'—'), true);
+    return;
+  }
   DB.cars.push({id:uid('car'), customerId, plate, make, model, year, color, vin});
   await saveKey('cars', DB.cars);
+  await logAction('سيارة جديدة: '+plate+' '+model+(vin?' — شاسيه: '+vin:'')+' — للعميل: '+((DB.customers.find(c=>c.id===customerId)||{}).name||'—'));
   closeModal(); toast('تم حفظ السيارة'); refreshContent();
+}
+/* ============ (7) أداة دمج العملاء المكررين (صاحب المركز فقط) ============ */
+let mergeSrcId = null, mergeDstId = null;
+function openMergeCustomers(){
+  if(!isOwnerSession()){ toast('دمج العملاء صلاحية صاحب المركز فقط', true); return; }
+  mergeSrcId = null; mergeDstId = null;
+  openModal(mergeCustomersHTML());
+}
+function mergeCustomersHTML(){
+  return `
+    <h3>🔀 دمج عملاء مكررين</h3>
+    <div class="muted" style="font-size:12px;margin-bottom:12px">أداة لتصحيح العملاء المكررين الموجودين. هننقل <b>كل</b> بيانات العميل المصدر (السيارات · أوامر الشغل · الفواتير · المدفوعات · السجل · المواعيد) للعميل الوجهة، والمصدر يتأرشف كـ«مدموج» ويختفي من البحث. <b>مفيش أي بيانات بتتحذف.</b></div>
+    <label class="f-label">1) العميل المصدر (المكرر — هيتأرشف)</label>
+    <input class="f" id="mrgSrcSearch" autocomplete="off" placeholder="دوّر بالاسم/الموبايل..." oninput="mergeSearch('src', this.value)" style="margin-bottom:6px">
+    <div id="mrgSrcRes" style="max-height:150px;overflow-y:auto"></div>
+    <div id="mrgSrcPicked" style="margin-bottom:10px"></div>
+    <label class="f-label">2) العميل الوجهة (هيستقبل كل البيانات)</label>
+    <input class="f" id="mrgDstSearch" autocomplete="off" placeholder="دوّر بالاسم/الموبايل..." oninput="mergeSearch('dst', this.value)" style="margin-bottom:6px">
+    <div id="mrgDstRes" style="max-height:150px;overflow-y:auto"></div>
+    <div id="mrgDstPicked" style="margin-bottom:10px"></div>
+    <div id="mrgPreview"></div>
+    <button class="btn btn-danger" style="width:100%" onclick="confirmMergeCustomers()">تنفيذ الدمج</button>`;
+}
+function mergeSearch(which, term){
+  const box = document.getElementById(which==='src'?'mrgSrcRes':'mrgDstRes'); if(!box) return;
+  const t = String(term||'').trim();
+  const list = t ? smartSearchCustomers(t, 8) : activeCustomers().filter(c=>!c.archived).slice(0,5);
+  box.innerHTML = list.length ? list.map(c=>{
+    const cars = DB.cars.filter(x=>x.customerId===c.id).length;
+    return `<div class="btn" style="width:100%;text-align:right;margin-bottom:4px;display:flex;justify-content:space-between" onclick="mergePick('${which}','${c.id}')">
+      <span>${c.name} <span class="muted" style="font-size:11px">· ${c.phone}</span></span><span class="muted" style="font-size:11px">${cars} سيارة</span></div>`;
+  }).join('') : `<div class="muted" style="font-size:12px">مفيش نتائج</div>`;
+}
+function mergePick(which, custId){
+  if(which==='src') mergeSrcId = custId; else mergeDstId = custId;
+  const c = DB.customers.find(x=>x.id===custId);
+  const pickBox = document.getElementById(which==='src'?'mrgSrcPicked':'mrgDstPicked');
+  const resBox = document.getElementById(which==='src'?'mrgSrcRes':'mrgDstRes');
+  if(resBox) resBox.innerHTML='';
+  if(pickBox && c) pickBox.innerHTML = `<div class="card" style="background:var(--surface-2);padding:6px 10px;font-size:12.5px"><b>${c.name}</b> · ${c.phone}
+    <button class="btn btn-sm" style="margin-right:8px" onclick="mergeClear('${which}')">تغيير</button></div>`;
+  mergeShowPreview();
+}
+function mergeClear(which){
+  if(which==='src') mergeSrcId=null; else mergeDstId=null;
+  const pickBox = document.getElementById(which==='src'?'mrgSrcPicked':'mrgDstPicked');
+  if(pickBox) pickBox.innerHTML='';
+  mergeShowPreview();
+}
+function mergeCounts(custId){
+  return {
+    cars: DB.cars.filter(c=>c.customerId===custId).length,
+    jobs: DB.jobs.filter(j=>j.customerId===custId).length,
+    invoices: DB.invoices.filter(i=>i.customerId===custId).length,
+    appts: DB.appointments.filter(a=>a.customerId===custId).length,
+  };
+}
+function mergeShowPreview(){
+  const box = document.getElementById('mrgPreview'); if(!box) return;
+  if(!mergeSrcId || !mergeDstId){ box.innerHTML=''; return; }
+  if(mergeSrcId===mergeDstId){ box.innerHTML = `<div class="card" style="border:1px solid var(--danger);color:var(--danger);padding:8px 10px;margin-bottom:10px;font-size:12.5px">لازم تختار عميلين مختلفين</div>`; return; }
+  const src = DB.customers.find(c=>c.id===mergeSrcId), dst = DB.customers.find(c=>c.id===mergeDstId);
+  const n = mergeCounts(mergeSrcId);
+  box.innerHTML = `<div class="card" style="padding:10px;margin-bottom:10px;font-size:12.5px">
+    <div style="margin-bottom:6px">هيتنقل من <b>${src.name}</b> ← إلى <b>${dst.name}</b>:</div>
+    <div class="grid g4">${stat(String(n.cars),'سيارة')}${stat(String(n.jobs),'أمر شغل')}${stat(String(n.invoices),'فاتورة')}${stat(String(n.appts),'موعد')}</div>
+    <div class="muted" style="margin-top:6px">وبعدها «${src.name}» هيتأرشف كـ«مدموج» ويختفي من القوائم.</div>
+  </div>`;
+}
+function confirmMergeCustomers(){
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
+  if(!mergeSrcId || !mergeDstId){ toast('اختار العميل المصدر والوجهة', true); return; }
+  if(mergeSrcId===mergeDstId){ toast('لازم عميلين مختلفين', true); return; }
+  const src = DB.customers.find(c=>c.id===mergeSrcId), dst = DB.customers.find(c=>c.id===mergeDstId);
+  const n = mergeCounts(mergeSrcId);
+  askConfirmReason(`دمج «${src.name}» في «${dst.name}»؟<br><span class="muted" style="font-size:12px">هيتنقل ${n.cars} سيارة · ${n.jobs} أمر شغل · ${n.invoices} فاتورة · ${n.appts} موعد. «${src.name}» هيتأرشف كمدموج. مفيش أي بيانات بتتحذف.</span>`,
+    (reason)=>doMergeCustomers(mergeSrcId, mergeDstId, reason));
+}
+async function doMergeCustomers(srcId, dstId, reason){
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
+  if(srcId===dstId) return;
+  const src = DB.customers.find(c=>c.id===srcId), dst = DB.customers.find(c=>c.id===dstId);
+  if(!src || !dst){ toast('العميل غير موجود', true); return; }
+  const moved = { cars:0, jobs:0, invoices:0, appts:0, moves:0 };
+  DB.cars.forEach(c=>{ if(c.customerId===srcId){ c.customerId=dstId; moved.cars++; } });
+  DB.jobs.forEach(j=>{ if(j.customerId===srcId){ j.customerId=dstId; moved.jobs++; } });
+  DB.invoices.forEach(i=>{ if(i.customerId===srcId){ i.customerId=dstId; moved.invoices++; } });
+  DB.appointments.forEach(a=>{ if(a.customerId===srcId){ a.customerId=dstId; moved.appts++; } });
+  DB.stockMoves.forEach(m=>{ if(m.customerId===srcId){ m.customerId=dstId; moved.moves++; } });
+  // ملاحظات ومرفقات لو موجودة
+  if(src.notes){ dst.notes = (dst.notes?dst.notes+'\n':'') + '[مدموج من '+src.name+'] ' + src.notes; }
+  if(Array.isArray(src.attachments) && src.attachments.length){ dst.attachments = [...(dst.attachments||[]), ...src.attachments]; }
+  src.merged = true; src.mergedInto = dstId; src.mergedAt = new Date().toISOString(); src.archived = true;
+  await Promise.all([saveKey('cars', DB.cars), saveKey('jobs', DB.jobs), saveKey('invoices', DB.invoices),
+    saveKey('appointments', DB.appointments), saveKey('stockMoves', DB.stockMoves), saveKey('customers', DB.customers)]);
+  await logAction('🔀 دمج العميل «'+src.name+'» في «'+dst.name+'»'+auditDetails([
+    ['المصدر (الموبايل)', src.phone], ['الوجهة (الموبايل)', dst.phone],
+    ['سيارات', moved.cars], ['أوامر شغل', moved.jobs], ['فواتير', moved.invoices], ['مواعيد', moved.appts],
+    ['السبب', reason||'—']
+  ]));
+  closeModal(); toast('تم الدمج: '+moved.cars+' سيارة · '+moved.jobs+' أمر · '+moved.invoices+' فاتورة'); refreshContent();
 }
 
 /* ======================= JOBS ======================= */
@@ -1627,7 +1886,7 @@ function renderJobs(){
   `;
 }
 function openPickCarForJob(){
-  if(DB.cars.length===0){ toast('سجل عميل وسيارة الأول', true); openNewCustomerModal(); return; }
+  if(DB.cars.length===0){ toast('سجل عميل وسيارة الأول', true); openNewCustomerSearch(); return; }
   // سيارات العملاء المؤرشفين مش بتظهر في اختيار أمر شغل جديد
   const activeCars = DB.cars.filter(car=>{
     const cust = DB.customers.find(c=>c.id===car.customerId);
@@ -2757,6 +3016,7 @@ function renderStockMoves(){
     ${can('inv.adjust')?`<button class="btn" onclick="openStockAdjustmentModal()">⚖ تسوية مخزون</button>`:''}
     ${can('inv.return')?`<button class="btn" onclick="openCustomerReturnModal()">↩ مرتجع عميل</button>`:''}
     ${can('inv.scrap')?`<button class="btn btn-danger" onclick="openScrapModal()">🗑 تسجيل هالك / تالف</button>`:''}
+    ${can('inv.scrap')?`<button class="btn" onclick="openScrapReport()">📉 تقرير الهالك</button>`:''}
     <button class="btn btn-accent" onclick="openStockStatsModal()">📊 التقارير والإحصائيات</button>
   </div>
 
@@ -2811,8 +3071,9 @@ function renderStockMoves(){
   </div>
 
   <div class="section-head"><h3>سجل حركة المخزن</h3><span class="muted" style="font-size:12.5px" id="mvCount">${mvCountLabel()}</span></div>
+  <div class="muted" style="font-size:11.5px;margin-bottom:8px">💡 اضغط على <b>اسم الصنف</b> لفتح كارت الصنف، وعلى <b>المرجع</b> لفتح المستند المصدر (أمر شغل · فاتورة شراء · مرتجع · تسوية · جرد · تحويل)، أو <b>تفاصيل</b> لعرض كل بيانات الحركة.</div>
   <div class="card">
-    <table><thead><tr><th>التاريخ</th><th>الصنف</th><th>النوع</th><th>الكمية</th><th>ملاحظة</th></tr></thead>
+    <table><thead><tr><th>التاريخ</th><th>الصنف</th><th>النوع</th><th>الكمية</th><th>المرجع</th><th></th></tr></thead>
     <tbody id="mvTableBody">${mvRowsHTML()}</tbody></table>
   </div>`;
 }
@@ -2932,32 +3193,206 @@ function mvRowsHTML(){
     transfer_in: '<span class="tag tag-ready">تحويل وارد</span>',
     transfer_out: '<span class="tag tag-working">تحويل صادر</span>'
   };
-  if(moves.length===0) return `<tr><td colspan="5" class="empty">${mvFilters.q?`مفيش حركة فيها «${mvFilters.q}» — جرّب كلمة أقصر أو امسح الفلاتر`:'لا توجد حركات مطابقة للفلاتر'}</td></tr>`;
+  if(moves.length===0) return `<tr><td colspan="6" class="empty">${mvFilters.q?`مفيش حركة فيها «${mvFilters.q}» — جرّب كلمة أقصر أو امسح الفلاتر`:'لا توجد حركات مطابقة للفلاتر'}</td></tr>`;
   return moves.map(m=>{
     const p = DB.inventory.find(x=>x.id===m.partId);
     const itemName = p ? p.name : (m.extName || '—');
-    const supplier = m.supplierId ? DB.suppliers.find(s=>s.id===m.supplierId) : null;
-    let extra = [];
-    if(supplier) extra.push('مورد: '+supplier.name);
-    if(m.type==='ext_part' || m.type==='ext_work'){
-      extra.push('تكلفة: '+money(m.qty*(m.unitCost||0)));
-      extra.push('بيع: '+money(m.qty*(m.unitPrice||0)));
-      if(m.purchaseId){
-        const pu = DB.purchases.find(x=>x.id===m.purchaseId);
-        if(pu){
-          const paid = (pu.payments||[]).reduce((s,x)=>s+x.amount,0);
-          extra.push(paid>=pu.total?'✅ مسدد للمورد':(paid>0?'⚠ مسدد جزئياً':'🔴 آجل — غير مسدد'));
-        }
-      } else if(m.payMethod){ extra.push(m.payMethod); }
-    }
-    if(m.note) extra.push(m.note);
-    moveTrackParts(m).forEach(x=>extra.push(x));
-    const noteTxt = extra.join(' — ');
-    const clickable = m.jobId ? `onclick="openWorkOrderReport('${m.jobId}')" style="cursor:pointer"` : '';
-    return `<tr ${clickable}><td>${fmtDateTime(m.date)}</td><td>${itemName}</td>
+    // اسم الصنف قابل للنقر → كارت الصنف (لو صنف مكوّد؛ القطع الخارجية والدهانات مالهاش كارت)
+    const nameCell = p
+      ? `<a onclick="openItemCard('${p.id}')" style="cursor:pointer;color:var(--accent);font-weight:600" title="افتح كارت الصنف">${itemName}</a>`
+      : `<span title="قطعة/خامة خارجية بدون تكويد">${itemName}</span>`;
+    // خلية المرجع → المستند المصدر حسب نوع الحركة
+    const ref = moveReference(m);
+    const sub = moveRefSub(m);
+    const refCell = `<a onclick="${ref.act}" style="cursor:pointer;color:var(--accent-2);font-weight:600" title="افتح المستند المصدر">${ref.icon} ${ref.text} <span style="font-size:10px">↗</span></a>`
+      + (sub ? `<div class="muted" style="font-size:11px;margin-top:2px">${sub}</div>` : '');
+    // الكمية بإشارة الاتجاه (+ توريد/مرتجع · − صرف/هالك)
+    const dir = moveDelta(m);
+    const qtyTxt = dir>0 ? '+'+dir : (dir<0 ? '−'+Math.abs(dir) : m.qty);
+    const qtyColor = dir>0 ? 'color:#1a7f37' : (dir<0 ? 'color:var(--danger)' : '');
+    return `<tr>
+      <td style="white-space:nowrap">${fmtDateTime(m.date)}</td>
+      <td>${nameCell}</td>
       <td>${typeTagMap[m.type]||m.type}</td>
-      <td>${m.qty}</td><td class="muted">${noteTxt||'—'}${m.jobId?' <span style="color:var(--accent-2)">(دوس لعرض تقرير أمر الشغل)</span>':''}</td></tr>`;
+      <td style="font-weight:700;${qtyColor}">${qtyTxt}</td>
+      <td>${refCell}</td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openMoveDetails('${m.id}')">👁 تفاصيل</button></td>
+    </tr>`;
   }).join('');
+}
+/* ============ الملاحظة 55: مركز التنقّل — المرجع بيفتح المستند المصدر حسب نوع الحركة ============ */
+function moveReference(m){
+  const job = m.jobId ? DB.jobs.find(j=>j.id===m.jobId) : null;
+  switch(m.type){
+    case 'out': case 'ext_part': case 'ext_work': case 'paint_out':
+      if(job) return { icon:'🧾', text:'أمر شغل #'+job.jobNo, act:`openWorkOrderReport('${job.id}')` };
+      break;
+    case 'in':
+      if(m.purchaseId){ const pu=DB.purchases.find(x=>x.id===m.purchaseId); if(pu) return { icon:'📦', text:'فاتورة شراء #'+pu.purchaseNo, act:`openPurchaseView('${pu.id}')` }; }
+      return { icon:'📥', text:(m.note&&/افتتاح/.test(m.note))?'رصيد افتتاحي':'توريد مخزون', act:`openMoveDetails('${m.id}')` };
+    case 'return':
+      if(m.retId && DB.supplierReturns.some(r=>r.id===m.retId)) return { icon:'↩', text:'مرتجع مورد', act:`openSupplierReturnDoc('${m.retId}')` };
+      return { icon:'↩', text:'مرتجع مورد', act:`openMoveDetails('${m.id}')` };
+    case 'customer_return':
+      return { icon:'↩', text:'مرتجع عميل'+(job?' — أمر #'+job.jobNo:''), act:`openMoveDetails('${m.id}')` };
+    case 'adjustment':
+      if(m.countId){ const ic=DB.inventoryCounts.find(x=>x.id===m.countId); if(ic) return { icon:'📋', text:'جرد #'+ic.countNo, act:`openCountReport('${ic.id}')` }; }
+      return { icon:'⚖', text:'تسوية مخزون', act:`openMoveDetails('${m.id}')` };
+    case 'scrap':
+      return { icon:'🗑', text:'هالك/تالف', act:`openMoveDetails('${m.id}')` };
+    case 'transfer_in': case 'transfer_out':
+      return { icon:'🔄', text:'تحويل: '+whName(m.fromWhId)+' ← '+whName(m.toWhId), act:`openMoveDetails('${m.id}')` };
+  }
+  return { icon:'👁', text:'عرض التفاصيل', act:`openMoveDetails('${m.id}')` };
+}
+/* سطر ثانوي صغير تحت المرجع (مورد/تكلفة/حالة سداد) */
+function moveRefSub(m){
+  const bits = [];
+  const supplier = m.supplierId ? DB.suppliers.find(s=>s.id===m.supplierId) : null;
+  if(supplier && (m.type==='ext_part'||m.type==='ext_work'||m.type==='scrap')) bits.push('مورد: '+supplier.name);
+  if(m.type==='ext_part' || m.type==='ext_work'){
+    if(m.purchaseId){ const pu=DB.purchases.find(x=>x.id===m.purchaseId);
+      if(pu){ const paid=(pu.payments||[]).reduce((s,x)=>s+x.amount,0); bits.push(paid>=pu.total?'✅ مسدد للمورد':(paid>0?'⚠ مسدد جزئياً':'🔴 آجل')); } }
+    else if(m.payMethod){ bits.push(m.payMethod); }
+  }
+  if(m.reqByName) bits.push('طلبها: '+m.reqByName);
+  return bits.join(' · ');
+}
+/* نافذة تفاصيل الحركة الكاملة (الملاحظة 55، البند 13) — وبتعمل كـ«مستند» للتسوية/المرتجع/التحويل/الهالك */
+const MOVE_TYPE_LABEL = {
+  in:'توريد / إضافة مخزون', out:'صرف لأمر شغل', customer_return:'مرتجع عميل', return:'مرتجع لمورد',
+  adjustment:'تسوية مخزون', scrap:'هالك / تالف', ext_part:'قطعة غيار خارجية', ext_work:'أعمال خارجية',
+  paint_out:'صرف خامات دهان', transfer_in:'تحويل وارد', transfer_out:'تحويل صادر'
+};
+function openMoveDetails(moveId){
+  const m = DB.stockMoves.find(x=>x.id===moveId);
+  if(!m){ toast('الحركة غير موجودة', true); return; }
+  const p = m.partId ? DB.inventory.find(x=>x.id===m.partId) : null;
+  const job = m.jobId ? DB.jobs.find(j=>j.id===m.jobId) : null;
+  const supplier = m.supplierId ? DB.suppliers.find(s=>s.id===m.supplierId) : null;
+  const purchase = m.purchaseId ? DB.purchases.find(x=>x.id===m.purchaseId) : null;
+  const cust = m.customerId ? DB.customers.find(c=>c.id===m.customerId) : (job?DB.customers.find(c=>c.id===job.customerId):null);
+  const isTransfer = m.type==='transfer_in' || m.type==='transfer_out';
+  const whTxt = isTransfer ? (whName(m.fromWhId)+' ← '+whName(m.toWhId)) : whName(m.warehouseId || (p?partWhId(p):null));
+  const dir = moveDelta(m);
+  const unitCost = (m.unitCost!=null) ? m.unitCost : null;
+  const totalCost = (unitCost!=null) ? Math.abs(m.qty||0)*unitCost : null;
+  const before = (typeof m.qtyBefore==='number') ? m.qtyBefore : null;
+  const after  = (typeof m.qtyAfter==='number')  ? m.qtyAfter  : null;
+  let approval = '—';
+  if(m.countId){ const ic=DB.inventoryCounts.find(x=>x.id===m.countId); if(ic) approval = ic.status==='approved' ? ('معتمد ✅ — '+(ic.approvedBy||'')) : ('مسودة/بانتظار الاعتماد'); }
+  const noteTxt = [m.note, m.notes, m.reason].filter(Boolean).join(' — ') || '—';
+  const refName = m.reqByName || m.actor || '—';
+  const row = (l,v)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--border)"><span class="muted" style="font-size:12.5px">${l}</span><span style="font-weight:600;text-align:left;font-size:12.5px">${v}</span></div>`;
+  const links = [];
+  if(p) links.push(`<button class="btn btn-sm btn-accent" onclick="openItemCard('${p.id}')">📇 كارت الصنف</button>`);
+  if(job) links.push(`<button class="btn btn-sm" onclick="openWorkOrderReport('${job.id}')">🧾 أمر الشغل #${job.jobNo}</button>`);
+  if(purchase) links.push(`<button class="btn btn-sm" onclick="openPurchaseView('${purchase.id}')">📦 فاتورة الشراء #${purchase.purchaseNo}</button>`);
+  if(m.retId && DB.supplierReturns.some(r=>r.id===m.retId)) links.push(`<button class="btn btn-sm" onclick="openSupplierReturnDoc('${m.retId}')">↩ مستند المرتجع</button>`);
+  if(m.countId && DB.inventoryCounts.some(x=>x.id===m.countId)) links.push(`<button class="btn btn-sm" onclick="openCountReport('${m.countId}')">📋 تقرير الجرد</button>`);
+  if(supplier && canScreen('suppliers')) links.push(`<button class="btn btn-sm" onclick="openSupplierDetail('${supplier.id}')">🏭 حساب المورد</button>`);
+  openModal(`
+    <div class="flex-between" style="margin-bottom:12px"><h3 style="margin:0">تفاصيل الحركة</h3>
+      <span class="tag tag-inspect">${MOVE_TYPE_LABEL[m.type]||m.type}</span></div>
+    <div style="margin-bottom:14px">
+      ${row('رقم الحركة', '<span class="muted" style="font-size:11px">'+m.id+'</span>')}
+      ${row('التاريخ والوقت', fmtDateTime(m.date))}
+      ${row('الصنف', (p?p.name:(m.extName||'—')))}
+      ${row('الكود', (p&&p.sku)?p.sku:'—')}
+      ${row('المخزن', whTxt)}
+      ${row('نوع الحركة', MOVE_TYPE_LABEL[m.type]||m.type)}
+      ${row('الكمية قبل', before!=null?before:'—')}
+      ${row('الكمية المتحركة', (dir>0?'+':dir<0?'−':'')+(dir!==0?Math.abs(dir):m.qty))}
+      ${row('الكمية بعد', after!=null?after:'—')}
+      ${row('تكلفة الوحدة', unitCost!=null?money(unitCost):'—')}
+      ${row('إجمالي التكلفة', totalCost!=null?money(totalCost):'—')}
+      ${(m.type==='ext_part'||m.type==='ext_work')?row('سعر البيع للوحدة', m.unitPrice!=null?money(m.unitPrice):'—'):''}
+      ${supplier?row('المورد', supplier.name):''}
+      ${cust?row('العميل', cust.name):''}
+      ${row('المنفّذ / الطالب', refName)}
+      ${row('المرجع', (MOVE_TYPE_LABEL[m.type]||m.type)+(job?' — أمر #'+job.jobNo:'')+(purchase?' — فاتورة #'+purchase.purchaseNo:''))}
+      ${row('ملاحظات', noteTxt)}
+      ${row('حالة الاعتماد', approval)}
+    </div>
+    ${links.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px"><span class="muted" style="font-size:12px;width:100%">🔗 تنقّل للمستندات المرتبطة:</span>${links.join('')}</div>`:''}
+  `);
+}
+/* عرض فاتورة الشراء (مع تنقّل لحساب المورد) */
+function openPurchaseView(purchaseId){
+  const pu = DB.purchases.find(x=>x.id===purchaseId);
+  if(!pu){ toast('فاتورة الشراء غير موجودة', true); return; }
+  const supplier = DB.suppliers.find(s=>s.id===pu.supplierId);
+  const paid = (pu.payments||[]).reduce((s,x)=>s+x.amount,0);
+  const remaining = pu.total - paid;
+  const statusTag = paid>=pu.total ? '<span class="tag tag-paid">مسدد بالكامل</span>' : (paid>0?'<span class="tag tag-partial">مسدد جزئياً</span>':'<span class="tag tag-unpaid">آجل — غير مسدد</span>');
+  openModal(`
+    <div class="flex-between" style="margin-bottom:12px"><h3 style="margin:0">فاتورة شراء #${pu.purchaseNo}</h3>${statusTag}</div>
+    <div class="grid g2" style="margin-bottom:14px;font-size:13px">
+      <div><span class="muted">المورد:</span> ${supplier?supplier.name:'—'}</div>
+      <div><span class="muted">التاريخ:</span> ${fmtDateTime(pu.date)}</div>
+      <div><span class="muted">طريقة الدفع:</span> ${pu.paymentMethod||'—'}</div>
+      <div><span class="muted">عدد الأصناف:</span> ${(pu.items||[]).length}</div>
+    </div>
+    <table style="margin-bottom:12px"><thead><tr><th>الصنف</th><th>الكمية</th><th>تكلفة الوحدة</th><th>الإجمالي</th></tr></thead>
+    <tbody>${(pu.items||[]).map(it=>{
+      const ip = it.partId?DB.inventory.find(x=>x.id===it.partId):null;
+      const nm = ip ? `<a onclick="openItemCard('${ip.id}')" style="cursor:pointer;color:var(--accent);font-weight:600">${it.name}</a>` : it.name;
+      return `<tr><td>${nm}</td><td>${it.qty}</td><td>${money(it.unitCost)}</td><td>${money(it.qty*it.unitCost)}</td></tr>`;
+    }).join('')}</tbody></table>
+    <div class="grid g3" style="margin-bottom:12px">
+      ${stat(money(pu.total),'إجمالي الفاتورة')}
+      ${stat(money(paid),'المسدد')}
+      ${stat(money(remaining),'المتبقي للمورد', remaining>0)}
+    </div>
+    ${supplier && canScreen('suppliers') ? `<button class="btn btn-sm" onclick="openSupplierDetail('${supplier.id}')">🏭 فتح حساب المورد الكامل</button>`:''}
+  `);
+}
+/* مستند مرتجع المورد */
+function openSupplierReturnDoc(retId){
+  const r = DB.supplierReturns.find(x=>x.id===retId);
+  if(!r){ toast('مستند المرتجع غير موجود', true); return; }
+  const supplier = DB.suppliers.find(s=>s.id===r.supplierId);
+  const p = r.partId?DB.inventory.find(x=>x.id===r.partId):null;
+  openModal(`
+    <div class="flex-between" style="margin-bottom:12px"><h3 style="margin:0">مستند مرتجع لمورد</h3><span class="tag tag-partial">مرتجع</span></div>
+    <div style="margin-bottom:14px;font-size:13px">
+      <div style="padding:6px 0;border-bottom:1px solid var(--border)"><span class="muted">المورد:</span> ${supplier?supplier.name:'—'}</div>
+      <div style="padding:6px 0;border-bottom:1px solid var(--border)"><span class="muted">التاريخ:</span> ${fmtDateTime(r.date)}</div>
+      <div style="padding:6px 0;border-bottom:1px solid var(--border)"><span class="muted">الصنف:</span> ${p?`<a onclick="openItemCard('${p.id}')" style="cursor:pointer;color:var(--accent);font-weight:600">${r.name}</a>`:(r.name||'—')}</div>
+      <div style="padding:6px 0;border-bottom:1px solid var(--border)"><span class="muted">الكمية المرتجعة:</span> ${r.qty}</div>
+      <div style="padding:6px 0;border-bottom:1px solid var(--border)"><span class="muted">تكلفة الوحدة:</span> ${money(r.unitCost)}</div>
+      <div style="padding:6px 0;border-bottom:1px solid var(--border)"><span class="muted">إجمالي المرتجع (خصم من مديونية المورد):</span> <b>${money(r.total)}</b></div>
+      <div style="padding:6px 0"><span class="muted">السبب:</span> ${r.note||'—'}</div>
+    </div>
+    ${supplier && canScreen('suppliers') ? `<button class="btn btn-sm" onclick="openSupplierDetail('${supplier.id}')">🏭 فتح حساب المورد</button>`:''}
+  `);
+}
+/* تقرير الجرد (قراءة فقط) */
+function openCountReport(countId){
+  const ic = DB.inventoryCounts.find(x=>x.id===countId);
+  if(!ic){ toast('تقرير الجرد غير موجود', true); return; }
+  const statusMap = { draft:'<span class="tag tag-working">مسودة</span>', submitted:'<span class="tag tag-inspect">بانتظار الاعتماد</span>', approved:'<span class="tag tag-paid">معتمد</span>' };
+  const withDiff = ic.lines.filter(l=>l.physicalQty!==null && l.physicalQty!=='' && l.physicalQty!==l.systemQty);
+  openModal(`
+    <div class="flex-between" style="margin-bottom:12px"><h3 style="margin:0">تقرير جرد #${ic.countNo}</h3>${statusMap[ic.status]||ic.status}</div>
+    <div class="grid g2" style="margin-bottom:12px;font-size:13px">
+      <div><span class="muted">المخزن:</span> ${ic.warehouseName||'—'}</div>
+      <div><span class="muted">تاريخ الإنشاء:</span> ${ic.createdAt?fmtDateTime(ic.createdAt):'—'}</div>
+      <div><span class="muted">أنشأه:</span> ${ic.createdBy||'—'}</div>
+      <div><span class="muted">اعتمده:</span> ${ic.approvedBy||'—'}${ic.approvedAt?' ('+fmtDate(ic.approvedAt)+')':''}</div>
+      <div><span class="muted">عدد الأصناف:</span> ${ic.lines.length}</div>
+      <div><span class="muted">أصناف بها فروق:</span> ${withDiff.length}</div>
+    </div>
+    <label class="f-label">بنود الجرد (النظام مقابل الفعلي)</label>
+    <div style="max-height:340px;overflow-y:auto;margin-top:6px">
+    <table><thead><tr><th>الصنف</th><th>النظام</th><th>الفعلي</th><th>الفرق</th></tr></thead>
+    <tbody>${ic.lines.map(l=>{
+      const ip = l.partId?DB.inventory.find(x=>x.id===l.partId):null;
+      const nm = ip ? `<a onclick="openItemCard('${ip.id}')" style="cursor:pointer;color:var(--accent);font-weight:600">${l.name}</a>` : l.name;
+      const [lbl,cls] = countDiffLabel(l);
+      return `<tr><td>${nm}</td><td>${l.systemQty}</td><td>${(l.physicalQty===null||l.physicalQty==='')?'—':l.physicalQty}</td><td><span class="tag ${cls}">${lbl}</span></td></tr>`;
+    }).join('')}</tbody></table></div>
+  `);
 }
 function filterMvPartSelect(term){
   const t = term.trim().toLowerCase();
@@ -3643,6 +4078,9 @@ function itemCardHTML(partId){
   const p = DB.inventory.find(x=>x.id===partId);
   if(!p) return `<h3>الصنف غير موجود</h3>`;
   const stats = itemStats(partId);
+  // آخر 3 أسعار شراء (من حركات التوريد بالترتيب من الأحدث)
+  const last3 = itemMoves(partId).filter(m=>m.type==='in' && m.unitCost!==undefined && m.unitCost!==null)
+    .slice(-3).reverse().map(m=>money(m.unitCost));
   return `
   <div class="flex-between" style="margin-bottom:14px">
     <h3 style="margin:0">كارت الصنف — ${p.name}</h3>
@@ -3662,6 +4100,7 @@ function itemCardHTML(partId){
     <div><span class="muted">الحد الأدنى:</span> ${p.minQty}</div>
     <div><span class="muted">موقع التخزين:</span> ${p.location||'—'}</div>
     <div><span class="muted">آخر سعر شراء:</span> ${stats.lastCost!=null?money(stats.lastCost):'—'}</div>
+    <div><span class="muted">آخر 3 أسعار شراء:</span> ${last3.length?last3.join(' · '):'—'}</div>
     <div><span class="muted">آخر مورد:</span> ${stats.lastSupplier?stats.lastSupplier.name:'—'}</div>
     <div><span class="muted">تاريخ إنشاء الصنف:</span> ${p.createdAt?fmtDate(p.createdAt):'غير محدد'}</div>
   </div>
@@ -4000,7 +4439,7 @@ function approveCount(icId){
       p.qty = after;
       DB.stockMoves.push({
         id: uid('mv'), partId: p.id, type:'adjustment', qty: Math.abs(diff), delta: diff,
-        qtyBefore: before, qtyAfter: after, unitCost: p.costPrice,
+        qtyBefore: before, qtyAfter: after, unitCost: p.costPrice, countId: ic.id,
         date: new Date().toISOString(),
         note: (diff<0?'تسوية مخزون - عجز جرد':'تسوية مخزون - زيادة جرد')
           +' #'+ic.countNo+' — قبل: '+before+' بعد: '+after+' (فرق '+(diff>0?'+':'')+diff+')'
@@ -4071,36 +4510,122 @@ function exportCountCSV(icId){
 const SCRAP_KINDS = ['هالك','تالف','فاقد تشغيل'];
 const SCRAP_REASONS = ['تركيب خاطئ من الفني','كسر أثناء التركيب','انتهاء صلاحية','تلف بالمخزن','أخرى'];
 function openScrapModal(){
+  if(!can('inv.scrap')){ toast('مالكش صلاحية تسجيل الهالك', true); return; }
   if(activeInventory().length===0){ toast('مفيش أصناف في المخزون', true); return; }
   openModal(`
     <h3>تسجيل هالك / تالف / فاقد</h3>
-    <div class="muted" style="font-size:12.5px;margin-bottom:12px">القطعة هتتخصم من المخزون وقيمتها (بسعر الشراء) هتتسجل كخسارة في تقارير المركز.</div>
-    <div class="form-row"><label class="f-label">القطعة</label>
-      <select class="f" id="scPart">${activeInventory().map(p=>`<option value="${p.id}">${p.name} (متاح: ${p.qty})</option>`).join('')}</select>
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px">القطعة هتتخصم من المخزون وقيمتها (بسعر الشراء) هتتسجل كخسارة داخلية في تقارير المركز والربحية — ومابتظهرش نهائياً في فاتورة العميل ولا بتأثر على أسعاره.</div>
+    <div class="form-row"><label class="f-label">🔎 دوّر على الصنف في كل المخازن (اسم · كود · OEM · رقم المورد · باركود)</label>
+      <input class="f" id="scSearch" autocomplete="off" placeholder="ابدأ اكتب..." oninput="scSearchParts(this.value)">
+      <input type="hidden" id="scPart" value="">
     </div>
-    <div class="grid g2">
-      <div class="form-row"><label class="f-label">التصنيف</label>
-        <select class="f" id="scKind">${SCRAP_KINDS.map(k=>`<option>${k}</option>`).join('')}</select>
+    <div id="scResults" style="max-height:220px;overflow-y:auto"></div>
+    <div id="scPicked" style="margin-bottom:8px"></div>
+    <div id="scForm" style="display:none">
+      <div class="muted" style="font-size:12.5px;margin-bottom:10px">المتاح حالياً بالمخزون: <b><span id="scAvail">0</span></b></div>
+      <div class="grid g2">
+        <div class="form-row"><label class="f-label">التصنيف</label>
+          <select class="f" id="scKind">${SCRAP_KINDS.map(k=>`<option>${k}</option>`).join('')}</select></div>
+        <div class="form-row"><label class="f-label">الكمية</label><input class="f" id="scQty" type="number" min="1" value="1"></div>
       </div>
-      <div class="form-row"><label class="f-label">الكمية</label><input class="f" id="scQty" type="number" min="1" value="1"></div>
-    </div>
-    <div class="form-row"><label class="f-label">سبب التلف</label>
-      <select class="f" id="scReason">${SCRAP_REASONS.map(r=>`<option>${r}</option>`).join('')}</select>
-    </div>
-    <div class="grid g2">
-      <div class="form-row"><label class="f-label">الفني المتسبب (اختياري)</label>
-        <select class="f" id="scTech">${techOptionsHTML()}</select></div>
-      <div class="form-row"><label class="f-label">المورد (اختياري)</label>
-        <select class="f" id="scSupplier"><option value="">— بدون —</option>${activeSuppliers().map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select>
+      <div class="form-row"><label class="f-label">سبب التلف *</label>
+        <select class="f" id="scReason">${SCRAP_REASONS.map(r=>`<option>${r}</option>`).join('')}</select>
       </div>
+      <div class="grid g2">
+        <div class="form-row"><label class="f-label">الفني المتسبب (اختياري)</label>
+          <select class="f" id="scTech">${techOptionsHTML()}</select></div>
+        <div class="form-row"><label class="f-label">المورد (اختياري)</label>
+          <select class="f" id="scSupplier"><option value="">— بدون —</option>${activeSuppliers().map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="form-row"><label class="f-label">ملاحظات داخلية (اختياري)</label><input class="f" id="scNote"></div>
+      <button class="btn btn-danger" style="width:100%" onclick="saveScrap()">تأكيد تسجيل الهالك</button>
     </div>
-    <div class="form-row"><label class="f-label">ملاحظة (اختياري)</label><input class="f" id="scNote"></div>
-    <button class="btn btn-danger" style="width:100%" onclick="saveScrap()">تأكيد تسجيل الهالك</button>
   `);
+  scSearchParts('');
+}
+/* الملاحظة 56: بحث ذكي في شاشة الهالك (نفس تجربة التسوية والمرتجع) */
+function scSearchParts(term){
+  const box = document.getElementById('scResults'); if(!box) return;
+  const t = String(term||'').trim();
+  const list = t ? smartSearchParts(t, 10).map(r=>r.part) : activeInventory().slice(0,6);
+  box.innerHTML = list.length ? list.map(p=>{
+    const lp = lastPurchaseInfo(p.id);
+    return `
+    <div class="card" style="padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <div style="cursor:pointer;flex:1" onclick="scPickPart('${p.id}')">
+        <div style="font-weight:700;font-size:12.5px">${p.sku?`<span class="muted" style="font-size:11px">${p.sku}</span> · `:''}${p.name}</div>
+        <div class="muted" style="font-size:11.5px">متاح: ${p.qty} ${p.unit||''} · 📦 ${whName(partWhId(p))} · آخر شراء: ${lp.price!=null?money(lp.price):'—'}</div>
+      </div>
+      <button class="btn btn-sm" onclick="scToggleDetails('${p.id}')">تفاصيل</button>
+    </div>
+    <div id="scDet_${p.id}" style="display:none;margin:-2px 0 8px"></div>`;
+  }).join('') : `<div class="muted" style="font-size:12.5px">مفيش صنف مطابق</div>`;
+}
+/* لوحة تفاصيل الصنف بتتفتح تحت النتيجة (من غير ما تغادر شاشة الهالك) */
+function scToggleDetails(partId){
+  const box = document.getElementById('scDet_'+partId); if(!box) return;
+  if(box.style.display==='block'){ box.style.display='none'; return; }
+  const p = DB.inventory.find(x=>x.id===partId); if(!p) return;
+  const lp = lastPurchaseInfo(partId), avg = avgPurchaseCost(partId), hist = partPurchaseHistory(partId,3);
+  const sibs = partSiblings(p);
+  const sm = partMoveSummary(partId);
+  const sups = partSuppliers(partId);
+  box.style.display='block';
+  box.innerHTML = `
+    <div class="card" style="background:var(--surface-2);font-size:12px">
+      <div style="font-weight:800;margin-bottom:6px">${p.name} ${p.sku?`<span class="muted">— ${p.sku}</span>`:''}</div>
+      <table><tbody>
+        <tr><td class="muted">الماركة</td><td>${p.brand||'—'}</td><td class="muted">الفئة</td><td>${p.category||'—'}</td></tr>
+        <tr><td class="muted">رقم OEM</td><td>${p.oemNo||'—'}</td><td class="muted">المورد الأخير</td><td>${lp.supplierName||'—'}</td></tr>
+        <tr><td class="muted">متوسط التكلفة</td><td>${money(avg)}</td><td class="muted">آخر سعر شراء</td><td>${money(lp.price)}</td></tr>
+      </tbody></table>
+      <div class="muted" style="margin-top:6px">الكميات في المخازن</div>
+      <table><tbody>${sibs.map(x=>`<tr><td>📦 ${whName(partWhId(x))}</td><td style="font-weight:700">${x.qty} ${x.unit||''}</td></tr>`).join('')}</tbody></table>
+      <div class="muted" style="margin-top:6px">آخر ${hist.length||''} مشتريات</div>
+      <table><tbody>${hist.length? hist.map(h=>`<tr><td>${fmtDate(h.date)}</td><td class="muted">${h.supplier}</td><td style="font-weight:700">${money(h.price)}</td></tr>`).join('') : '<tr><td class="empty">مفيش مشتريات مسجلة بسعر</td></tr>'}</tbody></table>
+      ${sups.length?`<div class="muted" style="margin-top:6px">الموردين</div><div style="font-size:11.5px">${sups.join(' · ')}</div>`:''}
+      <div class="muted" style="margin-top:6px">ملخص حركة الصنف</div>
+      <div style="font-size:11.5px">توريد: <b>${sm.in}</b> · صرف: <b>${sm.out}</b> · مرتجع عميل: <b>${sm.custRet}</b> · مرتجع مورد: <b>${sm.supRet}</b> · هالك سابق: <b>${sm.scrap}</b> · إجمالي الحركات: <b>${sm.count}</b></div>
+      <button class="btn btn-sm btn-danger" style="width:100%;margin-top:8px" onclick="scPickPart('${p.id}')">🗑 اختار الصنف ده للهالك</button>
+    </div>`;
+}
+function scPickPart(partId){
+  const p = DB.inventory.find(x=>x.id===partId); if(!p) return;
+  const hid = document.getElementById('scPart'); if(hid) hid.value = partId;
+  const s = document.getElementById('scSearch'); if(s) s.value = p.name;
+  const box = document.getElementById('scResults'); if(box) box.innerHTML = '';
+  const picked = document.getElementById('scPicked');
+  if(picked) picked.innerHTML = `<div class="card" style="background:var(--surface-2);padding:8px 10px;font-size:12.5px">
+    <b>${p.name}</b>${p.sku?` <span class="muted">(${p.sku})</span>`:''} — 📦 ${whName(partWhId(p))} · متاح: ${p.qty} ${p.unit||''}
+    <button class="btn btn-sm" style="margin-right:8px" onclick="scClearPick()">تغيير</button></div>`;
+  const av = document.getElementById('scAvail'); if(av) av.textContent = p.qty+' '+(p.unit||'');
+  const form = document.getElementById('scForm'); if(form) form.style.display='block';
+  const q = document.getElementById('scQty'); if(q){ q.max = p.qty; q.focus(); }
+}
+function scClearPick(){
+  const hid=document.getElementById('scPart'); if(hid) hid.value='';
+  const s=document.getElementById('scSearch'); if(s){ s.value=''; s.focus(); }
+  const picked=document.getElementById('scPicked'); if(picked) picked.innerHTML='';
+  const form=document.getElementById('scForm'); if(form) form.style.display='none';
+  scSearchParts('');
+}
+/* قائمة الموردين اللي وردّوا الصنف (من حركات التوريد) */
+function partSuppliers(partId){
+  const names = new Set();
+  partInMoves(partId).forEach(m=>{ if(m.supplierId){ const s=DB.suppliers.find(x=>x.id===m.supplierId); if(s) names.add(s.name); } });
+  return [...names];
+}
+/* ملخص حركة الصنف (للتفاصيل السريعة) */
+function partMoveSummary(partId){
+  const ms = itemMoves(partId);
+  const sum = t => ms.filter(m=>m.type===t).reduce((s,m)=>s+(m.qty||0),0);
+  return { in:sum('in'), out:sum('out'), custRet:sum('customer_return'), supRet:sum('return'), scrap:sum('scrap'), count:ms.length };
 }
 async function saveScrap(){
   if(!can('inv.scrap')){ toast('مالكش صلاحية تسجيل الهالك', true); return; }
-  const partId = document.getElementById('scPart').value;
+  const partId = (document.getElementById('scPart')||{}).value;
+  if(!partId){ toast('دوّر على الصنف واختاره الأول', true); return; }
   const kind = document.getElementById('scKind').value;
   const qty = parseFloat(document.getElementById('scQty').value)||0;
   const reason = document.getElementById('scReason').value;
@@ -4109,10 +4634,11 @@ async function saveScrap(){
   const supplierId = document.getElementById('scSupplier').value || null;
   const note = document.getElementById('scNote').value.trim();
   const p = DB.inventory.find(x=>x.id===partId);
+  if(!p){ toast('الصنف غير موجود', true); return; }
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
-  if(qty>p.qty){ toast('الكمية أكبر من المتاح في المخزون', true); return; }
+  if(qty>p.qty){ toast('الكمية أكبر من المتاح في المخزون ('+p.qty+')', true); return; }
   p.qty -= qty;
-  DB.stockMoves.push({id:uid('mv'), partId, type:'scrap', scrapKind:kind, qty, unitCost:p.costPrice, reason, technicianId:techId, technician:tech||null, supplierId, date:new Date().toISOString(),
+  DB.stockMoves.push({id:uid('mv'), partId, type:'scrap', scrapKind:kind, qty, unitCost:p.costPrice, reason, technicianId:techId, technician:tech||null, supplierId, warehouseId:partWhId(p), actor:actorName(), date:new Date().toISOString(),
     note:[kind, reason, tech?('الفني: '+tech):null, note].filter(Boolean).join(' — ')});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
   await logAction('تسجيل '+kind+': '+qty+' من '+p.name+' — '+reason+' (خسارة '+money(qty*p.costPrice)+')');
@@ -4124,6 +4650,81 @@ function scrapTotals(){
   const scraps = DB.stockMoves.filter(m=>m.type==='scrap');
   const total = scraps.reduce((s,m)=>s+m.qty*(m.unitCost||0),0);
   return {scraps, total};
+}
+/* ============ الملاحظة 56: تقرير الهالك والتالف بفلاتر (تاريخ · مخزن · صنف · مستخدم) ============ */
+let scrapRepFilters = { from:'', to:'', wh:'', q:'', user:'' };
+function scrapMoveWh(m){ const p = m.partId?DB.inventory.find(x=>x.id===m.partId):null; return m.warehouseId || (p?partWhId(p):null); }
+function scrapMovesFiltered(){
+  const f = scrapRepFilters;
+  return DB.stockMoves.filter(m=>m.type==='scrap').filter(m=>{
+    if(f.from && new Date(m.date) < new Date(f.from)) return false;
+    if(f.to && new Date(m.date) > new Date(new Date(f.to).getTime()+86399999)) return false;
+    if(f.wh && scrapMoveWh(m)!==f.wh) return false;
+    if(f.user && (m.actor||'—')!==f.user) return false;
+    if(f.q){ const t=f.q.trim().toLowerCase(); const p=m.partId?DB.inventory.find(x=>x.id===m.partId):null;
+      const hay=[(p&&p.name)||m.extName||'', (p&&p.sku)||'', m.reason||'', m.scrapKind||'', m.note||''].join(' ').toLowerCase();
+      if(!hay.includes(t)) return false; }
+    return true;
+  }).sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+function openScrapReport(){ scrapRepFilters = { from:'', to:'', wh:'', q:'', user:'' }; openModal(scrapReportHTML()); }
+function refreshScrapReport(){
+  const b=document.getElementById('scrapRepBody'); if(b) b.innerHTML = scrapRepRowsHTML();
+  const t=document.getElementById('scrapRepTot'); if(t) t.innerHTML = scrapRepTotHTML();
+}
+function resetScrapRepFilters(){ scrapRepFilters = { from:'', to:'', wh:'', q:'', user:'' }; openModal(scrapReportHTML()); }
+function scrapRepTotHTML(){
+  const rows = scrapMovesFiltered();
+  const qty = rows.reduce((s,m)=>s+(m.qty||0),0);
+  const cost = rows.reduce((s,m)=>s+(m.qty||0)*(m.unitCost||0),0);
+  return `${stat(String(rows.length),'عدد الحالات')}${stat(String(qty),'إجمالي الكمية')}${stat(money(cost),'إجمالي قيمة الهالك', cost>0)}`;
+}
+function scrapRepRowsHTML(){
+  const rows = scrapMovesFiltered();
+  if(rows.length===0) return `<tr><td colspan="8" class="empty">لا يوجد هالك مطابق للفلاتر</td></tr>`;
+  return rows.map(m=>{
+    const p = m.partId?DB.inventory.find(x=>x.id===m.partId):null;
+    const name = p ? `<a onclick="openItemCard('${p.id}')" style="cursor:pointer;color:var(--accent);font-weight:600">${p.name}</a>` : (m.extName||'—');
+    return `<tr>
+      <td>${name}</td>
+      <td class="muted">${(p&&p.sku)||'—'}</td>
+      <td style="font-weight:700">${m.qty}</td>
+      <td>${whName(scrapMoveWh(m))}</td>
+      <td style="white-space:nowrap">${fmtDate(m.date)}</td>
+      <td class="muted">${m.actor||'—'}</td>
+      <td class="muted" style="font-size:11.5px">${m.reason||m.scrapKind||'—'}</td>
+      <td style="font-weight:700;color:var(--danger)">${money((m.qty||0)*(m.unitCost||0))}</td>
+    </tr>`;
+  }).join('');
+}
+function scrapReportHTML(){
+  const users = [...new Set(DB.stockMoves.filter(m=>m.type==='scrap').map(m=>m.actor||'—'))];
+  const f = scrapRepFilters;
+  return `
+  <h3>📉 تقرير الهالك والتالف</h3>
+  <div class="muted" style="font-size:12px;margin-bottom:12px">قيمة الهالك خسارة تشغيلية داخلية بتتخصم من صافي ربح المركز — ومابتظهرش في فواتير العملاء.</div>
+  <div class="grid g2" style="margin-bottom:8px">
+    <div class="form-row"><label class="f-label">من تاريخ</label><input class="f" type="date" value="${f.from}" onchange="scrapRepFilters.from=this.value;refreshScrapReport()"></div>
+    <div class="form-row"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${f.to}" onchange="scrapRepFilters.to=this.value;refreshScrapReport()"></div>
+  </div>
+  <div class="grid g3" style="margin-bottom:8px">
+    <div class="form-row"><label class="f-label">المخزن</label>
+      <select class="f" onchange="scrapRepFilters.wh=this.value;refreshScrapReport()">
+        <option value="">كل المخازن</option>
+        ${DB.warehouses.map(w=>`<option value="${w.id}" ${f.wh===w.id?'selected':''}>${w.name}</option>`).join('')}
+      </select></div>
+    <div class="form-row"><label class="f-label">المستخدم</label>
+      <select class="f" onchange="scrapRepFilters.user=this.value;refreshScrapReport()">
+        <option value="">الكل</option>
+        ${users.map(u=>`<option value="${u}" ${f.user===u?'selected':''}>${u}</option>`).join('')}
+      </select></div>
+    <div class="form-row"><label class="f-label">الصنف / السبب</label><input class="f" placeholder="اسم · كود · سبب" value="${f.q}" oninput="scrapRepFilters.q=this.value;refreshScrapReport()"></div>
+  </div>
+  <div style="margin-bottom:10px"><button class="btn btn-sm" onclick="resetScrapRepFilters()">مسح الفلاتر</button></div>
+  <div class="grid g3" id="scrapRepTot" style="margin-bottom:12px">${scrapRepTotHTML()}</div>
+  <div style="max-height:360px;overflow-y:auto">
+  <table><thead><tr><th>الصنف</th><th>الكود</th><th>الكمية</th><th>المخزن</th><th>التاريخ</th><th>المستخدم</th><th>السبب</th><th>القيمة</th></tr></thead>
+  <tbody id="scrapRepBody">${scrapRepRowsHTML()}</tbody></table></div>`;
 }
 /* ======================= STOCK STATS (التقارير والإحصائيات) ======================= */
 function openStockStatsModal(){ openModal(stockStatsHTML()); }
@@ -4576,7 +5177,7 @@ async function saveSupplierReturn(supplierId){
   p.qty -= qty;
   const ret = {id:uid('ret'), supplierId, partId, name:p.name, qty, unitCost:cost, total:qty*cost, date:new Date().toISOString(), note};
   DB.supplierReturns.push(ret);
-  DB.stockMoves.push({id:uid('mv'), partId, type:'return', qty, unitCost:cost, date:new Date().toISOString(), note:'مرتجع لمورد'+(note?' — '+note:''), supplierId});
+  DB.stockMoves.push({id:uid('mv'), partId, type:'return', qty, unitCost:cost, date:new Date().toISOString(), note:'مرتجع لمورد'+(note?' — '+note:''), supplierId, retId: ret.id});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('supplierReturns', DB.supplierReturns), saveKey('stockMoves', DB.stockMoves)]);
   closeModal(); toast('تم تسجيل المرتجع وخصمه من مديونية المورد'); refreshContent();
 }
@@ -5548,7 +6149,12 @@ function computeProfitStats(range){
   const debt = sales - collected;
   const profit = sales - cost;
   const margin = sales>0 ? profit/sales*100 : 0;
-  return {count:invs.length, sales, collected, debt, cost, profit, margin, inParts, extParts, extWork, paint};
+  // الملاحظة 56: الهالك خسارة تشغيلية داخلية بتتخصم من الربح — منفصلة عشان تفضل واضحة
+  const scrapCost = DB.stockMoves.filter(m=>m.type==='scrap' && inPeriod(m.date, range))
+    .reduce((s,m)=>s+(m.qty||0)*(m.unitCost||0),0);
+  const netProfit = profit - scrapCost;
+  const netMargin = sales>0 ? netProfit/sales*100 : 0;
+  return {count:invs.length, sales, collected, debt, cost, profit, margin, inParts, extParts, extWork, paint, scrapCost, netProfit, netMargin};
 }
 function profitReportHTML(range){
   if(!can('rep.profit')) return `<div class="empty">🔒 تقارير الربحية متاحة لأصحاب الصلاحية فقط</div>`;
@@ -5561,9 +6167,13 @@ function profitReportHTML(range){
     ${stat(money(ps.debt),'إجمالي المديونيات', ps.debt>0)}
   </div>
   <div class="grid g3" style="margin-bottom:10px">
-    ${stat(money(ps.cost),'إجمالي التكلفة')}
-    ${stat(money(ps.profit),'إجمالي الربح الصافي (مبيعات − تكلفة)', ps.profit<0)}
-    ${stat(ps.margin.toFixed(1)+'%','نسبة الربحية', ps.margin<15 && ps.sales>0)}
+    ${stat(money(ps.cost),'إجمالي تكلفة الشغل')}
+    ${stat(money(ps.profit),'ربح الشغل (مبيعات − تكلفة)', ps.profit<0)}
+    ${stat(ps.margin.toFixed(1)+'%','نسبة ربح الشغل', ps.margin<15 && ps.sales>0)}
+  </div>
+  <div class="grid g2" style="margin-bottom:10px">
+    ${stat(money(ps.scrapCost),'🗑 خسائر الهالك والتالف', ps.scrapCost>0)}
+    ${stat(money(ps.netProfit),'💰 صافي الربح التشغيلي (بعد خصم الهالك)', ps.netProfit<0)}
   </div>
   <details style="margin-top:4px">
     <summary style="cursor:pointer;font-size:12.5px;color:var(--muted)">تفصيل التكلفة (اضغط للعرض)</summary>
@@ -5572,6 +6182,7 @@ function profitReportHTML(range){
       <tr><td>تكلفة قطع الغيار الخارجية</td><td>${money(ps.extParts)}</td></tr>
       <tr><td>تكلفة الأعمال الخارجية</td><td>${money(ps.extWork)}</td></tr>
       <tr><td>🎨 تكلفة خامات الدهان</td><td>${money(ps.paint)}</td></tr>
+      <tr><td>🗑 خسائر الهالك والتالف (خصم تشغيلي)</td><td style="color:var(--danger)">− ${money(ps.scrapCost)}</td></tr>
     </tbody></table>
   </details>`;
 }
