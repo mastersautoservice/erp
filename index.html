@@ -131,6 +131,13 @@ input,select,textarea{font-family:'Tajawal',sans-serif;}
 .g4{grid-template-columns:repeat(4,1fr);}
 .g3{grid-template-columns:repeat(3,1fr);}
 .g2{grid-template-columns:repeat(2,1fr);}
+/* شبكة عرض البيانات (تفاصيل الحركة) — أعمدة تلقائية حسب عرض الشاشة، بتتكدّس لوحدها على الموبايل */
+.dgrid{display:grid;gap:6px;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));}
+.dcell{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:5px 9px;min-width:0;}
+.dcell .dk{display:block;color:var(--muted);font-size:10.5px;line-height:1.4;}
+.dcell .dv{display:block;font-weight:700;font-size:12.5px;line-height:1.45;overflow-wrap:anywhere;}
+.dsec{font-size:11px;color:var(--muted);font-weight:700;margin:9px 0 4px;}
+.dsec:first-of-type{margin-top:2px;}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;}
 .stat-card .num{font-size:30px;font-weight:900;}
 .stat-card .lbl{color:var(--muted);font-size:13px;margin-top:4px;}
@@ -189,6 +196,7 @@ label.f-label{font-size:12.5px;color:var(--muted);margin-bottom:6px;display:bloc
 /* Modal & Toast */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px;}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:min(560px,100%);max-height:88vh;overflow-y:auto;padding:26px;}
+.modal-wide{width:min(920px,100%);padding:20px;}
 .modal h3{margin:0 0 18px;font-size:17px;}
 .modal-close{position:absolute;left:22px;top:22px;background:var(--surface-2);width:30px;height:30px;border-radius:50%;color:var(--muted);}
 .toast-wrap{position:fixed;bottom:22px;left:22px;z-index:200;display:flex;flex-direction:column;gap:8px;}
@@ -346,7 +354,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v70';
+const APP_VERSION = 'v74';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -384,6 +392,7 @@ const ACTION_GROUPS = [
     ['jobs.item_delete','حذف بنود من أمر الشغل'],
     ['jobs.print','طباعة وتحميل أمر الشغل'],
     ['jobs.cancel','إلغاء أمر شغل'],
+    ['jobs.reopen','إعادة فتح أمر شغل متفوتر'],
     ['jobs.delete','حذف أمر شغل نهائياً'],
   ]],
   ['العملاء', [
@@ -411,6 +420,8 @@ const ACTION_GROUPS = [
     ['bill.collect','تحصيل دفعات'],
     ['bill.discount','عمل خصم على الفاتورة'],
     ['bill.cancel','إلغاء فاتورة'],
+    ['bill.edit','تعديل فاتورة صادرة'],
+    ['bill.history','عرض سجل الفاتورة'],
     ['bill.print','طباعة وتحميل الفاتورة'],
   ]],
   ['المالية', [
@@ -447,6 +458,7 @@ const PERM_INFO = {
   'jobs.item_delete':'حذف بنود (خدمات أو قطع) من أمر الشغل. مايسمحش بإضافة أو تعديل بنود.',
   'jobs.print':'طباعة أمر الشغل وتحميله كملف. عرض فقط — مفيش أي تعديل.',
   'jobs.cancel':'إلغاء أمر شغل بسبب موثق. الأوامر اللي عليها معاملات مالية/مخزنية إلغاؤها لصاحب المركز فقط.',
+  'jobs.reopen':'إعادة فتح أمر شغل متفوتر عشان تعدّل بنوده — بيلغي الفاتورة الحالية ويرجّع الأمر للشغل، وبعدها تصدر فاتورة جديدة.',
   'jobs.delete':'حذف أمر الشغل الملغي نهائياً من السجلات (صاحب المركز فقط عملياً).',
   'customers.create':'إضافة عملاء جدد وسياراتهم وتعديل بياناتهم.',
   'customers.archive':'أرشفة عميل (إخفاؤه من القوائم مع الاحتفاظ بسجله).',
@@ -465,7 +477,9 @@ const PERM_INFO = {
   'bill.create':'إصدار فواتير من أوامر الشغل. الإصدار بيسلّم السيارة تلقائياً.',
   'bill.collect':'تحصيل دفعات من العملاء على الفواتير.',
   'bill.discount':'عمل خصم على الفاتورة وقت الإصدار. الخصومات العالية بتوصل لصاحب المركز كإشعار.',
-  'bill.cancel':'إلغاء فاتورة صادرة. مايرجعش المخزون تلقائياً.',
+  'bill.cancel':'إلغاء فاتورة صادرة — حتى لو عليها تحصيل. مايرجعش المخزون ولا القيود المالية تلقائياً.',
+  'bill.edit':'تعديل فاتورة صادرة: وسيلة السداد · الخصم · الضريبة · الملاحظات · الرقم المرجعي. مايسمحش بتعديل البنود ولا الكميات نهائياً.',
+  'bill.history':'عرض سجل الفاتورة الكامل (كل تعديل: مين وإمتى والقيمة قبل وبعد). عرض فقط.',
   'bill.print':'طباعة الفاتورة وتحميلها كملف. عرض فقط.',
   'fin.expenses':'تسجيل مصروفات المركز. بتتخصم من الحساب المختار.',
   'fin.manage':'إدارة الخزنة والحسابات: أرصدة افتتاحية وتحويلات وإيداعات.',
@@ -1032,12 +1046,13 @@ function toast(msg, isErr){
 }
 
 /* ======================= MODAL ======================= */
-function openModal(html){
+/* wide=true بيوسّع النافذة (للشاشات اللي بتعرض بيانات في شبكة أفقية) — الافتراضي زي ما هو */
+function openModal(html, wide){
   closeModal();
   const ov = document.createElement('div');
   ov.className='overlay'; ov.id='modalOverlay';
   ov.onclick=(e)=>{ if(e.target===ov) closeModal(); };
-  ov.innerHTML = `<div class="modal" style="position:relative">
+  ov.innerHTML = `<div class="modal${wide?' modal-wide':''}" style="position:relative">
     <button class="modal-close" onclick="closeModal()">✕</button>${html}</div>`;
   document.body.appendChild(ov);
 }
@@ -1481,6 +1496,8 @@ function deleteCustomer(custId){
     DB.cars = DB.cars.filter(x=>x.customerId!==custId);
     DB.customers = DB.customers.filter(x=>x.id!==custId);
     await Promise.all([saveKey('customers'), saveKey('cars')]);
+    notify('customer_delete', 'حذف عميل نهائياً: '+c.name+' ('+c.phone+')'+(cars.length?' ومعاه '+cars.length+' سيارة':''), { category:'system', refType:'customer' });
+    trackBulkDeletes('عميل');
     await logAction('🗑️ حذف عميل نهائياً «'+c.name+'»'+auditDetails([
       ['النوع', c.custType||'فرد'], ['الموبايل', c.phone],
       ['السيارات المحذوفة معاه', cars.length? cars.length+' ('+cars.map(x=>x.plate+(carLabel(x)?' '+carLabel(x):'')).join(' · ')+')' : null],
@@ -1654,7 +1671,7 @@ async function saveNewCustomer(force){
       <div><b>${dup.name}</b> · ${dup.phone}${dup.nationalId?' · قومي: '+dup.nationalId:''}</div>
       <div style="margin-top:8px"><button class="btn btn-sm btn-accent" onclick="openExistingCustomer('${dup.id}')">فتح العميل الموجود</button></div>
     </div>`;
-    else toast('العميل ده موجود بالفعل: '+dup.name, true);
+    notify('dup_customer', 'محاولة تسجيل عميل مكرر — الموجود: '+dup.name+' ('+dup.phone+')', { category:'system', refType:'customer', refId:dup.id });
     return;
   }
   // (5) تشابه الأسماء — تحذير مع خيار المتابعة (مش منع)
@@ -1724,6 +1741,7 @@ async function saveNewCar(customerId){
     const owner = DB.customers.find(c=>c.id===dup.car.customerId);
     carDupCheck();
     toast('السيارة دي مسجلة بالفعل ('+dup.by+') تحت العميل: '+(owner?owner.name:'—'), true);
+    notify('dup_item', 'محاولة تسجيل سيارة مكررة ('+dup.by+') — مسجلة تحت: '+(owner?owner.name:'—'), { category:'system', refType:'customer', refId:owner?owner.id:null });
     return;
   }
   DB.cars.push({id:uid('car'), customerId, plate, make, model, year, color, vin});
@@ -1825,6 +1843,7 @@ async function doMergeCustomers(srcId, dstId, reason){
   src.merged = true; src.mergedInto = dstId; src.mergedAt = new Date().toISOString(); src.archived = true;
   await Promise.all([saveKey('cars', DB.cars), saveKey('jobs', DB.jobs), saveKey('invoices', DB.invoices),
     saveKey('appointments', DB.appointments), saveKey('stockMoves', DB.stockMoves), saveKey('customers', DB.customers)]);
+  notify('customer_merge', 'دمج العميل «'+src.name+'» في «'+dst.name+'» — اتنقل '+moved.cars+' سيارة و'+moved.jobs+' أمر و'+moved.invoices+' فاتورة', { category:'system', refType:'customer', refId:dstId });
   await logAction('🔀 دمج العميل «'+src.name+'» في «'+dst.name+'»'+auditDetails([
     ['المصدر (الموبايل)', src.phone], ['الوجهة (الموبايل)', dst.phone],
     ['سيارات', moved.cars], ['أوامر شغل', moved.jobs], ['فواتير', moved.invoices], ['مواعيد', moved.appts],
@@ -2332,6 +2351,7 @@ async function saveEditJobItem(jobId, itemId){
   const name = document.getElementById('editItName').value.trim();
   const price = parseFloat(document.getElementById('editItPrice').value)||0;
   if(!name){ toast('اكتب اسم صحيح', true); return; }
+  const wasName = it.name, wasPrice = it.unitPrice, wasQty = it.qty;   // للمراقبة (الملاحظة 61)
   it.name = name;
   it.unitPrice = price;
   // الملاحظة 42: الكمية للخدمات والأعمال الخارجية — القطع (مخزن/خارجية) اسم وسعر بيع فقط
@@ -2349,6 +2369,23 @@ async function saveEditJobItem(jobId, itemId){
   }
   await saveKey('jobs', DB.jobs);
   await logAction('تعديل بند "'+name+'" في أمر الشغل #'+job.jobNo);
+  // مراقبة: تعديل اسم/سعر/كمية بند + تنبيه لو البيع بقى تحت التكلفة
+  const diffs = [];
+  if(wasName!==it.name) diffs.push('الاسم: '+wasName+' ← '+it.name);
+  if(wasPrice!==it.unitPrice) diffs.push('سعر البيع: '+money(wasPrice||0)+' ← '+money(it.unitPrice||0));
+  if(wasQty!==it.qty) diffs.push('الكمية: '+wasQty+' ← '+it.qty);
+  if(diffs.length){
+    notify('job_item_edit', 'تعديل بند في أمر الشغل #'+job.jobNo+' — '+diffs.join(' · '),
+      { category:'jobs', refType:'job', refId:job.id, refNo:job.jobNo, amount:it.qty*(it.unitPrice||0) });
+  }
+  if(it.costPrice>0 && it.unitPrice < it.costPrice){
+    notify('sell_below_cost', '⚠️ بيع تحت التكلفة في أمر #'+job.jobNo+' — «'+it.name+'» بيع '+money(it.unitPrice)+' والتكلفة '+money(it.costPrice),
+      { category:'jobs', refType:'job', refId:job.id, refNo:job.jobNo, amount:(it.costPrice-it.unitPrice)*it.qty });
+  }
+  if(DB.invoices.some(i=>i.jobId===job.id && !i.cancelled)){
+    notify('cost_after_invoice', '⚠️ تعديل بند في أمر #'+job.jobNo+' بعد إصدار الفاتورة',
+      { category:'financial', refType:'job', refId:job.id, refNo:job.jobNo });
+  }
   closeModal(); toast('تم حفظ التعديل'); openJobDetail(jobId); refreshContent();
 }
 function deleteJobItem(jobId, itemId){
@@ -2363,6 +2400,9 @@ function deleteJobItem(jobId, itemId){
     job.items = job.items.filter(i=>i.id!==itemId);
     await saveKey('jobs', DB.jobs);
     await logAction('🗑️ حذف بند من أمر الشغل #'+job.jobNo+' — '+desc.replace(/^ — /,''));
+    notify('job_item_delete', 'حذف بند من أمر الشغل #'+job.jobNo+' — '+desc.replace(/^ — /,''),
+      { category:'jobs', refType:'job', refId:job.id, refNo:job.jobNo, amount:(itemPre.qty||0)*(itemPre.unitPrice||0) });
+    trackBulkDeletes('بند أمر شغل');
     toast('تم الحذف'); openJobDetail(jobId); refreshContent();
   });
 }
@@ -2637,6 +2677,7 @@ function archiveInventoryItem(partId){
     p.archived = true; p.archivedAt = new Date().toISOString(); p.archivedBy = actorName();
     await saveKey('inventory', DB.inventory);
     await logAction('🗄️ أرشفة صنف: '+p.name+(reason?' — السبب: '+reason:''));
+    notify('item_archive', 'أرشفة صنف: '+p.name+(reason?' — '+reason:''), { category:'inventory', refType:'inventory', refId:p.id });
     closeModal(); toast('تم أرشفة الصنف «'+p.name+'»'); refreshContent();
   });
 }
@@ -2646,6 +2687,7 @@ async function restoreInventoryItem(partId){
   p.archived = false; delete p.archivedAt; delete p.archivedBy;
   await saveKey('inventory', DB.inventory);
   await logAction('♻️ استرجاع صنف من الأرشيف: '+p.name);
+  notify('item_restore', 'استرجاع صنف من الأرشيف: '+p.name, { category:'inventory', refType:'inventory', refId:p.id });
   closeModal(); toast('رجع الصنف «'+p.name+'» نشط تاني'); refreshContent();
 }
 /* الملاحظة 46: فلتر المتاح — الكل / المتاح فقط (كمية > 0) / تحت الحد الأدنى / المتصفر */
@@ -3283,7 +3325,12 @@ function openMoveDetails(moveId){
   if(m.countId){ const ic=DB.inventoryCounts.find(x=>x.id===m.countId); if(ic) approval = ic.status==='approved' ? ('معتمد ✅ — '+(ic.approvedBy||'')) : ('مسودة/بانتظار الاعتماد'); }
   const noteTxt = [m.note, m.notes, m.reason].filter(Boolean).join(' — ') || '—';
   const refName = m.reqByName || m.actor || '—';
-  const row = (l,v)=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--border)"><span class="muted" style="font-size:12.5px">${l}</span><span style="font-weight:600;text-align:left;font-size:12.5px">${v}</span></div>`;
+  const car = job ? DB.cars.find(c=>c.id===job.carId) : null;
+  const isExt = (m.type==='ext_part' || m.type==='ext_work');
+  const qtyTxt = (dir>0?'+':dir<0?'−':'') + (dir!==0 ? Math.abs(dir) : m.qty);
+  const qtyColor = dir>0 ? 'color:#1a7f37' : (dir<0 ? 'color:var(--danger)' : '');
+  const refTxt = (MOVE_TYPE_LABEL[m.type]||m.type)+(job?' — أمر #'+job.jobNo:'')+(purchase?' — فاتورة #'+purchase.purchaseNo:'');
+  const cell = (k,v)=>`<div class="dcell"><span class="dk">${k}</span><span class="dv">${v}</span></div>`;
   const links = [];
   if(p) links.push(`<button class="btn btn-sm btn-accent" onclick="openItemCard('${p.id}')">📇 كارت الصنف</button>`);
   if(job) links.push(`<button class="btn btn-sm" onclick="openWorkOrderReport('${job.id}')">🧾 أمر الشغل #${job.jobNo}</button>`);
@@ -3292,30 +3339,55 @@ function openMoveDetails(moveId){
   if(m.countId && DB.inventoryCounts.some(x=>x.id===m.countId)) links.push(`<button class="btn btn-sm" onclick="openCountReport('${m.countId}')">📋 تقرير الجرد</button>`);
   if(supplier && canScreen('suppliers')) links.push(`<button class="btn btn-sm" onclick="openSupplierDetail('${supplier.id}')">🏭 حساب المورد</button>`);
   openModal(`
-    <div class="flex-between" style="margin-bottom:12px"><h3 style="margin:0">تفاصيل الحركة</h3>
+    <div class="flex-between" style="margin-bottom:6px"><h3 style="margin:0">تفاصيل الحركة</h3>
       <span class="tag tag-inspect">${MOVE_TYPE_LABEL[m.type]||m.type}</span></div>
-    <div style="margin-bottom:14px">
-      ${row('رقم الحركة', '<span class="muted" style="font-size:11px">'+m.id+'</span>')}
-      ${row('التاريخ والوقت', fmtDateTime(m.date))}
-      ${row('الصنف', (p?p.name:(m.extName||'—')))}
-      ${row('الكود', (p&&p.sku)?p.sku:'—')}
-      ${row('المخزن', whTxt)}
-      ${row('نوع الحركة', MOVE_TYPE_LABEL[m.type]||m.type)}
-      ${row('الكمية قبل', before!=null?before:'—')}
-      ${row('الكمية المتحركة', (dir>0?'+':dir<0?'−':'')+(dir!==0?Math.abs(dir):m.qty))}
-      ${row('الكمية بعد', after!=null?after:'—')}
-      ${row('تكلفة الوحدة', unitCost!=null?money(unitCost):'—')}
-      ${row('إجمالي التكلفة', totalCost!=null?money(totalCost):'—')}
-      ${(m.type==='ext_part'||m.type==='ext_work')?row('سعر البيع للوحدة', m.unitPrice!=null?money(m.unitPrice):'—'):''}
-      ${supplier?row('المورد', supplier.name):''}
-      ${cust?row('العميل', cust.name):''}
-      ${row('المنفّذ / الطالب', refName)}
-      ${row('المرجع', (MOVE_TYPE_LABEL[m.type]||m.type)+(job?' — أمر #'+job.jobNo:'')+(purchase?' — فاتورة #'+purchase.purchaseNo:''))}
-      ${row('ملاحظات', noteTxt)}
-      ${row('حالة الاعتماد', approval)}
+
+    <div class="dsec">📦 بيانات الصنف</div>
+    <div class="dgrid">
+      ${cell('الصنف', p?p.name:(m.extName||'—'))}
+      ${cell('الكود', (p&&p.sku)?p.sku:'—')}
+      ${cell('المخزن', whTxt)}
+      ${cell('نوع الحركة', MOVE_TYPE_LABEL[m.type]||m.type)}
     </div>
-    ${links.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px"><span class="muted" style="font-size:12px;width:100%">🔗 تنقّل للمستندات المرتبطة:</span>${links.join('')}</div>`:''}
-  `);
+
+    <div class="dsec">🔢 الكميات</div>
+    <div class="dgrid">
+      ${cell('الكمية قبل', before!=null?before:'—')}
+      ${cell('الكمية المتحركة', `<span style="${qtyColor}">${qtyTxt}</span>`)}
+      ${cell('الكمية بعد', after!=null?after:'—')}
+    </div>
+
+    <div class="dsec">💰 التكلفة</div>
+    <div class="dgrid">
+      ${cell('تكلفة الوحدة', unitCost!=null?money(unitCost):'—')}
+      ${cell('إجمالي التكلفة', totalCost!=null?money(totalCost):'—')}
+      ${isExt?cell('سعر البيع للوحدة', m.unitPrice!=null?money(m.unitPrice):'—'):''}
+    </div>
+
+    ${(cust||car||supplier)?`
+    <div class="dsec">👥 الأطراف</div>
+    <div class="dgrid">
+      ${cust?cell('العميل', cust.name):''}
+      ${car?cell('السيارة', carLabel(car)||'—'):''}
+      ${car?cell('رقم اللوحة', car.plate||'—'):''}
+      ${supplier?cell('المورد', supplier.name):''}
+    </div>`:''}
+
+    <div class="dsec">🔗 المرجع والتنفيذ</div>
+    <div class="dgrid">
+      ${cell('المرجع', refTxt)}
+      ${cell('المنفّذ / الطالب', refName)}
+      ${cell('التاريخ والوقت', fmtDateTime(m.date))}
+      ${cell('حالة الاعتماد', approval)}
+      ${cell('رقم الحركة', '<span class="muted" style="font-size:10.5px;font-weight:500">'+m.id+'</span>')}
+    </div>
+
+    <div class="dsec">📝 الملاحظات</div>
+    <div class="dcell" style="min-height:46px"><span class="dv" style="font-weight:500;line-height:1.7">${noteTxt}</span></div>
+
+    ${links.length?`<div class="dsec">🧭 تنقّل للمستندات المرتبطة</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${links.join('')}</div>`:''}
+  `, true);
 }
 /* عرض فاتورة الشراء (مع تنقّل لحساب المورد) */
 function openPurchaseView(purchaseId){
@@ -3701,6 +3773,34 @@ async function saveCustomerReturn(){
 function openWorkOrderReport(jobId){
   openModal(workOrderReportHTML(jobId));
 }
+/* ============ الملاحظة 59: شارة حالة الفوترة + فصل التواريخ ============
+   الفرق اللي كان محيّر: «تاريخ الإغلاق» كان بيعرض وقت تغيير الحالة لـ«تم التسليم»
+   (خروج السيارة) — وده ممكن يكون قبل الفاتورة بأيام. دلوقتي التلاتة منفصلين وواضحين. */
+function jobInvoiceOf(job){ return DB.invoices.find(i=>i.jobId===job.id && !i.cancelled) || null; }
+function jobBillBadge(job){
+  const inv = jobInvoiceOf(job);
+  if(job.status==='ملغاة') return `<span class="tag tag-cancel">🚫 أمر ملغي</span>`;
+  if(!inv) return `<span class="tag tag-working">⏳ لسه مش متفوتر</span>`;
+  const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
+  const rem = inv.total - paid;
+  const pay = rem<=0.5 ? `<span class="tag tag-paid">مسدد بالكامل</span>`
+    : (paid>0 ? `<span class="tag tag-partial">متبقي ${money(rem)}</span>` : `<span class="tag tag-unpaid">غير مسدد ${money(rem)}</span>`);
+  return `<span class="tag tag-ready">🧾 متفوتر — فاتورة #${inv.invNo}</span> <span class="muted" style="font-size:11.5px">${fmtDate(inv.date)}</span> ${pay}`;
+}
+/* صف التواريخ التلاتة + مدة العمل — بيتعرض في نسخة المالك ونسخة المخزن والطباعة */
+function jobDatesGridHTML(job){
+  const inv = jobInvoiceOf(job);
+  const delivered = !!job.deliveredAt;
+  const durLbl = delivered ? 'مدة العمل (من الفتح للتسليم)' : (job.status==='ملغاة' ? 'مدة العمل' : 'لسه بالمركز منذ');
+  const durVal = job.status==='ملغاة' ? '—' : durationText(job.receivedAt, job.deliveredAt);
+  return `
+  <div class="grid g4" style="margin-bottom:16px">
+    <div><span class="muted" style="font-size:12px">🚗 دخول السيارة (فتح الأمر)</span><div>${fmtDateTime(job.receivedAt)}</div></div>
+    <div><span class="muted" style="font-size:12px">🏁 خروج السيارة (التسليم)</span><div>${delivered?fmtDateTime(job.deliveredAt):'<span class="muted">لسه بالمركز</span>'}</div></div>
+    <div><span class="muted" style="font-size:12px">🧾 تاريخ الفاتورة</span><div>${inv?fmtDateTime(inv.date):'<span class="muted">مفيش فاتورة</span>'}</div></div>
+    <div><span class="muted" style="font-size:12px">⏱ ${durLbl}</span><div><b>${durVal}</b></div></div>
+  </div>`;
+}
 function workOrderReportHTML(jobId){
   const job = DB.jobs.find(j=>j.id===jobId);
   if(!job) return `<h3>الأمر غير موجود</h3>`;
@@ -3726,13 +3826,16 @@ function workOrderReportHTML(jobId){
     const jobMoves = DB.stockMoves.filter(m=>m.jobId===job.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
     const mvLabel = (m)=> m.type==='out'?'صرف من المخزن': m.type==='ext_part'?'قطعة خارجية': m.type==='paint_out'?'خامات دهان': m.type;
     return `
-  <h3>تقرير أمر الشغل #${job.jobNo} <span class="muted" style="font-size:12px">(نسخة المخزن)</span></h3>
+  <div class="flex-between" style="margin-bottom:10px;gap:10px;flex-wrap:wrap">
+    <h3 style="margin:0">تقرير أمر الشغل #${job.jobNo} <span class="muted" style="font-size:12px">(نسخة المخزن)</span></h3>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${jobBillBadge(job)}</div>
+  </div>
   <div class="grid g2" style="margin-bottom:14px">
     <div class="card"><div class="muted" style="font-size:11.5px">العميل</div><div style="font-weight:700">${cust.name||'—'}</div><div class="muted" style="font-size:12px">${cust.phone||''}</div></div>
     <div class="card"><div class="muted" style="font-size:11.5px">السيارة</div><div style="font-weight:700">${car.plate||'—'}</div><div class="muted" style="font-size:12px">${carLabel(car)}</div></div>
   </div>
-  <div style="margin-bottom:14px"><span class="muted" style="font-size:12px">الحالة:</span> <span class="tag ${STATUS_TAGCLASS[job.status]}">${job.status}</span>
-    <span class="muted" style="font-size:12px;margin-right:10px">فُتح: ${fmtDateTime(job.receivedAt)}</span></div>
+  ${jobDatesGridHTML(job)}
+  <div style="margin-bottom:14px"><span class="muted" style="font-size:12px">الحالة:</span> <span class="tag ${STATUS_TAGCLASS[job.status]}">${job.status}</span></div>
   <label class="f-label">قطع الغيار المصروفة من المخزن</label>
   <table style="margin:6px 0 14px"><thead><tr><th>القطعة</th><th>الكمية</th><th>تكلفة الوحدة</th><th>الإجمالي</th></tr></thead>
   <tbody>${parts.length? parts.map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.costPrice||0)}</td><td>${money(it.qty*(it.costPrice||0))}</td></tr>`).join('') : `<tr><td colspan="4" class="empty">لا توجد قطع مصروفة</td></tr>`}</tbody></table>
@@ -3773,16 +3876,15 @@ function workOrderReportHTML(jobId){
   `;
   }
   return `
-  <h3>تقرير أمر الشغل #${job.jobNo}</h3>
+  <div class="flex-between" style="margin-bottom:10px;gap:10px;flex-wrap:wrap">
+    <h3 style="margin:0">تقرير أمر الشغل #${job.jobNo}</h3>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${jobBillBadge(job)}</div>
+  </div>
   <div class="grid g2" style="margin-bottom:14px">
     <div class="card"><div class="muted" style="font-size:11.5px">العميل</div><div style="font-weight:700">${cust.name||'—'}</div><div class="muted" style="font-size:12px">${cust.phone||''}</div></div>
     <div class="card"><div class="muted" style="font-size:11.5px">السيارة</div><div style="font-weight:700">${car.plate||'—'}</div><div class="muted" style="font-size:12px">${carLabel(car)}${job.odometer?' · العداد: '+job.odometer+' كم':''}</div></div>
   </div>
-  <div class="grid g3" style="margin-bottom:16px">
-    <div><span class="muted" style="font-size:12px">تاريخ الفتح</span><div>${fmtDateTime(job.receivedAt)}</div></div>
-    <div><span class="muted" style="font-size:12px">تاريخ الإغلاق</span><div>${job.deliveredAt?fmtDateTime(job.deliveredAt):'—'}</div></div>
-    <div><span class="muted" style="font-size:12px">مدة الصيانة</span><div><b>${job.status==='ملغاة'?'—':durationText(job.receivedAt, job.deliveredAt)}</b></div></div>
-  </div>
+  ${jobDatesGridHTML(job)}
   <div style="margin-bottom:14px"><span class="muted" style="font-size:12px">الحالة:</span> <span class="tag ${STATUS_TAGCLASS[job.status]}">${job.status}</span></div>
   ${(job.technicianId||job.technician) ? `<div class="muted" style="font-size:12.5px;margin-bottom:14px">الفني المسجّل على الأمر (سجل قديم): ${job.technicianId ? techLabelOf(job.technicianId) : job.technician}</div>` : ''}
   <label class="f-label">الخدمات المنفذة</label>
@@ -4055,6 +4157,7 @@ async function saveEditItem(partId){
   const p = DB.inventory.find(x=>x.id===partId);
   const name = document.getElementById('eiName').value.trim();
   if(!name){ toast('اكتب اسم الصنف', true); return; }
+  const wasName = p.name, wasSell = p.sellPrice, wasMin = p.minQty, wasWh = p.warehouseId;   // للمراقبة (م61)
   p.name = name;
   p.warehouseId = document.getElementById('eiWh').value || defaultWhId();
   p.sku = document.getElementById('eiSku').value.trim();
@@ -4071,6 +4174,17 @@ async function saveEditItem(partId){
   p.sellPrice = parseFloat(document.getElementById('eiSell').value)||0;
   await saveKey('inventory', DB.inventory);
   await logAction('تعديل بيانات الصنف: '+p.name);
+  const ch = [];
+  if(wasName!==p.name) ch.push('الاسم: '+wasName+' ← '+p.name);
+  if(wasSell!==p.sellPrice) ch.push('سعر البيع: '+money(wasSell||0)+' ← '+money(p.sellPrice||0));
+  if(wasMin!==p.minQty) ch.push('الحد الأدنى: '+wasMin+' ← '+p.minQty);
+  if(wasWh!==p.warehouseId) ch.push('المخزن: '+whName(wasWh)+' ← '+whName(p.warehouseId));
+  if(ch.length) notify(wasSell!==p.sellPrice?'item_cost_edit':'item_edit',
+    'تعديل الصنف «'+p.name+'» — '+ch.join(' · '), { category:'inventory', refType:'inventory', refId:p.id });
+  if(p.costPrice>0 && p.sellPrice>0 && p.sellPrice < p.costPrice){
+    notify('sell_below_cost', '⚠️ سعر بيع «'+p.name+'» ('+money(p.sellPrice)+') أقل من تكلفته ('+money(p.costPrice)+')',
+      { category:'inventory', refType:'inventory', refId:p.id, amount:p.costPrice-p.sellPrice });
+  }
   toast('تم حفظ تعديلات الصنف'); openItemCard(partId); refreshContent();
 }
 function openItemCard(partId){ icFilters = { dateFrom:'', dateTo:'', supplierId:'', type:'', jobNo:'' }; openModal(itemCardHTML(partId)); }
@@ -4903,6 +5017,7 @@ function archiveSupplier(supplierId){
     sup.archived = true; sup.archivedAt = new Date().toISOString(); sup.archivedBy = actorName();
     await saveKey('suppliers', DB.suppliers);
     await logAction('🗄️ أرشفة مورد: '+sup.name+(reason?' — السبب: '+reason:''));
+    notify('supplier_archive', 'أرشفة مورد: '+sup.name+(reason?' — '+reason:''), { category:'financial', refType:'supplier', refId:sup.id });
     closeModal(); toast('تم أرشفة المورد «'+sup.name+'»'); refreshContent();
   });
 }
@@ -4912,6 +5027,7 @@ async function restoreSupplier(supplierId){
   sup.archived = false; delete sup.archivedAt; delete sup.archivedBy;
   await saveKey('suppliers', DB.suppliers);
   await logAction('♻️ استرجاع مورد من الأرشيف: '+sup.name);
+  notify('supplier_restore', 'استرجاع مورد من الأرشيف: '+sup.name, { category:'financial', refType:'supplier', refId:sup.id });
   closeModal(); toast('رجع المورد «'+sup.name+'» نشط تاني'); refreshContent();
 }
 /* الملاحظة 47: فلتر ثلاثي (نشط/مؤرشف/الكل) + بحث بالاسم والتليفون ومسؤول التواصل والمنطقة والملاحظات */
@@ -5030,6 +5146,7 @@ async function saveNewSupplier(){
   DB.suppliers.push({ id:uid('sup'), ...f, openingBalance:opening, openingType, ledger:[], createdAt:new Date().toISOString() });
   await saveKey('suppliers', DB.suppliers);
   await logAction('إضافة مورد: '+f.name+(opening?' — رصيد افتتاحي '+money(opening)+' ('+(openingType==='debit'?'له عندنا':'علينا له')+')':''));
+  if(opening) notify('supplier_edit', 'مورد جديد برصيد افتتاحي: '+f.name+' — '+money(opening), { category:'financial', refType:'supplier', amount:opening });
   closeModal(); toast('تم إضافة المورد'); refreshContent();
 }
 function openEditSupplierModal(supplierId){
@@ -5053,6 +5170,7 @@ async function saveEditSupplier(supplierId){
   }
   await saveKey('suppliers', DB.suppliers);
   await logAction('تعديل بيانات المورد: '+sup.name);
+  notify('supplier_edit', 'تعديل بيانات المورد: '+sup.name, { category:'financial', refType:'supplier', refId:sup.id });
   closeModal(); toast('تم حفظ بيانات المورد'); openSupplierDetail(supplierId); refreshContent();
 }
 function openSupplierDetail(supplierId){
@@ -5757,20 +5875,33 @@ async function createInvoiceFromJob(jobId){
   const afterDiscount = Math.max(subtotal-discount,0);
   const vatAmount = afterDiscount*vatRate/100;
   const total = afterDiscount+vatAmount;
+  // ختم وقت واحد للفاتورة والتسليم — عشان مايبقاش بينهم فرق ثواني في التقارير (الملاحظة 59)
+  const stamp = new Date().toISOString();
   const inv = {
     id: uid('inv'), invNo: nextNo(DB.invoices,'invNo'),
     jobId, customerId: job.customerId, items: JSON.parse(JSON.stringify(job.items)),
-    subtotal, discount, vatRate, vatAmount, total, payments: [], date: new Date().toISOString()
+    subtotal, discount, vatRate, vatAmount, total, payments: [], date: stamp,
+    notes:'', refNo:'', createdBy: actorName(),
+    history: [{ id:uid('ih'), at:stamp, actor:actorName(), staffId:(session&&session.staffId)||null,
+      action:'created', changes:[
+        {field:'إجمالي البنود', before:'—', after:money(subtotal)},
+        ...(discount>0?[{field:'الخصم', before:'—', after:money(discount)}]:[]),
+        ...(vatRate>0?[{field:'الضريبة', before:'—', after:vatRate+'% ('+money(vatAmount)+')'}]:[]),
+        {field:'إجمالي الفاتورة', before:'—', after:money(total)}
+      ], reason:'' }]
   };
   DB.invoices.push(inv);
   await saveKey('invoices', DB.invoices);
   // القاعدة: إصدار الفاتورة = تسليم السيارة وخروجها من المركز
+  // (لو السيارة اتسلّمت قبل كده بيوم أو أكتر، تاريخ التسليم بيفضل زي ما هو — والفاتورة ليها تاريخها المستقل)
   if(job.status !== 'تم التسليم'){
     job.status = 'تم التسليم';
-    job.deliveredAt = new Date().toISOString();
+    job.deliveredAt = stamp;
     await saveKey('jobs', DB.jobs);
   }
   await logAction('إصدار فاتورة #'+inv.invNo+' بقيمة '+money(total)+' — تم تسليم السيارة وإقفال أمر الشغل #'+job.jobNo);
+  if(total <= 0) notify('invoice_zero', '⚠️ فاتورة #'+inv.invNo+' بإجمالي صفر', { category:'financial', refType:'invoice', refId:inv.id, refNo:inv.invNo });
+  if(!(job.items||[]).length) notify('invoice_zero', '⚠️ إقفال أمر الشغل #'+job.jobNo+' وفوترته من غير أي بنود', { category:'financial', refType:'job', refId:job.id, refNo:job.jobNo });
   if(discount>0 && subtotal>0){
     const pct = discount/subtotal*100;
     if(pct >= (DB.settings.largeDiscountPct||15)){
@@ -5878,29 +6009,263 @@ function invRowsHTML(){
       <td>${job?'#'+job.jobNo:'—'}</td><td>${fmtDate(inv.date)}</td>
       <td>${money(inv.total)}</td><td>${money(paid)}</td>
       <td>${inv.cancelled?'<span class="tag tag-cancel">ملغاة</span>':`<span class="tag ${map[st][1]}">${map[st][0]}</span>`}</td>
-      <td>${!inv.cancelled && st!=='paid'?`<button class="btn btn-sm btn-accent" onclick="openPaymentModal('${inv.id}')">تحصيل</button>`:''}
-      ${!inv.cancelled && paid===0 && can('bill.cancel')?` <button class="btn btn-sm btn-danger" onclick="cancelInvoice('${inv.id}')">إلغاء</button>`:''}</td>
-      <td style="white-space:nowrap">${job?`<button class="btn btn-sm" onclick="openWorkOrderReport('${job.id}')">📈 الربحية</button> `:''}${can('bill.print')?`<button class="btn btn-sm" onclick="printInvoice('${inv.id}')">🖨</button> <button class="btn btn-sm" onclick="downloadInvoice('${inv.id}')">⬇ تحميل</button>`:''}</td>
+      <td style="white-space:nowrap">${!inv.cancelled && st!=='paid'?`<button class="btn btn-sm btn-accent" onclick="openPaymentModal('${inv.id}')">تحصيل</button> `:''}
+      ${!inv.cancelled && can('bill.edit')?`<button class="btn btn-sm" onclick="openEditInvoice('${inv.id}')">✏️ تعديل</button> `:''}
+      ${!inv.cancelled && job && can('jobs.reopen')?`<button class="btn btn-sm" onclick="reopenJobOrder('${inv.id}')">🔄 إعادة فتح الأمر</button> `:''}
+      ${!inv.cancelled && can('bill.cancel')?`<button class="btn btn-sm btn-danger" onclick="cancelInvoice('${inv.id}')">إلغاء</button>`:''}</td>
+      <td style="white-space:nowrap">${can('bill.history')?`<button class="btn btn-sm" onclick="openInvoiceHistory('${inv.id}')">🕘 السجل</button> `:''}${job?`<button class="btn btn-sm" onclick="openWorkOrderReport('${job.id}')">📈 الربحية</button> `:''}${can('bill.print')?`<button class="btn btn-sm" onclick="printInvoice('${inv.id}')">🖨</button> <button class="btn btn-sm" onclick="downloadInvoice('${inv.id}')">⬇ تحميل</button>`:''}</td>
     </tr>`;
   }).join('');
 }
+/* ================= الملاحظة 60: تعديل الفاتورة وإلغاؤها وسجلها الكامل =================
+   القاعدة: بنود الفاتورة (القطع/الخدمات/الأعمال الخارجية/الدهانات/الكميات) ممنوع تعديلها
+   نهائياً — عشان المخزون والمحاسبة يفضلوا مظبوطين. لو محتاج تعدّل البنود لازم
+   «إعادة فتح أمر الشغل» وتصدر فاتورة جديدة. */
+const INV_EVENT_LABEL = {
+  created:'📄 إصدار الفاتورة', edited:'✏️ تعديل الفاتورة', cancelled:'🚫 إلغاء الفاتورة',
+  reopened:'🔄 إعادة فتح أمر الشغل', payment:'💵 تحصيل دفعة'
+};
+/* سجل الفاتورة — بيضيف حدث الإصدار للفواتير القديمة اللي مالهاش سجل */
+function invHistory(inv){
+  const h = Array.isArray(inv.history) ? [...inv.history] : [];
+  if(!h.some(e=>e.action==='created')){
+    h.unshift({ id:'seed_'+inv.id, at:inv.date, actor:inv.createdBy||'—', action:'created', changes:[], reason:'' });
+  }
+  return h.sort((a,b)=>new Date(a.at)-new Date(b.at));
+}
+function invLog(inv, action, changes, reason){
+  inv.history = Array.isArray(inv.history) ? inv.history : [];
+  inv.history.push({
+    id: uid('ih'), at: new Date().toISOString(), actor: actorName(),
+    staffId: (session&&session.staffId)||null, action,
+    changes: (changes||[]).filter(c=>String(c.before)!==String(c.after)), reason: reason||''
+  });
+}
+/* ---------- تعديل الفاتورة (الحقول المسموحة فقط) ---------- */
+function openEditInvoice(invId){
+  if(!can('bill.edit')){ toast('مالكش صلاحية تعديل الفواتير', true); return; }
+  const inv = DB.invoices.find(i=>i.id===invId);
+  if(!inv){ toast('الفاتورة غير موجودة', true); return; }
+  if(inv.cancelled){ toast('الفاتورة ملغاة — مينفعش تتعدّل', true); return; }
+  const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
+  const pays = inv.payments||[];
+  openModal(`
+    <h3>✏️ تعديل فاتورة #${inv.invNo}</h3>
+    <div class="card" style="border-right:3px solid var(--danger);padding:9px 11px;margin-bottom:12px;font-size:12px">
+      <b style="color:var(--danger)">ممنوع تعديل بنود الفاتورة</b> — القطع (الداخلية والخارجية) والخدمات والأعمال الخارجية والمصنعيات وخامات الدهان والكميات.
+      لو محتاج تعدّلهم استخدم <b>«إعادة فتح أمر الشغل»</b> وبعدها اصدر فاتورة جديدة.
+    </div>
+    <div class="dsec">💰 القيم</div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">الخصم (ج.م)</label>
+        <input class="f" id="eiDiscount" type="number" min="0" step="0.01" value="${inv.discount||0}" oninput="editInvRecalc('${inv.id}')" ${can('bill.discount')?'':'disabled style="opacity:.55"'}></div>
+      <div class="form-row"><label class="f-label">نسبة الضريبة %</label>
+        <input class="f" id="eiVat" type="number" min="0" max="100" step="0.01" value="${inv.vatRate||0}" oninput="editInvRecalc('${inv.id}')"></div>
+    </div>
+    ${can('bill.discount')?'':'<div class="muted" style="font-size:11.5px;margin-bottom:8px">مالكش صلاحية الخصم — الحقل للعرض بس.</div>'}
+    <div class="card" id="eiTotals" style="margin-bottom:12px"></div>
+    ${pays.length?`
+    <div class="dsec">💳 وسيلة السداد (تصحيح الحساب المستلم)</div>
+    <div class="muted" style="font-size:11.5px;margin-bottom:6px">لو الفلوس اتسجلت على حساب غلط، غيّر الحساب هنا — النظام هيعمل <b>قيد تصحيحي</b> (خصم من الحساب القديم وإضافة للجديد) من غير ما يمسح أي حركة.</div>
+    ${pays.map((p,idx)=>`
+      <div class="grid g2" style="align-items:end;margin-bottom:6px">
+        <div class="form-row" style="margin:0"><label class="f-label">دفعة ${money(p.amount)} — ${fmtDate(p.date)}</label>
+          <select class="f" id="eiPay_${idx}">${DB.finAccounts.map(a=>`<option value="${a.id}" ${p.accountId===a.id?'selected':''}>${a.name}</option>`).join('')}</select></div>
+        <div class="muted" style="font-size:11.5px;padding-bottom:10px">الحالي: ${p.method||'—'}</div>
+      </div>`).join('')}
+    `:`<div class="muted" style="font-size:12px;margin-bottom:10px">مفيش دفعات محصلة على الفاتورة دي — وسيلة السداد بتتحدد وقت التحصيل.</div>`}
+    <div class="dsec">📝 بيانات إضافية</div>
+    <div class="form-row"><label class="f-label">الرقم المرجعي (اختياري)</label><input class="f" id="eiRef" value="${inv.refNo||''}" placeholder="رقم إذن، رقم تحويل، مرجع العميل..."></div>
+    <div class="form-row"><label class="f-label">ملاحظات الفاتورة (اختياري)</label><textarea class="f" id="eiNotes" rows="2">${inv.notes||''}</textarea></div>
+    <div class="form-row"><label class="f-label">سبب التعديل *</label><input class="f" id="eiReason" placeholder="مثال: تصحيح وسيلة سداد، خصم متفق عليه"></div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveEditInvoice('${inv.id}')">حفظ التعديلات</button>
+  `, true);
+  editInvRecalc(invId);
+}
+function editInvCalc(inv){
+  const subtotal = inv.subtotal!=null ? inv.subtotal : (inv.items||[]).reduce((s,it)=>s+it.qty*it.unitPrice,0);
+  const discount = Math.max(parseFloat((document.getElementById('eiDiscount')||{}).value)||0, 0);
+  const vatRate = Math.max(parseFloat((document.getElementById('eiVat')||{}).value)||0, 0);
+  const afterDiscount = Math.max(subtotal-discount, 0);
+  const vatAmount = afterDiscount*vatRate/100;
+  return { subtotal, discount, vatRate, afterDiscount, vatAmount, total: afterDiscount+vatAmount };
+}
+function editInvRecalc(invId){
+  const inv = DB.invoices.find(i=>i.id===invId); if(!inv) return;
+  const box = document.getElementById('eiTotals'); if(!box) return;
+  const c = editInvCalc(inv);
+  const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
+  const short = c.total < paid - 0.01;
+  box.innerHTML = `
+    <div class="flex-between"><span class="muted">إجمالي البنود (ثابت — مش قابل للتعديل)</span><span>${money(c.subtotal)}</span></div>
+    <div class="flex-between"><span class="muted">الخصم</span><span>− ${money(c.discount)}</span></div>
+    <div class="flex-between"><span class="muted">الضريبة (${c.vatRate}%)</span><span>+ ${money(c.vatAmount)}</span></div>
+    <div class="flex-between total-row" style="margin-top:6px;font-weight:800"><span>الإجمالي بعد التعديل</span><span>${money(c.total)}</span></div>
+    <div class="flex-between" style="margin-top:4px"><span class="muted">المحصّل فعلاً</span><span>${money(paid)}</span></div>
+    ${short?`<div class="card" style="border:1px solid var(--danger);color:var(--danger);padding:7px 9px;margin-top:8px;font-size:12px;font-weight:700">🚫 الإجمالي الجديد أقل من المحصّل (${money(paid)}) — يعني العميل هيبقى دافع زيادة. صحّح الخصم/الضريبة أو ارجع الفرق للعميل الأول.</div>`:''}`;
+}
+async function saveEditInvoice(invId){
+  if(!can('bill.edit')){ toast('مالكش صلاحية تعديل الفواتير', true); return; }
+  const inv = DB.invoices.find(i=>i.id===invId);
+  if(!inv || inv.cancelled){ toast('الفاتورة غير متاحة للتعديل', true); return; }
+  const reason = (document.getElementById('eiReason')||{}).value.trim();
+  if(!reason){ toast('اكتب سبب التعديل — بيتسجل في سجل الفاتورة', true); return; }
+  const c = editInvCalc(inv);
+  const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
+  if(c.discount > c.subtotal){ toast('الخصم أكبر من إجمالي البنود', true); return; }
+  if(c.total < paid - 0.01){ toast('الإجمالي الجديد أقل من المحصّل ('+money(paid)+') — مينفعش', true); return; }
+  const changes = [];
+  // الخصم (بصلاحية الخصم فقط)
+  if(can('bill.discount') && Math.abs((inv.discount||0) - c.discount) > 0.001){
+    changes.push({ field:'الخصم', before:money(inv.discount||0), after:money(c.discount) });
+    inv.discount = c.discount;
+  }
+  if(Math.abs((inv.vatRate||0) - c.vatRate) > 0.001){
+    changes.push({ field:'نسبة الضريبة', before:(inv.vatRate||0)+'%', after:c.vatRate+'%' });
+    inv.vatRate = c.vatRate;
+  }
+  // إعادة حساب الإجمالي على أساس القيم المحدّثة
+  const after = editInvCalcFrom(inv);
+  if(Math.abs((inv.total||0) - after.total) > 0.001){
+    changes.push({ field:'إجمالي الفاتورة', before:money(inv.total||0), after:money(after.total) });
+  }
+  inv.subtotal = after.subtotal; inv.vatAmount = after.vatAmount; inv.total = after.total;
+  // الرقم المرجعي والملاحظات
+  const refNo = ((document.getElementById('eiRef')||{}).value||'').trim();
+  if((inv.refNo||'') !== refNo){ changes.push({ field:'الرقم المرجعي', before:inv.refNo||'—', after:refNo||'—' }); inv.refNo = refNo; }
+  const notes = ((document.getElementById('eiNotes')||{}).value||'').trim();
+  if((inv.notes||'') !== notes){ changes.push({ field:'ملاحظات الفاتورة', before:inv.notes||'—', after:notes||'—' }); inv.notes = notes; }
+  // وسيلة السداد — قيد تصحيحي بدل حذف الحركات
+  let finTouched = false;
+  (inv.payments||[]).forEach((p,idx)=>{
+    const sel = document.getElementById('eiPay_'+idx); if(!sel) return;
+    const newAccId = sel.value;
+    if(!newAccId || newAccId===p.accountId) return;
+    const oldAcc = DB.finAccounts.find(a=>a.id===p.accountId);
+    const newAcc = DB.finAccounts.find(a=>a.id===newAccId);
+    if(!newAcc) return;
+    if(oldAcc) addFinMove(oldAcc.id, 'out', p.amount, 'correction', 'تصحيح وسيلة سداد فاتورة #'+inv.invNo+' (نقل لـ'+newAcc.name+')');
+    addFinMove(newAcc.id, 'in', p.amount, 'correction', 'تصحيح وسيلة سداد فاتورة #'+inv.invNo+(oldAcc?' (منقولة من '+oldAcc.name+')':''));
+    changes.push({ field:'وسيلة السداد — دفعة '+money(p.amount), before:(oldAcc?oldAcc.name:(p.method||'—')), after:newAcc.name });
+    p.accountId = newAcc.id; p.method = newAcc.name;
+    finTouched = true;
+  });
+  if(changes.length===0){ toast('مفيش أي تعديل', true); return; }
+  invLog(inv, 'edited', changes, reason);
+  const saves = [saveKey('invoices', DB.invoices)];
+  if(finTouched) saves.push(saveKey('finMoves', DB.finMoves));
+  await Promise.all(saves);
+  const cst = DB.customers.find(x=>x.id===inv.customerId);
+  await logAction('✏️ تعديل فاتورة #'+inv.invNo+auditDetails([
+    ['العميل', cst?cst.name:null],
+    ...changes.map(ch=>[ch.field, ch.before+' ← '+ch.after]),
+    ['السبب', reason]
+  ]));
+  pushNotif({ category:'financial', type:'invoice_edit', priority:'high', amount:inv.total,
+    action: (actorName()||'مستخدم')+' عدّل فاتورة #'+inv.invNo+' ('+changes.map(ch=>ch.field).join(' · ')+')',
+    refType:'invoice', refNo:inv.invNo });
+  closeModal(); toast('تم حفظ تعديلات الفاتورة'); refreshContent();
+}
+/* حساب الإجمالي من قيم الفاتورة نفسها (بعد التحديث) */
+function editInvCalcFrom(inv){
+  const subtotal = inv.subtotal!=null ? inv.subtotal : (inv.items||[]).reduce((s,it)=>s+it.qty*it.unitPrice,0);
+  const afterDiscount = Math.max(subtotal-(inv.discount||0), 0);
+  const vatAmount = afterDiscount*(inv.vatRate||0)/100;
+  return { subtotal, afterDiscount, vatAmount, total: afterDiscount+vatAmount };
+}
+/* ---------- سجل الفاتورة ---------- */
+function openInvoiceHistory(invId){
+  if(!can('bill.history')){ toast('مالكش صلاحية عرض سجل الفاتورة', true); return; }
+  const inv = DB.invoices.find(i=>i.id===invId);
+  if(!inv){ toast('الفاتورة غير موجودة', true); return; }
+  const cst = DB.customers.find(c=>c.id===inv.customerId);
+  const events = invHistory(inv);
+  openModal(`
+    <h3>🕘 سجل الفاتورة #${inv.invNo}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px">${cst?cst.name:'—'} · الإجمالي الحالي: <b>${money(inv.total)}</b>${inv.cancelled?' · <span class="tag tag-cancel">ملغاة</span>':''}</div>
+    ${events.map(e=>`
+      <div class="card" style="padding:9px 11px;margin-bottom:8px">
+        <div class="flex-between" style="flex-wrap:wrap;gap:6px">
+          <b style="font-size:13px">${INV_EVENT_LABEL[e.action]||e.action}</b>
+          <span class="muted" style="font-size:11.5px">${e.actor||'—'} · ${e.at?fmtDateTime(e.at):'—'}</span>
+        </div>
+        ${(e.changes&&e.changes.length)?`<table style="margin-top:7px"><thead><tr><th>الحقل</th><th>قبل</th><th>بعد</th></tr></thead>
+          <tbody>${e.changes.map(ch=>`<tr><td>${ch.field}</td><td class="muted">${ch.before}</td><td style="font-weight:700;color:var(--accent)">${ch.after}</td></tr>`).join('')}</tbody></table>`:''}
+        ${e.reason?`<div class="muted" style="font-size:11.5px;margin-top:6px">📝 السبب: ${e.reason}</div>`:''}
+      </div>`).join('')}
+  `, true);
+}
+/* ---------- إعادة فتح أمر الشغل (لتعديل البنود) ---------- */
+function reopenJobOrder(invId){
+  if(!can('jobs.reopen')){ toast('مالكش صلاحية إعادة فتح أوامر الشغل', true); return; }
+  const inv = DB.invoices.find(i=>i.id===invId);
+  if(!inv){ toast('الفاتورة غير موجودة', true); return; }
+  if(inv.cancelled){ toast('الفاتورة ملغاة بالفعل — أمر الشغل مفتوح', true); return; }
+  const job = DB.jobs.find(j=>j.id===inv.jobId);
+  if(!job){ toast('أمر الشغل غير موجود', true); return; }
+  const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
+  askConfirmReason(
+    'إعادة فتح أمر الشغل #'+job.jobNo+'؟<br><br>'+
+    '<span style="font-size:12.5px">هيحصل الآتي:<br>• <b>الفاتورة #'+inv.invNo+' هتتلغي</b> وتخرج من حسابات المبيعات والمديونيات.<br>'+
+    '• أمر الشغل هيرجع «جاري الشغل» وتقدر تعدّل بنوده.<br>'+
+    '• بعد ما تخلص التعديل <b>لازم تصدر فاتورة جديدة</b>.<br><br>'+
+    (paid>0?'<b style="color:var(--danger)">⚠️ الفاتورة دي محصّل عليها '+money(paid)+' — الإلغاء <u>مش</u> هيرجّع الفلوس ولا القيود المالية تلقائياً. التسوية لازم تعملها يدوي.</b><br><br>':'')+
+    '<b>مفيش أي حركة مخزون هترجع تلقائياً.</b></span>',
+    async (reason)=>{
+      inv.cancelled = true;
+      inv.cancelledAt = new Date().toISOString();
+      inv.cancelReason = 'إعادة فتح أمر الشغل — '+(reason||'');
+      invLog(inv, 'reopened', [
+        { field:'حالة الفاتورة', before:'صادرة', after:'ملغاة (إعادة فتح الأمر)' },
+        { field:'حالة أمر الشغل', before:job.status, after:'جاري الشغل' }
+      ], reason);
+      job.status = 'جاري الشغل';
+      job.deliveredAt = null;
+      job.reopenedAt = new Date().toISOString();
+      job.reopenedBy = actorName();
+      await Promise.all([saveKey('invoices', DB.invoices), saveKey('jobs', DB.jobs)]);
+      await logAction('🔄 إعادة فتح أمر الشغل #'+job.jobNo+auditDetails([
+        ['الفاتورة الملغاة', '#'+inv.invNo], ['إجمالي الفاتورة', money(inv.total)],
+        ['المحصّل عليها', paid>0?money(paid):'—'], ['السبب', reason||'—']
+      ]));
+      pushNotif({ category:'financial', type:'job_reopen', priority:'critical', amount:inv.total,
+        action:(actorName()||'مستخدم')+' أعاد فتح أمر الشغل #'+job.jobNo+' وألغى فاتورة #'+inv.invNo,
+        refType:'invoice', refNo:inv.invNo });
+      closeModal(); toast('اتفتح أمر الشغل #'+job.jobNo+' — عدّل البنود وبعدها اصدر فاتورة جديدة'); refreshContent();
+    });
+}
+/* ---------- إلغاء الفاتورة (حتى لو محصّلة — لصاحب الصلاحية) ---------- */
 function cancelInvoice(invId){
   if(!can('bill.cancel')){ toast('مالكش صلاحية إلغاء الفواتير', true); return; }
   const inv = DB.invoices.find(i=>i.id===invId);
+  if(!inv){ toast('الفاتورة غير موجودة', true); return; }
+  if(inv.cancelled){ toast('الفاتورة ملغاة بالفعل', true); return; }
   const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
-  if(paid>0){ toast('لا يمكن إلغاء فاتورة عليها دفعات محصلة', true); return; }
-  askConfirmReason('هل أنت متأكد من إلغاء الفاتورة #'+inv.invNo+'؟ ستُستبعد من كل حسابات المبيعات والمديونيات، ويمكن إصدار فاتورة جديدة لنفس أمر الشغل.', async (reason)=>{
+  const warn = paid>0
+    ? 'الفاتورة #'+inv.invNo+' <b>محصّل عليها '+money(paid)+' بالفعل</b>.<br><br>'+
+      '<span style="font-size:12.5px">إلغاء الفاتورة <b>مش هيرجّع حركات المخزون ولا القيود المالية تلقائياً</b>.<br>'+
+      'لو محتاج تصحيح في المخزون أو الحسابات، لازم تعمله يدوي من الشاشات المخصصة لكده.<br><br>تحب تكمّل؟</span>'
+    : 'إلغاء الفاتورة #'+inv.invNo+'؟<br><span style="font-size:12.5px">هتُستبعد من كل حسابات المبيعات والمديونيات، وتقدر تصدر فاتورة جديدة لنفس أمر الشغل. <b>مفيش حركة مخزون هترجع تلقائياً.</b></span>';
+  askConfirmReason(warn, async (reason)=>{
     inv.cancelled = true;
     inv.cancelledAt = new Date().toISOString();
     inv.cancelReason = reason||'';
+    invLog(inv, 'cancelled', [
+      { field:'حالة الفاتورة', before:'صادرة', after:'ملغاة' },
+      ...(paid>0 ? [{ field:'المحصّل وقت الإلغاء', before:money(paid), after:'محتاج تسوية يدوية' }] : [])
+    ], reason);
     await saveKey('invoices', DB.invoices);
     const cstI = DB.customers.find(c=>c.id===inv.customerId);
     await logAction('🚫 إلغاء فاتورة #'+inv.invNo+auditDetails([
       ['العميل', cstI?cstI.name:null], ['تاريخ الفاتورة', fmtDate(inv.date)],
-      ['الإجمالي', money(inv.total)], ['الخصم', inv.discount?money(inv.discount):null],
+      ['الإجمالي', money(inv.total)], ['المحصّل عليها', paid>0?money(paid):'—'],
+      ['الخصم', inv.discount?money(inv.discount):null],
       ['الضريبة', inv.vatAmount?money(inv.vatAmount)+' ('+inv.vatRate+'%)':null],
       ['عدد البنود', (inv.items||[]).length], ['السبب', reason||'—']
     ]));
+    pushNotif({ category:'financial', type:'invoice_cancel', priority: paid>0?'critical':'high', amount:inv.total,
+      action:(actorName()||'مستخدم')+' ألغى فاتورة #'+inv.invNo+(paid>0?' (محصّل عليها '+money(paid)+')':''),
+      refType:'invoice', refNo:inv.invNo });
     toast('تم إلغاء الفاتورة'); refreshContent();
   });
 }
@@ -5933,6 +6298,7 @@ async function savePayment(invId){
   const cust = DB.customers.find(c=>c.id===inv.customerId);
   inv.payments.push({id:uid('pay'), amount, method, accountId:acc?acc.id:null, date:new Date().toISOString()});
   if(acc) addFinMove(acc.id, 'in', amount, 'collection', 'تحصيل فاتورة #'+inv.invNo+(cust?' — '+cust.name:''));
+  invLog(inv, 'payment', [{ field:'دفعة محصّلة', before:money(paidSoFar), after:money(paidSoFar+amount)+' ('+method+')' }], '');
   await Promise.all([saveKey('invoices', DB.invoices), saveKey('finMoves', DB.finMoves)]);
   await logAction('تحصيل دفعة '+money(amount)+' ('+method+') على فاتورة #'+inv.invNo);
   closeModal(); toast('تم تسجيل الدفعة'); refreshContent();
@@ -8783,6 +9149,81 @@ function currentPosition(){
   return tpl ? dept+' / '+tpl : dept;
 }
 /* الدالة المركزية — بتنشئ إشعار للأدمن (مراقبة). آمنة: أي خطأ ما بيوقفش العملية الأصلية */
+/* ============ الملاحظة 61: طبقة المراقبة والتدقيق ============
+   قاعدة أساسية: الإشعارات **مراقبة بس** — مابتوقفش أي شغل، ومابتطلبش أي موافقة،
+   ومابتغيّرش أي صلاحية. الموظف صاحب الصلاحية بينفّذ عادي، والإشعار بيروح للمالك يراجعه بعدين. */
+const NOTIF_SEVERITY = {
+  // 🔴 خطورة عالية
+  job_cancel:'critical', job_delete:'critical', job_item_delete:'critical', job_item_edit:'high',
+  invoice_cancel:'critical', invoice_edit:'high', invoice_paid_edit:'critical', invoice_zero:'critical',
+  adjust:'high', adjustment:'high', scrap:'high', item_delete:'critical', item_cost_edit:'high',
+  cost_after_invoice:'critical', sell_below_cost:'critical', supplier_settle:'high', supplier_adjust:'high',
+  permission_change:'critical', user_create:'high', user_delete:'critical', user_password:'critical',
+  expense_delete:'critical', voucher_delete:'critical', customer_delete:'critical', customer_merge:'high',
+  large_discount:'high', large_expense:'high', bulk_delete:'critical', count_diff:'high',
+  // 🟡 متوسط
+  supplier_edit:'medium', supplier_archive:'medium', supplier_restore:'medium',
+  customer_edit:'medium', vehicle_edit:'medium', vehicle_owner:'high',
+  item_archive:'medium', item_restore:'medium', item_edit:'medium',
+  custody_settle:'medium', expense_edit:'medium', voucher_edit:'medium',
+  user_toggle:'medium', settings_change:'medium', tax_change:'high', payment_method:'medium',
+  dup_customer:'medium', dup_item:'medium',
+  // 🔵 معلومة
+  custody_open:'low', job_reopen:'low', count_approve:'low', leave_decision:'low', early_leave_decision:'low',
+};
+/* رصد الحذف المتكرر من نفس المستخدم في وقت قصير (البند 10 — نشاط غير معتاد) */
+window._delTrack = [];
+function trackBulkDeletes(what){
+  try{
+    const now = Date.now();
+    window._delTrack = window._delTrack.filter(t=>now-t.at < 5*60000);   // آخر 5 دقايق
+    window._delTrack.push({ at:now, what });
+    if(window._delTrack.length === 4){
+      notify('bulk_delete', '⚠️ نشاط غير معتاد: '+window._delTrack.length+' عمليات حذف من نفس المستخدم خلال 5 دقايق ('+
+        [...new Set(window._delTrack.map(t=>t.what))].join(' · ')+')', { category:'system' });
+    }
+  }catch(e){}
+}
+/* استدعاء مختصر: notify(type, نص الإجراء, {refType, refId, refNo, amount, category}) */
+function notify(type, action, opts){
+  const o = opts||{};
+  pushNotif({
+    type, action,
+    category: o.category || 'jobs',
+    priority: o.priority || NOTIF_SEVERITY[type] || 'medium',
+    amount: o.amount || 0,
+    refType: o.refType || null, refId: o.refId || null, refNo: o.refNo || null
+  });
+}
+/* فتح السجل المرتبط بالإشعار مباشرة (البند: Direct link to open the related record) */
+function openNotifRef(notifId){
+  const n = DB.notifications.find(x=>x.id===notifId);
+  if(!n){ toast('الإشعار غير موجود', true); return; }
+  const t = n.refType, id = n.refId;
+  try{
+    if(t==='job'){
+      const j = id ? DB.jobs.find(x=>x.id===id) : DB.jobs.find(x=>x.jobNo===n.refNo);
+      if(j) return openWorkOrderReport(j.id);
+    }
+    if(t==='invoice'){
+      const iv = id ? DB.invoices.find(x=>x.id===id) : DB.invoices.find(x=>x.invNo===n.refNo);
+      if(iv) return can('bill.history') ? openInvoiceHistory(iv.id) : goTab('invoices');
+      return goTab('invoices');
+    }
+    if(t==='inventory'){
+      const p = id ? DB.inventory.find(x=>x.id===id) : null;
+      if(p) return openItemCard(p.id);
+      return goTab('inventory');
+    }
+    if(t==='move'){ const m = id?DB.stockMoves.find(x=>x.id===id):null; if(m) return openMoveDetails(m.id); return goTab('stockmoves'); }
+    if(t==='customer'){ const c = id?DB.customers.find(x=>x.id===id):null; if(c) return openCustomerHistory(c.id); return goTab('customers'); }
+    if(t==='supplier'){ const s = id?DB.suppliers.find(x=>x.id===id):null; if(s && canScreen('suppliers')) return openSupplierDetail(s.id); return goTab('suppliers'); }
+    if(t==='expense') return goTab('expenses');
+    if(t==='staff' || t==='settings') return goTab('settings');
+    if(t==='hr') return goTab('hr');
+  }catch(e){ /* الفتح ماينفعش يوقّع الشاشة */ }
+  toast('السجل المرتبط مش متاح', true);
+}
 function pushNotif(opts){
   try{
     if(isOwnerSession()) return;   // الأدمن نفسه مش محتاج إشعار بأفعاله
@@ -8971,7 +9412,7 @@ function renderNotifications(){
       <td>${n.userName}<div class="muted" style="font-size:10.5px">${n.position||''}</div></td>
       <td style="white-space:nowrap;font-size:12px">${fmtDateTime(n.date)}</td>
       <td>${notifStatusTag(n.status)}</td>
-      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openNotifDetail('${n.id}')">تفاصيل</button></td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openNotifDetail('${n.id}')">تفاصيل</button>${(n.refType&&(n.refId||n.refNo))?` <button class="btn btn-sm btn-accent" onclick="openNotifRef('${n.id}')" title="افتح السجل المرتبط">↗ فتح السجل</button>`:''}</td>
     </tr>`).join('') : `<tr><td colspan="7" class="empty">مفيش إشعارات — كله تمام 👏</td></tr>`}
     </tbody></table>
   </div>`;
@@ -9254,6 +9695,7 @@ async function saveNewStaff(){
     active:true, createdAt:new Date().toISOString() });
   await saveKey('staff', DB.staff);
   await logAction('إنشاء مستخدم: '+name+' — القسم: '+(ROLE_LABEL[dept]||dept)+(tpl?' — القالب: '+tpl.label:'')+' — '+perms.screens.length+' شاشة و'+perms.actions.length+' إجراء');
+  notify('user_create', 'إنشاء مستخدم جديد: '+name+' — القسم: '+(ROLE_LABEL[dept]||dept)+' — '+perms.actions.length+' إجراء', { category:'system', refType:'staff' });
   toast('تم إنشاء حساب '+name); refreshContent();
 }
 /* ---- محرر الصلاحيات ثلاثي المستويات (الملاحظة 41) ----
@@ -9380,6 +9822,7 @@ async function savePerms(staffId){
   const scrDiff = diff(oldScreens, screens, s=>SCREEN_LABELS[s]||s);
   const actDiff = diff(oldActions, actions, k=>actionLabel(k));
   await logAction('تعديل صلاحيات «'+st.name+'» — الشاشات: '+scrDiff+' · الإجراءات: '+actDiff);
+  notify('permission_change', 'تعديل صلاحيات المستخدم «'+st.name+'» — الشاشات: '+scrDiff+' · الإجراءات: '+actDiff, { category:'system', refType:'staff', refId:st.id });
   pushNotif({ category:'permissions', type:'permission_change', priority:'critical',
     action:'تعديل صلاحيات المستخدم «'+st.name+'» — الشاشات: '+scrDiff+' · الإجراءات: '+actDiff });
   closeModal(); toast('تم حفظ صلاحيات '+st.name); refreshContent();
@@ -9392,6 +9835,7 @@ async function toggleStaff(id){
   st.active = st.active===false ? true : false;
   await saveKey('staff', DB.staff);
   await logAction((st.active?'تفعيل':'إيقاف')+' حساب الموظف: '+st.name);
+  notify('user_toggle', (st.active?'تفعيل':'إيقاف')+' حساب المستخدم: '+st.name, { category:'system', refType:'staff', refId:st.id });
   toast((st.active?'تم تفعيل ':'تم إيقاف ')+st.name); refreshContent();
 }
 function deleteStaff(id){
@@ -9403,6 +9847,8 @@ function deleteStaff(id){
   askConfirmReason('حذف حساب الموظف "'+st.name+'" نهائياً؟ عملياته السابقة هتفضل مسجلة باسمه في سجل العمليات.', async (reason)=>{
     DB.staff = DB.staff.filter(s=>s.id!==id);
     await saveKey('staff', DB.staff);
+    notify('user_delete', 'حذف حساب مستخدم: '+st.name+' ('+st.username+')', { category:'system', refType:'staff' });
+    trackBulkDeletes('حساب مستخدم');
     await logAction('🗑️ حذف حساب مستخدم «'+st.name+'»'+auditDetails([
       ['اسم المستخدم', st.username], ['القسم', ROLE_LABEL[st.dept||st.role]||st.dept||st.role],
       ['القالب', st.template ? ((allTemplates()[st.template]||{}).label||st.template) : null],
@@ -9434,6 +9880,7 @@ async function saveStaffPass(id){
   st.password = p;
   await saveKey('staff', DB.staff);
   await logAction('تغيير كلمة سر الموظف: '+st.name);
+  notify('user_password', 'تغيير كلمة سر المستخدم: '+st.name, { category:'system', refType:'staff', refId:st.id });
   closeModal(); toast('تم تغيير كلمة السر'); refreshContent();
 }
 async function saveInvoiceInfo(){
