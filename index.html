@@ -354,7 +354,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v74';
+const APP_VERSION = 'v76';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -424,6 +424,10 @@ const ACTION_GROUPS = [
     ['bill.history','عرض سجل الفاتورة'],
     ['bill.print','طباعة وتحميل الفاتورة'],
   ]],
+  ['المشتريات', [
+    ['pur.edit','تعديل فاتورة شراء مورد'],
+    ['pur.approve','اعتماد فاتورة شراء مورد'],
+  ]],
   ['المالية', [
     ['fin.expenses','تسجيل مصروفات'],
     ['fin.manage','إدارة الخزنة والحسابات والتحويلات'],
@@ -484,6 +488,8 @@ const PERM_INFO = {
   'fin.expenses':'تسجيل مصروفات المركز. بتتخصم من الحساب المختار.',
   'fin.manage':'إدارة الخزنة والحسابات: أرصدة افتتاحية وتحويلات وإيداعات.',
   'sup.pay':'سداد مستحقات الموردين من حسابات المركز.',
+  'pur.edit':'تعديل أسعار وكميات بنود فاتورة شراء المورد + رقم وتاريخ فاتورة المورد والملاحظات. بيسمح كمان بتعديل الفواتير المعتمدة (بسبب موثق).',
+  'pur.approve':'اعتماد فاتورة شراء المورد بعد وصول فاتورته الرسمية — بتتقفل الأسعار وتبقى نهائية.',
   'fin.custody_create':'إصدار عهد مالية للموظفين. بتتخصم من المصدر فوراً.',
   'fin.custody_settle':'تسوية العهد: تحويل المصروفات الفعلية ورجوع الباقي لحساب.',
   'rep.profit':'رؤية التكاليف والأرباح وهوامش الربح في كل الشاشات. من غيرها بيشوف أسعار البيع بس.',
@@ -3389,6 +3395,231 @@ function openMoveDetails(moveId){
       <div style="display:flex;gap:8px;flex-wrap:wrap">${links.join('')}</div>`:''}
   `, true);
 }
+/* ============ الملاحظة 63: اعتماد فواتير الشراء وتصحيح الأسعار ============
+   السيناريو: القطع بتوصل قبل فاتورة المورد، فالمخزن بيستلم فوراً بأسعار مبدئية.
+   لما فاتورة المورد الرسمية توصل، بنصحّح الأسعار **بند بند** — ده مش تسوية مخزون
+   (الكميات ماتتغيرش)، ده تصحيح سعر شراء بس.
+   المبدأ المحاسبي المحفوظ: **السجلات التاريخية للمبيعات ماتتغيرش أبداً** —
+   فواتير العملاء وأوامر الشغل المقفولة بتفضل بتكلفتها وقت الصرف. */
+const PUR_EDIT_REASONS = ['وصول فاتورة المورد الرسمية','تصحيح خطأ إدخال','خصم من المورد','فرق شحن/نولون','تصحيح تسعير من المورد','أخرى'];
+function purStatus(p){ return p.status || 'approved'; }   // الفواتير القديمة تُعتبر معتمدة
+function purIsClosed(p){   // مقفولة مالياً = مسدد عليها فعلياً
+  const paid = (p.payments||[]).reduce((s,x)=>s+x.amount,0);
+  return paid > 0.01;
+}
+function purStatusTag(p){
+  const st = purStatus(p);
+  const lock = purIsClosed(p) ? ' <span class="tag tag-cancel">🔒 مقفولة مالياً</span>' : '';
+  return (st==='pending'
+    ? '<span class="tag tag-partial">🟡 بانتظار فاتورة المورد</span>'
+    : '<span class="tag tag-paid">🟢 معتمدة</span>') + lock;
+}
+/* مين مسموحله يعدّل الفاتورة دي دلوقتي؟ */
+function canEditPurchase(p){
+  if(!p) return { ok:false, why:'الفاتورة غير موجودة' };
+  if(purIsClosed(p) && !isOwnerSession()) return { ok:false, why:'الفاتورة مقفولة مالياً — التعديل لصاحب المركز فقط' };
+  if(purStatus(p)==='pending') return can('pur.edit')||can('pur.approve')
+    ? { ok:true } : { ok:false, why:'مالكش صلاحية تعديل فواتير الشراء' };
+  return can('pur.edit') ? { ok:true } : { ok:false, why:'الفاتورة معتمدة — تعديلها محتاج صلاحية «تعديل فاتورة شراء»' };
+}
+function purLog(p, action, changes, reason){
+  p.history = Array.isArray(p.history) ? p.history : [];
+  p.history.push({ id:uid('ph'), at:new Date().toISOString(), actor:actorName(),
+    action, changes:(changes||[]).filter(c=>String(c.before)!==String(c.after)), reason:reason||'' });
+}
+/* ---------- شاشة تعديل فاتورة الشراء (بند بند) ---------- */
+function openEditPurchase(purchaseId){
+  const p = DB.purchases.find(x=>x.id===purchaseId);
+  const gate = canEditPurchase(p);
+  if(!gate.ok){ toast(gate.why, true); return; }
+  const sup = DB.suppliers.find(s=>s.id===p.supplierId);
+  const closed = purIsClosed(p);
+  openModal(`
+    <div class="flex-between" style="margin-bottom:8px;gap:10px;flex-wrap:wrap">
+      <h3 style="margin:0">✏️ تعديل فاتورة شراء #${p.purchaseNo}</h3>${purStatusTag(p)}</div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">المورد: <b>${sup?sup.name:'—'}</b> · بتاريخ ${fmtDate(p.date)}</div>
+    ${closed?`<div class="card" style="border:1px solid var(--danger);padding:9px 11px;margin-bottom:10px;font-size:12.5px;color:var(--danger);font-weight:700">
+      ⚠️ فاتورة الشراء دي مقفولة مالياً (مسدد عليها). تعديلها ممكن يأثر على رصيد المورد وتقييم المخزون. تقدر تكمّل بصفتك صاحب المركز.</div>`:''}
+    <div class="card" style="border-right:3px solid var(--accent-2);padding:9px 11px;margin-bottom:12px;font-size:12px">
+      ده <b>تصحيح سعر شراء</b> مش تسوية مخزون — <b>الكميات المستلمة ماتتغيرش</b> إلا لو غيّرتها بنفسك.
+      وفواتير العملاء وأوامر الشغل المقفولة <b>هتفضل زي ما هي</b> بتكلفتها وقت الصرف.
+    </div>
+    <div class="dsec">📄 بيانات فاتورة المورد</div>
+    <div class="grid g3">
+      <div class="form-row"><label class="f-label">رقم فاتورة المورد</label><input class="f" id="epSupNo" value="${p.supInvNo||''}"></div>
+      <div class="form-row"><label class="f-label">تاريخ فاتورة المورد</label><input class="f" id="epSupDate" type="date" value="${p.supInvDate||''}"></div>
+      <div class="form-row"><label class="f-label">ملاحظات</label><input class="f" id="epNotes" value="${p.notes||''}"></div>
+    </div>
+    <div class="dsec">🧾 بنود الفاتورة — عدّل السطر اللي اتغيّر بس</div>
+    <div style="max-height:300px;overflow-y:auto">
+    <table><thead><tr><th>الصنف</th><th>الكمية</th><th>سعر الشراء</th><th>الإجمالي</th><th>المتاح</th></tr></thead>
+    <tbody>${(p.items||[]).map((it,i)=>{
+      const part = it.partId ? DB.inventory.find(x=>x.id===it.partId) : null;
+      return `<tr>
+        <td style="font-size:12.5px">${it.name}${(part&&part.sku)?` <span class="muted" style="font-size:11px">${part.sku}</span>`:''}</td>
+        <td><input class="f" id="epQty_${i}" type="number" min="0" step="0.01" value="${it.qty}" style="width:80px" oninput="epRecalc('${p.id}')"></td>
+        <td><input class="f" id="epCost_${i}" type="number" min="0" step="0.01" value="${it.unitCost}" style="width:100px" oninput="epRecalc('${p.id}')"></td>
+        <td id="epLineTot_${i}" style="font-weight:700">${money(it.qty*it.unitCost)}</td>
+        <td class="muted" style="font-size:11.5px">${part?part.qty+' '+(part.unit||''):'—'}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>
+    <div class="card" id="epTotals" style="margin:10px 0"></div>
+    <div class="dsec">📝 سبب التعديل (إلزامي)</div>
+    <div class="form-row"><select class="f" id="epReason">${PUR_EDIT_REASONS.map(r=>`<option>${r}</option>`).join('')}</select></div>
+    <div class="form-row"><label class="f-label">تفاصيل إضافية (اختياري)</label><input class="f" id="epReasonNote" placeholder="اكتب تفاصيل لو السبب «أخرى»"></div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveEditPurchase('${p.id}')">حفظ التعديلات</button>
+  `, true);
+  epRecalc(purchaseId);
+}
+function readPurchaseLines(p){
+  return (p.items||[]).map((it,i)=>{
+    const q = document.getElementById('epQty_'+i), c = document.getElementById('epCost_'+i);
+    return { idx:i, qty: q?(parseFloat(q.value)||0):it.qty, unitCost: c?(parseFloat(c.value)||0):it.unitCost };
+  });
+}
+function epRecalc(purchaseId){
+  const p = DB.purchases.find(x=>x.id===purchaseId); if(!p) return;
+  const lines = readPurchaseLines(p);
+  lines.forEach(l=>{ const el=document.getElementById('epLineTot_'+l.idx); if(el) el.textContent = money(l.qty*l.unitCost); });
+  const newTotal = lines.reduce((s,l)=>s+l.qty*l.unitCost,0);
+  const diff = newTotal - (p.total||0);
+  const box = document.getElementById('epTotals'); if(!box) return;
+  box.innerHTML = `
+    <div class="flex-between"><span class="muted">الإجمالي قبل التعديل</span><span>${money(p.total||0)}</span></div>
+    <div class="flex-between total-row" style="margin-top:6px;font-weight:800"><span>الإجمالي بعد التعديل</span><span>${money(newTotal)}</span></div>
+    <div class="flex-between" style="margin-top:4px"><span class="muted">الفرق على حساب المورد</span>
+      <span style="font-weight:800;color:${diff>0?'var(--danger)':(diff<0?'#1a7f37':'var(--muted)')}">${diff>0?'+ ':(diff<0?'− ':'')}${money(Math.abs(diff))}</span></div>`;
+}
+async function saveEditPurchase(purchaseId){
+  const p = DB.purchases.find(x=>x.id===purchaseId);
+  const gate = canEditPurchase(p);
+  if(!gate.ok){ toast(gate.why, true); return; }
+  const reasonSel = (document.getElementById('epReason')||{}).value || '';
+  const reasonNote = ((document.getElementById('epReasonNote')||{}).value||'').trim();
+  const reason = reasonSel + (reasonNote?' — '+reasonNote:'');
+  if(!reasonSel){ toast('اختار سبب التعديل', true); return; }
+  const wasApproved = purStatus(p)==='approved';
+  const closed = purIsClosed(p);
+  const lines = readPurchaseLines(p);
+  const changes = [];
+  const costTouched = [];
+  lines.forEach(l=>{
+    const it = p.items[l.idx]; if(!it) return;
+    if(Math.abs((it.unitCost||0) - l.unitCost) > 0.001){
+      changes.push({ field:'سعر شراء «'+it.name+'»', before:money(it.unitCost||0), after:money(l.unitCost) });
+      costTouched.push({ it, oldCost:it.unitCost, newCost:l.unitCost });
+      it.unitCost = l.unitCost;
+    }
+    if(Math.abs((it.qty||0) - l.qty) > 0.001){
+      const dq = l.qty - it.qty;
+      changes.push({ field:'كمية «'+it.name+'»', before:it.qty, after:l.qty });
+      // الكمية بتتعدّل على المخزون بالفرق بس (استلام زيادة أو نقص)
+      const part = it.partId ? DB.inventory.find(x=>x.id===it.partId) : null;
+      if(part) part.qty = Math.max((part.qty||0) + dq, 0);
+      it.qty = l.qty;
+    }
+  });
+  // بيانات فاتورة المورد
+  const supNo = ((document.getElementById('epSupNo')||{}).value||'').trim();
+  const supDate = ((document.getElementById('epSupDate')||{}).value||'').trim();
+  const notes = ((document.getElementById('epNotes')||{}).value||'').trim();
+  if((p.supInvNo||'')!==supNo){ changes.push({ field:'رقم فاتورة المورد', before:p.supInvNo||'—', after:supNo||'—' }); p.supInvNo = supNo; }
+  if((p.supInvDate||'')!==supDate){ changes.push({ field:'تاريخ فاتورة المورد', before:p.supInvDate||'—', after:supDate||'—' }); p.supInvDate = supDate; }
+  if((p.notes||'')!==notes){ changes.push({ field:'ملاحظات', before:p.notes||'—', after:notes||'—' }); p.notes = notes; }
+  if(!changes.length){ toast('مفيش أي تعديل', true); return; }
+  // الإجمالي الجديد ← رصيد المورد بيتحدث تلقائياً لأنه بيتحسب من p.total
+  const oldTotal = p.total||0;
+  p.total = (p.items||[]).reduce((s,it)=>s+it.qty*it.unitCost,0);
+  if(Math.abs(oldTotal-p.total)>0.001) changes.push({ field:'إجمالي الفاتورة', before:money(oldTotal), after:money(p.total) });
+  // تحديث حركات التوريد المرتبطة + آخر سعر شراء ومتوسط التكلفة للمخزون المتبقي
+  costTouched.forEach(({it, newCost})=>{
+    DB.stockMoves.filter(m=>m.purchaseId===p.id && m.partId===it.partId && m.type==='in')
+      .forEach(m=>{ m.unitCost = newCost; });
+    const part = it.partId ? DB.inventory.find(x=>x.id===it.partId) : null;
+    // تكلفة الصنف بتتحدث بس لو ده آخر توريد ليه (المخزون المتبقي بيتقيّم بالسعر الصح)
+    if(part){
+      const lastIn = partInMoves(part.id)[0];
+      if(lastIn && lastIn.purchaseId===p.id) part.costPrice = newCost;
+    }
+  });
+  purLog(p, wasApproved?'edited_approved':'edited', changes, reason);
+  await Promise.all([saveKey('purchases', DB.purchases), saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
+  const sup = DB.suppliers.find(s=>s.id===p.supplierId);
+  await logAction('✏️ تعديل فاتورة شراء #'+p.purchaseNo+auditDetails([
+    ['المورد', sup?sup.name:null],
+    ...changes.map(c=>[c.field, c.before+' ← '+c.after]),
+    ['الفرق على حساب المورد', money(p.total-oldTotal)],
+    ['السبب', reason]
+  ]));
+  notify(closed?'purchase_closed_edit':(wasApproved?'purchase_approved_edit':'purchase_edit'),
+    'تعديل فاتورة شراء #'+p.purchaseNo+(sup?' — '+sup.name:'')+(closed?' (مقفولة مالياً)':(wasApproved?' (معتمدة)':''))+
+    ' — '+changes.slice(0,3).map(c=>c.field+': '+c.before+' ← '+c.after).join(' · ')+' — السبب: '+reason,
+    { category:'financial', refType:'purchase', refId:p.id, refNo:p.purchaseNo, amount:Math.abs(p.total-oldTotal) });
+  closeModal(); toast('تم حفظ تعديلات فاتورة الشراء'); refreshContent();
+}
+/* ---------- اعتماد فاتورة الشراء ---------- */
+function approvePurchase(purchaseId){
+  if(!can('pur.approve')){ toast('مالكش صلاحية اعتماد فواتير الشراء', true); return; }
+  const p = DB.purchases.find(x=>x.id===purchaseId);
+  if(!p){ toast('الفاتورة غير موجودة', true); return; }
+  if(purStatus(p)==='approved'){ toast('الفاتورة معتمدة بالفعل', true); return; }
+  const sup = DB.suppliers.find(s=>s.id===p.supplierId);
+  askConfirmReason('اعتماد فاتورة الشراء #'+p.purchaseNo+(sup?' — '+sup.name:'')+'؟<br><span class="muted" style="font-size:12px">إجماليها '+money(p.total)+'. بعد الاعتماد الأسعار بتبقى نهائية والفاتورة بتتقفل — وتعديلها بعد كده محتاج صلاحية «تعديل فاتورة شراء».</span>',
+    async (reason)=>{
+      p.status = 'approved'; p.approvedAt = new Date().toISOString(); p.approvedBy = actorName();
+      purLog(p, 'approved', [{ field:'حالة الفاتورة', before:'بانتظار فاتورة المورد', after:'معتمدة' }], reason);
+      await saveKey('purchases', DB.purchases);
+      await logAction('🟢 اعتماد فاتورة شراء #'+p.purchaseNo+auditDetails([
+        ['المورد', sup?sup.name:null], ['الإجمالي', money(p.total)],
+        ['رقم فاتورة المورد', p.supInvNo||'—'], ['السبب/الملاحظة', reason||'—']
+      ]));
+      notify('purchase_approve', 'اعتماد فاتورة شراء #'+p.purchaseNo+(sup?' — '+sup.name:'')+' بقيمة '+money(p.total),
+        { category:'financial', refType:'purchase', refId:p.id, refNo:p.purchaseNo, amount:p.total });
+      closeModal(); toast('تم اعتماد فاتورة الشراء'); refreshContent();
+    });
+}
+/* ---------- إعادة فتح فاتورة معتمدة ---------- */
+function reopenPurchase(purchaseId){
+  if(!can('pur.edit')){ toast('مالكش صلاحية تعديل فواتير الشراء', true); return; }
+  const p = DB.purchases.find(x=>x.id===purchaseId);
+  if(!p || purStatus(p)!=='approved'){ toast('الفاتورة مش معتمدة أصلاً', true); return; }
+  if(purIsClosed(p) && !isOwnerSession()){ toast('الفاتورة مقفولة مالياً — إعادة فتحها لصاحب المركز فقط', true); return; }
+  askConfirmReason('إعادة فتح فاتورة الشراء #'+p.purchaseNo+' لتعديل الأسعار؟<br><span class="muted" style="font-size:12px">هترجع «بانتظار فاتورة المورد» وتقدر تعدّل بنودها، وبعدها تعتمدها تاني.</span>',
+    async (reason)=>{
+      p.status = 'pending'; delete p.approvedAt; delete p.approvedBy;
+      purLog(p, 'reopened', [{ field:'حالة الفاتورة', before:'معتمدة', after:'بانتظار فاتورة المورد' }], reason);
+      await saveKey('purchases', DB.purchases);
+      const sup = DB.suppliers.find(s=>s.id===p.supplierId);
+      await logAction('🔄 إعادة فتح فاتورة شراء #'+p.purchaseNo+auditDetails([['المورد', sup?sup.name:null], ['السبب', reason||'—']]));
+      notify('purchase_reopen', 'إعادة فتح فاتورة شراء معتمدة #'+p.purchaseNo+(sup?' — '+sup.name:'')+' — السبب: '+(reason||'—'),
+        { category:'financial', refType:'purchase', refId:p.id, refNo:p.purchaseNo });
+      closeModal(); toast('اترجعت الفاتورة للتعديل'); refreshContent();
+    });
+}
+/* ---------- سجل فاتورة الشراء ---------- */
+const PUR_EVENT_LABEL = { created:'📄 إنشاء الفاتورة', edited:'✏️ تعديل', edited_approved:'✏️ تعديل بعد الاعتماد',
+  approved:'🟢 اعتماد', reopened:'🔄 إعادة فتح' };
+function openPurchaseHistory(purchaseId){
+  const p = DB.purchases.find(x=>x.id===purchaseId);
+  if(!p){ toast('الفاتورة غير موجودة', true); return; }
+  const sup = DB.suppliers.find(s=>s.id===p.supplierId);
+  const ev = Array.isArray(p.history)&&p.history.length ? [...p.history]
+    : [{ id:'seed', at:p.date, actor:p.createdBy||'—', action:'created', changes:[], reason:'' }];
+  openModal(`
+    <div class="flex-between" style="margin-bottom:8px;gap:10px;flex-wrap:wrap">
+      <h3 style="margin:0">🕘 سجل فاتورة الشراء #${p.purchaseNo}</h3>${purStatusTag(p)}</div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px">${sup?sup.name:'—'} · الإجمالي الحالي: <b>${money(p.total)}</b>${p.supInvNo?' · فاتورة المورد: '+p.supInvNo:''}</div>
+    ${ev.sort((a,b)=>new Date(a.at)-new Date(b.at)).map(e=>`
+      <div class="card" style="padding:9px 11px;margin-bottom:8px">
+        <div class="flex-between" style="flex-wrap:wrap;gap:6px">
+          <b style="font-size:13px">${PUR_EVENT_LABEL[e.action]||e.action}</b>
+          <span class="muted" style="font-size:11.5px">${e.actor||'—'} · ${e.at?fmtDateTime(e.at):'—'}</span></div>
+        ${(e.changes&&e.changes.length)?`<table style="margin-top:7px"><thead><tr><th>الحقل</th><th>قبل</th><th>بعد</th></tr></thead>
+          <tbody>${e.changes.map(c=>`<tr><td>${c.field}</td><td class="muted">${c.before}</td><td style="font-weight:700;color:var(--accent)">${c.after}</td></tr>`).join('')}</tbody></table>`:''}
+        ${e.reason?`<div class="muted" style="font-size:11.5px;margin-top:6px">📝 السبب: ${e.reason}</div>`:''}
+      </div>`).join('')}
+  `, true);
+}
 /* عرض فاتورة الشراء (مع تنقّل لحساب المورد) */
 function openPurchaseView(purchaseId){
   const pu = DB.purchases.find(x=>x.id===purchaseId);
@@ -3398,12 +3629,23 @@ function openPurchaseView(purchaseId){
   const remaining = pu.total - paid;
   const statusTag = paid>=pu.total ? '<span class="tag tag-paid">مسدد بالكامل</span>' : (paid>0?'<span class="tag tag-partial">مسدد جزئياً</span>':'<span class="tag tag-unpaid">آجل — غير مسدد</span>');
   openModal(`
-    <div class="flex-between" style="margin-bottom:12px"><h3 style="margin:0">فاتورة شراء #${pu.purchaseNo}</h3>${statusTag}</div>
-    <div class="grid g2" style="margin-bottom:14px;font-size:13px">
+    <div class="flex-between" style="margin-bottom:8px;gap:10px;flex-wrap:wrap"><h3 style="margin:0">فاتورة شراء #${pu.purchaseNo}</h3>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${purStatusTag(pu)} ${statusTag}</div></div>
+    <div class="grid g2" style="margin-bottom:12px;font-size:13px">
       <div><span class="muted">المورد:</span> ${supplier?supplier.name:'—'}</div>
       <div><span class="muted">التاريخ:</span> ${fmtDateTime(pu.date)}</div>
       <div><span class="muted">طريقة الدفع:</span> ${pu.paymentMethod||'—'}</div>
       <div><span class="muted">عدد الأصناف:</span> ${(pu.items||[]).length}</div>
+      <div><span class="muted">رقم فاتورة المورد:</span> ${pu.supInvNo||'—'}</div>
+      <div><span class="muted">تاريخ فاتورة المورد:</span> ${pu.supInvDate?fmtDate(pu.supInvDate):'—'}</div>
+      ${pu.approvedBy?`<div><span class="muted">اعتمدها:</span> ${pu.approvedBy}${pu.approvedAt?' · '+fmtDate(pu.approvedAt):''}</div>`:''}
+      ${pu.notes?`<div><span class="muted">ملاحظات:</span> ${pu.notes}</div>`:''}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      ${purStatus(pu)==='pending' && can('pur.approve')?`<button class="btn btn-sm btn-accent" onclick="approvePurchase('${pu.id}')">🟢 اعتماد الفاتورة</button>`:''}
+      ${canEditPurchase(pu).ok?`<button class="btn btn-sm" onclick="openEditPurchase('${pu.id}')">✏️ تعديل الأسعار</button>`:''}
+      ${purStatus(pu)==='approved' && can('pur.edit')?`<button class="btn btn-sm" onclick="reopenPurchase('${pu.id}')">🔄 إعادة فتح</button>`:''}
+      <button class="btn btn-sm" onclick="openPurchaseHistory('${pu.id}')">🕘 السجل</button>
     </div>
     <table style="margin-bottom:12px"><thead><tr><th>الصنف</th><th>الكمية</th><th>تكلفة الوحدة</th><th>الإجمالي</th></tr></thead>
     <tbody>${(pu.items||[]).map(it=>{
@@ -5239,7 +5481,8 @@ function supplierDetailHTML(supplierId){
           <span class="muted" style="font-size:12px;margin-right:10px">${fmtDate(p.date)}</span>
           ${p.paymentMethod?`<span class="muted" style="font-size:12px;margin-right:10px">${p.paymentMethod}</span>`:''}
         </div>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          ${purStatusTag(p)}
           <span style="font-weight:800">${money(p.total)}</span>
           <span class="tag ${st[1]}">${st[0]}</span>
         </div>
@@ -5248,6 +5491,12 @@ function supplierDetailHTML(supplierId){
         <table><thead><tr><th>الصنف</th><th>الكمية</th><th>سعر الشراء</th><th>الإجمالي</th></tr></thead>
         <tbody>${p.items.map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitCost)}</td><td>${money(it.qty*it.unitCost)}</td></tr>`).join('')}</tbody></table>
         ${(p.payments||[]).length?`<div class="muted" style="font-size:12px;margin-top:8px">الدفعات: ${p.payments.map(x=>money(x.amount)+' ('+fmtDate(x.date)+')').join(' · ')}</div>`:''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+          ${purStatus(p)==='pending' && can('pur.approve')?`<button class="btn btn-sm btn-accent" onclick="approvePurchase('${p.id}')">🟢 اعتماد</button>`:''}
+          ${canEditPurchase(p).ok?`<button class="btn btn-sm" onclick="openEditPurchase('${p.id}')">✏️ تعديل الأسعار</button>`:''}
+          ${purStatus(p)==='approved' && can('pur.edit')?`<button class="btn btn-sm" onclick="reopenPurchase('${p.id}')">🔄 إعادة فتح</button>`:''}
+          <button class="btn btn-sm" onclick="openPurchaseHistory('${p.id}')">🕘 السجل</button>
+        </div>
       </div>
     </div>`;
   }).join('') : `<div class="empty">لسه مفيش فواتير شراء من المورد ده</div>`}
@@ -5814,7 +6063,12 @@ async function savePurchaseInvoice(){
     date: purchaseDraft.date ? new Date(purchaseDraft.date).toISOString() : new Date().toISOString(),
     note: 'طريقة الدفع: '+purchaseDraft.paymentMethod,
     paymentMethod: purchaseDraft.paymentMethod,
-    items: invoiceItems, total, payments: []
+    items: invoiceItems, total, payments: [],
+    // الملاحظة 63: الفاتورة بتتسجل «بانتظار فاتورة المورد» — الأسعار مبدئية لحد ما تتعتمد
+    status: 'pending', supInvNo: purchaseDraft.invoiceNo || '', supInvDate: '',
+    createdBy: actorName(),
+    history: [{ id:uid('ph'), at:new Date().toISOString(), actor:actorName(), action:'created',
+      changes:[{ field:'إجمالي الفاتورة', before:'—', after:money(total) }], reason:'' }]
   };
   if(purchaseDraft.paymentMethod !== 'آجل'){
     purchase.payments.push({id:uid('pay'), amount: total, date: new Date().toISOString()});
@@ -5822,6 +6076,8 @@ async function savePurchaseInvoice(){
   DB.purchases.push(purchase);
   await saveKey('purchases', DB.purchases);
   await logAction('فاتورة شراء جديدة #'+purchase.purchaseNo+' من '+supplier.name+' بقيمة '+money(total)+' ('+purchaseDraft.paymentMethod+')');
+  notify('purchase_create', 'فاتورة شراء جديدة #'+purchase.purchaseNo+' من '+supplier.name+' بقيمة '+money(total)+' — بانتظار فاتورة المورد',
+    { category:'financial', refType:'purchase', refId:purchase.id, refNo:purchase.purchaseNo, amount:total });
   toast('تم حفظ الفاتورة وتحديث المخزون وحساب المورد');
   purchaseDraft = null;
   currentTab='suppliers'; render();
@@ -6269,39 +6525,120 @@ function cancelInvoice(invId){
     toast('تم إلغاء الفاتورة'); refreshContent();
   });
 }
+/* ============ الملاحظة 62: تحصيل بوسائل سداد متعددة (Split Payment) ============
+   الفاتورة الواحدة ممكن تتسدد بأكتر من وسيلة مع بعض (كاش + انستاباي + فيزا + تحويل...).
+   كل وسيلة بتتسجل كدفعة مستقلة بحسابها الخاص وحركتها المالية الخاصة — عشان
+   تقرير كل خزنة/حساب يزيد بالمبلغ اللي دخله هو بالظبط. */
+let _payRows = 0;
 function openPaymentModal(invId){
+  if(!can('bill.collect')){ toast('مالكش صلاحية التحصيل', true); return; }
   const inv = DB.invoices.find(i=>i.id===invId);
+  if(!inv){ toast('الفاتورة غير موجودة', true); return; }
   const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
   const remaining = inv.total - paid;
+  _payRows = 0;
   openModal(`
-    <h3>تحصيل دفعة — فاتورة #${inv.invNo}</h3>
-    <div class="muted" style="margin-bottom:12px">المتبقي: ${money(remaining)}</div>
-    <div class="form-row"><label class="f-label">المبلغ</label><input class="f" id="payAmt" type="number" min="0" max="${remaining}" value="${remaining}"></div>
-    <div class="form-row"><label class="f-label">وسيلة السداد / الحساب المستلم</label>
-      <select class="f" id="payMethod">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select>
-    </div>
+    <h3>تحصيل فاتورة #${inv.invNo}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px">تقدر تقسّم التحصيل على أكتر من وسيلة سداد مع بعض — كل وسيلة هتتسجل في حسابها لوحدها.</div>
+    <div id="payRowsBox"></div>
+    <button class="btn btn-sm" style="margin-bottom:12px" onclick="addPayRow('${invId}')">${ICONS.plus} إضافة وسيلة سداد</button>
+    <div class="card" id="payTotals" style="margin-bottom:12px"></div>
     <button class="btn btn-accent" style="width:100%" onclick="savePayment('${invId}')">تأكيد التحصيل</button>
-  `);
+  `, true);
+  addPayRow(invId, remaining);   // أول صف بالمتبقي كله (السلوك المعتاد)
+}
+function addPayRow(invId, presetAmount){
+  const box = document.getElementById('payRowsBox'); if(!box) return;
+  const idx = _payRows++;
+  const div = document.createElement('div');
+  div.className = 'grid g3';
+  div.id = 'payRow_'+idx;
+  div.setAttribute('style','align-items:end;gap:8px;margin-bottom:6px');
+  div.innerHTML = `
+    <div class="form-row" style="margin:0"><label class="f-label">وسيلة السداد / الحساب المستلم</label>
+      <select class="f" id="payAcc_${idx}">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select></div>
+    <div class="form-row" style="margin:0"><label class="f-label">المبلغ</label>
+      <input class="f" id="payAmt_${idx}" type="number" min="0" step="0.01" value="${presetAmount!=null?Math.max(presetAmount,0):''}" oninput="payRecalc('${invId}')"></div>
+    <div style="padding-bottom:10px">${idx>0?`<button class="btn btn-sm btn-danger" onclick="removePayRow(${idx},'${invId}')">حذف</button>`:'<span class="muted" style="font-size:11.5px">الصف الأساسي</span>'}</div>`;
+  box.appendChild(div);
+  payRecalc(invId);
+}
+function removePayRow(idx, invId){
+  // بنصفّر المبلغ الأول عشان الصف يتشال من الحساب فوراً، وبعدين نشيله من الشاشة
+  const amtEl = document.getElementById('payAmt_'+idx);
+  if(amtEl) amtEl.value = '';
+  const el = document.getElementById('payRow_'+idx);
+  if(el) el.remove();
+  payRecalc(invId);
+}
+/* قراءة كل الصفوف الحالية */
+function readPayRows(){
+  const rows = [];
+  for(let i=0;i<_payRows;i++){
+    const amtEl = document.getElementById('payAmt_'+i);
+    const accEl = document.getElementById('payAcc_'+i);
+    if(!amtEl || !accEl) continue;            // الصف اتشال
+    const amount = parseFloat(amtEl.value)||0;
+    if(amount<=0) continue;
+    const acc = DB.finAccounts.find(a=>a.id===accEl.value) || accountForMethod('كاش');
+    rows.push({ amount, accountId: acc?acc.id:null, method: acc?acc.name:'كاش' });
+  }
+  return rows;
+}
+function payRecalc(invId){
+  const inv = DB.invoices.find(i=>i.id===invId); if(!inv) return;
+  const box = document.getElementById('payTotals'); if(!box) return;
+  const already = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
+  const now = readPayRows().reduce((s,r)=>s+r.amount,0);
+  const totalPaid = already + now;
+  const remaining = inv.total - totalPaid;
+  const over = remaining < -0.01;
+  box.innerHTML = `
+    <div class="flex-between"><span class="muted">إجمالي الفاتورة</span><span style="font-weight:700">${money(inv.total)}</span></div>
+    ${already>0?`<div class="flex-between"><span class="muted">محصّل سابقاً</span><span>${money(already)}</span></div>`:''}
+    <div class="flex-between"><span class="muted">المحصّل دلوقتي</span><span>${money(now)}</span></div>
+    <div class="flex-between total-row" style="margin-top:6px;font-weight:800"><span>إجمالي المدفوع</span><span>${money(totalPaid)}</span></div>
+    <div class="flex-between" style="margin-top:4px"><span class="muted">المتبقي</span>
+      <span style="font-weight:800;color:${over?'var(--danger)':(Math.abs(remaining)<0.01?'#1a7f37':'var(--accent-2)')}">${money(Math.max(remaining,0))}</span></div>
+    <div style="margin-top:6px">${over
+      ? `<span class="tag tag-cancel">🚫 إجمالي المدفوع أكبر من قيمة الفاتورة</span>`
+      : (Math.abs(remaining)<0.01 ? `<span class="tag tag-paid">محصلة بالكامل</span>` : (totalPaid>0?`<span class="tag tag-partial">محصلة جزئياً</span>`:`<span class="tag tag-unpaid">غير محصلة</span>`))}</div>`;
 }
 async function savePayment(invId){
   if(!can('bill.collect')){ toast('مالكش صلاحية التحصيل', true); return; }
-  const amount = parseFloat(document.getElementById('payAmt').value)||0;
-  if(amount<=0){ toast('اكتب مبلغ صحيح', true); return; }
   const inv = DB.invoices.find(i=>i.id===invId);
+  if(!inv){ toast('الفاتورة غير موجودة', true); return; }
+  if(inv.cancelled){ toast('الفاتورة ملغاة — مينفعش تحصيل عليها', true); return; }
+  const rows = readPayRows();
+  if(!rows.length){ toast('اكتب مبلغ صحيح على وسيلة سداد واحدة على الأقل', true); return; }
   inv.payments = inv.payments || [];
   const paidSoFar = inv.payments.reduce((s,p)=>s+p.amount,0);
+  const adding = rows.reduce((s,r)=>s+r.amount,0);
   const remaining = inv.total - paidSoFar;
-  if(amount > remaining + 0.001){ toast('المبلغ أكبر من المتبقي على الفاتورة ('+money(remaining)+')', true); return; }
-  const accId = (document.getElementById('payMethod')||{}).value;
-  const acc = DB.finAccounts.find(a=>a.id===accId) || accountForMethod('كاش');
-  const method = acc ? acc.name : 'كاش';
+  if(adding > remaining + 0.001){
+    toast('إجمالي المدفوع أكبر من قيمة الفاتورة — المتبقي '+money(remaining), true); return;
+  }
   const cust = DB.customers.find(c=>c.id===inv.customerId);
-  inv.payments.push({id:uid('pay'), amount, method, accountId:acc?acc.id:null, date:new Date().toISOString()});
-  if(acc) addFinMove(acc.id, 'in', amount, 'collection', 'تحصيل فاتورة #'+inv.invNo+(cust?' — '+cust.name:''));
-  invLog(inv, 'payment', [{ field:'دفعة محصّلة', before:money(paidSoFar), after:money(paidSoFar+amount)+' ('+method+')' }], '');
+  const stamp = new Date().toISOString();
+  rows.forEach(r=>{
+    inv.payments.push({ id:uid('pay'), amount:r.amount, method:r.method, accountId:r.accountId, date:stamp });
+    // كل وسيلة بحركتها المالية على حسابها هي — عشان تقارير الخزن تفضل مظبوطة
+    if(r.accountId) addFinMove(r.accountId, 'in', r.amount, 'collection',
+      'تحصيل فاتورة #'+inv.invNo+(cust?' — '+cust.name:'')+(rows.length>1?' (سداد مقسّم)':''));
+  });
+  const breakdown = rows.map(r=>r.method+': '+money(r.amount)).join(' · ');
+  invLog(inv, 'payment', [{ field: rows.length>1?'تحصيل مقسّم على '+rows.length+' وسائل':'دفعة محصّلة',
+    before: money(paidSoFar), after: money(paidSoFar+adding)+' ('+breakdown+')' }], '');
   await Promise.all([saveKey('invoices', DB.invoices), saveKey('finMoves', DB.finMoves)]);
-  await logAction('تحصيل دفعة '+money(amount)+' ('+method+') على فاتورة #'+inv.invNo);
-  closeModal(); toast('تم تسجيل الدفعة'); refreshContent();
+  await logAction('تحصيل '+money(adding)+' على فاتورة #'+inv.invNo+auditDetails([
+    ...rows.map(r=>[r.method, money(r.amount)]),
+    ['إجمالي المحصّل الآن', money(adding)],
+    ['إجمالي المدفوع على الفاتورة', money(paidSoFar+adding)],
+    ['المتبقي', money(Math.max(inv.total-(paidSoFar+adding),0))]
+  ]));
+  closeModal();
+  toast(rows.length>1 ? 'تم التحصيل المقسّم على '+rows.length+' وسائل سداد' : 'تم تسجيل الدفعة');
+  refreshContent();
 }
 
 function printHTML(html){
@@ -6440,6 +6777,18 @@ function brandedInvoiceHTML(inv){
       <div><span>المبلغ المدفوع</span><span>${paid.toFixed(2)} ج.م</span></div>
       <div><span class="binv-due">الرصيد المستحق</span><span class="binv-due">${due.toFixed(2)} ج.م</span></div>
     </div>
+    ${(()=>{ /* الملاحظة 62: تفصيل وسائل السداد على الفاتورة المطبوعة */
+      const ps = inv.payments||[]; if(!ps.length) return '';
+      const byMethod = {};
+      ps.forEach(p=>{ const k = p.method||'—'; byMethod[k] = (byMethod[k]||0) + p.amount; });
+      const keys = Object.keys(byMethod);
+      if(keys.length<=1 && ps.length<=1) return '';   // وسيلة واحدة = مفيش داعي لتفصيل
+      return `<div class="binv-totals" style="margin-top:8px">
+        <div class="binv-grand" style="border-top:none"><span>تفاصيل السداد</span><span></span></div>
+        ${keys.map(k=>`<div><span>${k}</span><span>${byMethod[k].toFixed(2)} ج.م</span></div>`).join('')}
+        <div class="binv-grand"><span>إجمالي المدفوع</span><span>${paid.toFixed(2)} ج.م</span></div>
+      </div>`;
+    })()}
     <div class="binv-foot">
       ${(s.warrantyText||'').split('\n').map((line,i)=> i===0?`<div class="wtitle"># الضمان #</div><div>${line}</div>`:`<div>${line}</div>`).join('')}
       <div class="binv-contact">📍 ${s.address||''} &nbsp;&nbsp; 📞 رقم التواصل: ${s.phone||''}</div>
@@ -9168,6 +9517,9 @@ const NOTIF_SEVERITY = {
   custody_settle:'medium', expense_edit:'medium', voucher_edit:'medium',
   user_toggle:'medium', settings_change:'medium', tax_change:'high', payment_method:'medium',
   dup_customer:'medium', dup_item:'medium',
+  // الملاحظة 63: فواتير الشراء
+  purchase_edit:'medium', purchase_approved_edit:'high', purchase_closed_edit:'critical',
+  purchase_reopen:'high', purchase_approve:'low', purchase_create:'low',
   // 🔵 معلومة
   custody_open:'low', job_reopen:'low', count_approve:'low', leave_decision:'low', early_leave_decision:'low',
 };
