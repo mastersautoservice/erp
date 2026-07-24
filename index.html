@@ -260,10 +260,76 @@ const _shadow = {};
 function sbConfigured(){
   return SUPABASE_URL.indexOf('https://')===0 && SUPABASE_ANON_KEY.length > 30;
 }
+/* ============ الملاحظة 66: تأمين السيرفر — تفعيل الجهاز بحساب المركز ============
+   المشكلة: مفتاح الاتصال (anon key) مكتوب جوه الملف، وأي حد معاه اللينك كان يقدر
+   يسحب أو يعدّل القاعدة من برّه البرنامج خالص.
+   الحل: القاعدة مابقتش تفتح لحامل المفتاح — لازم **تسجيل دخول حقيقي بحساب المركز**.
+   بيانات الحساب دي **مش مكتوبة في الملف** — بتتكتب مرة واحدة على كل جهاز
+   والجلسة بتتحفظ في الجهاز نفسه وبتتجدد لوحدها.
+   ملاحظة توافق: النسخة دي بتشتغل قبل وبعد تشديد الحماية على السيرفر — فمفيش لحظة توقف. */
+let _deviceAuthed = false;
 function initSupabase(){
   if(!sbConfigured() || !window.supabase) return false;
-  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth:{ persistSession:false } });
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth:{ persistSession:true, autoRefreshToken:true, storageKey:'masters_erp_device' }
+  });
   return true;
+}
+async function deviceSession(){
+  try{ const r = await sb.auth.getSession(); return (r && r.data && r.data.session) ? r.data.session : null; }
+  catch(e){ return null; }
+}
+function deviceActivationHTML(blocked){
+  return `
+  <div class="login-wrap"><div class="login-card" style="text-align:right;max-width:520px">
+    <p class="login-title">🔐 تفعيل الجهاز</p>
+    <p class="login-sub" style="line-height:2">
+      ${blocked
+        ? 'الجهاز ده لسه <b>مش مفعّل</b>، وقاعدة البيانات محمية — لازم تفعّله مرة واحدة عشان يشتغل.'
+        : 'فعّل الجهاز ده مرة واحدة بحساب المركز عشان يفضل شغال بأمان.'}
+      <br><span class="muted" style="font-size:12.5px">بتتكتب <b>مرة واحدة بس</b> على الجهاز ده — وبعدها الجهاز فاكرها ومش هيسألك تاني.
+      دي <b>مش</b> بيانات دخول الموظفين، دي بيانات المركز اللي عند صاحب المركز.</span>
+    </p>
+    <div class="form-row"><label class="f-label">إيميل المركز</label>
+      <input class="f" id="devEmail" type="email" autocomplete="username" dir="ltr" placeholder="name@example.com"></div>
+    <div class="form-row"><label class="f-label">كلمة سر المركز</label>
+      <input class="f" id="devPass" type="password" autocomplete="current-password" dir="ltr"
+        onkeydown="if(event.key==='Enter')activateDevice()"></div>
+    <div id="devErr" style="color:var(--danger);font-size:12.5px;min-height:18px;margin-bottom:8px"></div>
+    <button class="btn btn-accent" id="devBtn" style="width:100%" onclick="activateDevice()">تفعيل الجهاز</button>
+    ${blocked?'':`<button class="btn" style="width:100%;margin-top:8px" onclick="skipDeviceActivation()">دخول من غير تفعيل (مؤقت)</button>`}
+  </div></div>`;
+}
+async function activateDevice(){
+  const email = ((document.getElementById('devEmail')||{}).value||'').trim();
+  const pass  = (document.getElementById('devPass')||{}).value||'';
+  const err = document.getElementById('devErr');
+  const btn = document.getElementById('devBtn');
+  if(!email || !pass){ if(err) err.textContent='اكتب الإيميل وكلمة السر'; return; }
+  if(btn){ btn.disabled = true; btn.textContent = 'جاري التفعيل...'; }
+  if(err) err.textContent = '';
+  try{
+    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if(error) throw error;
+    location.reload();
+  }catch(e){
+    const m = String((e && e.message) || '');
+    if(err) err.textContent = /Invalid login/i.test(m)
+      ? 'الإيميل أو كلمة السر غلط'
+      : (/fetch|network/i.test(m) ? 'مفيش اتصال بالإنترنت' : ('تعذر التفعيل — '+m));
+    if(btn){ btn.disabled = false; btn.textContent = 'تفعيل الجهاز'; }
+  }
+}
+function skipDeviceActivation(){ try{ localStorage.setItem('masters_skip_activation','1'); }catch(e){} location.reload(); }
+/* رجوع لشاشة التفعيل (من تنبيه الرئيسية أو الإعدادات) */
+function promptDeviceActivation(){ try{ localStorage.removeItem('masters_skip_activation'); }catch(e){} location.reload(); }
+async function deactivateDevice(){
+  if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
+  askConfirm('إلغاء تفعيل الجهاز ده؟<br><span class="muted" style="font-size:12px">هيتطلب بيانات دخول المركز تاني عشان يشتغل. استخدمها لو الجهاز اتسرق أو اتباع.</span>', async ()=>{
+    try{ await sb.auth.signOut(); }catch(e){}
+    try{ localStorage.removeItem('masters_skip_activation'); }catch(e){}
+    location.reload();
+  });
 }
 function _actor(){ try{ return (session && typeof actorName==='function') ? actorName() : null; }catch(e){ return null; } }
 function _snapshot(key){
@@ -354,7 +420,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v76';
+const APP_VERSION = 'v79';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -399,6 +465,8 @@ const ACTION_GROUPS = [
     ['customers.create','إضافة عميل وسيارة'],
     ['customers.archive','أرشفة عميل'],
     ['customers.delete','حذف عميل نهائياً'],
+    ['cars.archive','أرشفة سيارة عميل'],
+    ['cars.delete','حذف سيارة عميل نهائياً'],
   ]],
   ['المخزن', [
     ['inv.issue','صرف قطع لأمر شغل'],
@@ -467,6 +535,8 @@ const PERM_INFO = {
   'customers.create':'إضافة عملاء جدد وسياراتهم وتعديل بياناتهم.',
   'customers.archive':'أرشفة عميل (إخفاؤه من القوائم مع الاحتفاظ بسجله).',
   'customers.delete':'حذف عميل نهائياً بكل سجلاته. خطيرة — يفضل تفضل لصاحب المركز.',
+  'cars.archive':'أرشفة سيارة عميل — بتختفي من القوائم النشطة وسجلها كامل بيفضل محفوظ، وتقدر ترجّعها في أي وقت.',
+  'cars.delete':'حذف سيارة عميل نهائياً — متاح بس للسيارات اللي **مالهاش أي سجل** (ولا أمر شغل ولا فاتورة). اللي عليها سجل بتتأرشف بس.',
   'inv.issue':'صرف قطع من المخزون على أوامر الشغل. بيخصم من الرصيد فوراً.',
   'inv.receive':'تسجيل توريدات ومشتريات وفواتير شراء الموردين. بيزوّد الرصيد.',
   'inv.return':'تسجيل مرتجعات العملاء للمخزون.',
@@ -928,10 +998,24 @@ async function initApp(){
     return;
   }
   initSupabase();
+  // الملاحظة 66: هل الجهاز مفعّل بحساب المركز؟
+  _deviceAuthed = !!(await deviceSession());
+  let skipped = false;
+  try{ skipped = localStorage.getItem('masters_skip_activation')==='1'; }catch(e){}
+  // الجهاز مش مفعّل ولا اتخطّى قبل كده → اعرض شاشة التفعيل (مع إمكانية التخطي مؤقتاً)
+  if(!_deviceAuthed && !skipped){
+    document.getElementById('root').innerHTML = deviceActivationHTML(false);
+    return;
+  }
   try{
     await loadAllData();
   }catch(e){
     console.error('initial load failed', e);
+    // لو الجهاز مش مفعّل والقاعدة رفضت → دي الحماية شغالة، لازم تفعيل
+    if(!_deviceAuthed){
+      document.getElementById('root').innerHTML = deviceActivationHTML(true);
+      return;
+    }
     document.getElementById('root').innerHTML = `
     <div class="login-wrap"><div class="login-card" style="text-align:center">
       <p class="login-title" style="color:var(--danger)">تعذر الاتصال بقاعدة البيانات</p>
@@ -1306,6 +1390,14 @@ function renderDashboard(){
   const recentJobs = [...DB.jobs].filter(j=>!isJobClosed(j)).sort((a,b)=>new Date(b.receivedAt)-new Date(a.receivedAt)).slice(0,4);
 
   return `
+    ${(isOwnerSession() && !_deviceAuthed) ? `
+    <div class="card" style="margin-bottom:18px;border:1px solid var(--danger)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div><b style="color:var(--danger)">🔓 الجهاز ده مش مفعّل</b>
+          <div class="muted" style="font-size:12.5px">شغال بالوضع المؤقت. فعّله بحساب المركز عشان بياناتك تبقى محمية على السيرفر.</div></div>
+        <button class="btn btn-accent btn-sm" onclick="promptDeviceActivation()">🔐 فعّل الجهاز دلوقتي</button>
+      </div>
+    </div>` : ''}
     ${canScreen('settings') && backupStatus().overdue ? (()=>{ const b=backupStatus(); return `
     <div class="card" style="margin-bottom:18px;border:1px solid var(--danger)">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -1358,6 +1450,7 @@ function renderNotifCenterWidget(){
 function renderServiceRemindersWidget(){
   const today = new Date();
   const soon = DB.cars.filter(c=>{
+    if(c.archived) return false;                    // المؤرشفة مالهاش تذكيرات صيانة (م64)
     if(c.nextServiceDate){
       const d = new Date(c.nextServiceDate);
       const diffDays = (d-today)/(1000*60*60*24);
@@ -1433,6 +1526,7 @@ function renderCustomers(){
   <div class="section-head"><h3>العملاء (${everyone.filter(c=>!c.archived).length})</h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${isOwnerSession()?`<button class="btn" onclick="openMergeCustomers()">🔀 دمج مكررين</button>`:''}
+      ${(can('cars.archive')||can('cars.delete'))&&DB.cars.some(c=>c.archived)?`<button class="btn" onclick="openArchivedCarsReport()">🗄️ أرشيف السيارات (${DB.cars.filter(c=>c.archived).length})</button>`:''}
       ${archivedCount?`<button class="btn" onclick="toggleCustArchive()">${custShowArchived?'إخفاء الأرشيف':'🗄️ عرض الأرشيف ('+archivedCount+')'}</button>`:''}
       ${can('customers.create')?`<button class="btn btn-accent" onclick="openNewCustomerSearch()">${ICONS.plus} عميل جديد</button>`:''}
     </div></div>
@@ -1442,7 +1536,8 @@ function renderCustomers(){
   </div>`;
 }
 function customerCard(c){
-  const cars = DB.cars.filter(x=>x.customerId===c.id);
+  const cars = DB.cars.filter(x=>x.customerId===c.id && !x.archived);   // المؤرشفة مستبعدة من القائمة النشطة
+  const archivedCars = DB.cars.filter(x=>x.customerId===c.id && x.archived).length;
   const isOwner = can('customers.archive');
   return `
   <div class="card" style="${c.archived?'opacity:.6':''}">
@@ -1460,10 +1555,14 @@ function customerCard(c){
     </div>
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
       ${cars.length? cars.map(car=>`
-        <div style="display:flex;justify-content:space-between;background:var(--surface-2);padding:8px 10px;border-radius:8px;font-size:12.5px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;background:var(--surface-2);padding:8px 10px;border-radius:8px;font-size:12.5px">
           <span>${car.plate} — ${carLabel(car)}</span>
-          ${c.archived||!can('jobs.create')?'':`<button class="btn btn-sm btn-accent" onclick="openNewJobModal('${car.id}')">أمر شغل</button>`}
+          <span style="display:flex;gap:4px;flex-wrap:wrap">
+            ${c.archived||!can('jobs.create')?'':`<button class="btn btn-sm btn-accent" onclick="openNewJobModal('${car.id}')">أمر شغل</button>`}
+            ${(can('cars.delete')||can('cars.archive'))?`<button class="btn btn-sm" title="حذف أو أرشفة السيارة" onclick="openRemoveCarModal('${car.id}')">🗑</button>`:''}
+          </span>
         </div>`).join('') : '<div class="muted" style="font-size:12px">مفيش سيارات مسجلة</div>'}
+      ${archivedCars?`<div class="muted" style="font-size:11.5px">🗄️ ${archivedCars} سيارة مؤرشفة — من زرار «أرشيف السيارات» فوق</div>`:''}
     </div>
   </div>`;
 }
@@ -1512,6 +1611,131 @@ function deleteCustomer(custId){
     toast('تم حذف العميل'); refreshContent();
   });
 }
+/* ============ الملاحظة 64: حذف وأرشفة سيارات العملاء ============
+   القاعدة: السيارة اللي عليها أي سجل (أمر شغل / فاتورة) **مينفعش تتحذف نهائياً أبداً** —
+   بتتأرشف بس عشان التاريخ يفضل محفوظ. الحذف النهائي للسيارات اللي مالهاش أي سجل خالص. */
+const CAR_REMOVE_REASONS = ['السيارة اتسجلت بالغلط','سيارة مكررة','السيارة بتاعة عميل تاني','بيانات تسجيل خاطئة','تصحيح بيانات','أخرى'];
+function activeCars(){ return DB.cars.filter(c=>!c.archived); }
+function carHistoryCount(carId){
+  const jobs = DB.jobs.filter(j=>j.carId===carId);
+  const jobIds = new Set(jobs.map(j=>j.id));
+  return { jobs: jobs.length, invoices: DB.invoices.filter(i=>i.jobId && jobIds.has(i.jobId)).length };
+}
+function carHasHistory(carId){ const h = carHistoryCount(carId); return (h.jobs + h.invoices) > 0; }
+function carLabelFull(car){
+  if(!car) return '—';
+  return (car.plate||'—') + (carLabel(car) ? ' — '+carLabel(car) : '');
+}
+/* نافذة واحدة بتقرر: حذف نهائي ولا أرشفة — حسب سجل السيارة */
+function openRemoveCarModal(carId){
+  const car = DB.cars.find(c=>c.id===carId);
+  if(!car){ toast('السيارة غير موجودة', true); return; }
+  const cust = DB.customers.find(c=>c.id===car.customerId);
+  const h = carHistoryCount(carId);
+  const hasHist = (h.jobs + h.invoices) > 0;
+  const canDel = can('cars.delete'), canArc = can('cars.archive');
+  if(!canDel && !canArc){ toast('مالكش صلاحية حذف أو أرشفة السيارات', true); return; }
+  // اللي عليها سجل: أرشفة بس. اللي مالهاش: حذف نهائي (لو عنده الصلاحية) أو أرشفة.
+  const mode = hasHist ? 'archive' : (canDel ? 'delete' : 'archive');
+  if(mode==='archive' && !canArc){ toast('السيارة دي عليها سجل — محتاج صلاحية أرشفة السيارات', true); return; }
+  openModal(`
+    <h3>${mode==='delete'?'🗑️ حذف سيارة نهائياً':'🗄️ أرشفة سيارة'}</h3>
+    <div class="card" style="background:var(--surface-2);padding:9px 11px;margin-bottom:12px;font-size:12.5px">
+      <div><b>${carLabelFull(car)}</b></div>
+      <div class="muted">العميل: ${cust?cust.name:'—'}${car.vin?' · شاسيه: '+car.vin:''}</div>
+      <div class="muted" style="margin-top:4px">السجل: ${h.jobs} أمر شغل · ${h.invoices} فاتورة</div>
+    </div>
+    ${hasHist
+      ? `<div class="card" style="border:1px solid var(--accent-2);padding:9px 11px;margin-bottom:12px;font-size:12.5px">
+          🔒 السيارة دي عليها سجل — <b>مينفعش تتحذف نهائياً</b>. هتتأرشف بس: هتختفي من القوائم النشطة و<b>كل تاريخها هيفضل محفوظ بالكامل</b>، وتقدر ترجّعها في أي وقت.</div>`
+      : `<div class="card" style="border:1px solid var(--danger);padding:9px 11px;margin-bottom:12px;font-size:12.5px;color:var(--danger)">
+          ⚠️ السيارة دي <b>مالهاش أي سجل</b> (ولا أمر شغل ولا فاتورة) — الحذف هيبقى <b>نهائي ومش هيرجع</b>.
+          ${canArc?'<br>لو تحب تحتفظ بيها، اقفل النافذة واستخدم الأرشفة.':''}</div>`}
+    <div class="form-row"><label class="f-label">سبب ${mode==='delete'?'الحذف':'الأرشفة'} *</label>
+      <select class="f" id="rcReason">${CAR_REMOVE_REASONS.map(r=>`<option>${r}</option>`).join('')}</select></div>
+    <div class="form-row"><label class="f-label">تفاصيل إضافية (اختياري)</label><input class="f" id="rcNote" placeholder="اكتب تفاصيل لو السبب «أخرى»"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${mode==='delete'
+        ? `<button class="btn btn-danger" style="flex:1" onclick="confirmRemoveCar('${carId}','delete')">تأكيد الحذف النهائي</button>`
+        : `<button class="btn btn-accent" style="flex:1" onclick="confirmRemoveCar('${carId}','archive')">تأكيد الأرشفة</button>`}
+      ${(mode==='delete' && canArc)?`<button class="btn" onclick="confirmRemoveCar('${carId}','archive')">🗄️ أرشفة بدل الحذف</button>`:''}
+    </div>
+  `);
+}
+async function confirmRemoveCar(carId, mode){
+  const car = DB.cars.find(c=>c.id===carId);
+  if(!car){ toast('السيارة غير موجودة', true); return; }
+  const perm = mode==='delete' ? 'cars.delete' : 'cars.archive';
+  if(!can(perm)){ toast('مالكش الصلاحية دي', true); return; }
+  const reasonSel = ((document.getElementById('rcReason')||{}).value||'').trim();
+  const note = ((document.getElementById('rcNote')||{}).value||'').trim();
+  const reason = reasonSel + (note?' — '+note:'');
+  if(!reasonSel){ toast('اختار سبب العملية — إلزامي', true); return; }
+  const cust = DB.customers.find(c=>c.id===car.customerId);
+  const h = carHistoryCount(carId);
+  const label = carLabelFull(car);
+  // حماية خلفية: مستحيل حذف سيارة عليها سجل مهما حصل
+  if(mode==='delete' && carHasHistory(carId)){
+    toast('السيارة دي عليها سجل — الحذف النهائي ممنوع. استخدم الأرشفة.', true); return;
+  }
+  if(mode==='delete'){
+    DB.cars = DB.cars.filter(c=>c.id!==carId);
+    await saveKey('cars', DB.cars);
+    trackBulkDeletes('سيارة عميل');
+  } else {
+    car.archived = true; car.archivedAt = new Date().toISOString();
+    car.archivedBy = actorName(); car.archiveReason = reason;
+    await saveKey('cars', DB.cars);
+  }
+  await logAction((mode==='delete'?'🗑️ حذف سيارة عميل نهائياً':'🗄️ أرشفة سيارة عميل')+' — '+label+auditDetails([
+    ['العميل', cust?cust.name:'—'], ['رقم اللوحة', car.plate||'—'],
+    ['السيارة', carLabel(car)||'—'], ['الشاسيه', car.vin||null],
+    ['السجل وقت العملية', h.jobs+' أمر شغل · '+h.invoices+' فاتورة'],
+    ['السبب', reason]
+  ]));
+  notify(mode==='delete'?'car_delete':'car_archive',
+    (mode==='delete'?'حذف سيارة عميل نهائياً':'أرشفة سيارة عميل')+': '+label+
+    ' — العميل: '+(cust?cust.name:'—')+' — السبب: '+reason,
+    { category:'system', refType:'customer', refId:cust?cust.id:null });
+  closeModal();
+  toast(mode==='delete'?'تم حذف السيارة نهائياً':'تمت أرشفة السيارة — سجلها محفوظ');
+  refreshContent();
+}
+async function restoreCar(carId){
+  if(!can('cars.archive')){ toast('مالكش صلاحية إدارة أرشيف السيارات', true); return; }
+  const car = DB.cars.find(c=>c.id===carId);
+  if(!car) return;
+  car.archived = false;
+  delete car.archivedAt; delete car.archivedBy; delete car.archiveReason;
+  await saveKey('cars', DB.cars);
+  const cust = DB.customers.find(c=>c.id===car.customerId);
+  await logAction('♻️ استرجاع سيارة من الأرشيف — '+carLabelFull(car)+auditDetails([['العميل', cust?cust.name:'—']]));
+  notify('car_restore', 'استرجاع سيارة من الأرشيف: '+carLabelFull(car)+' — العميل: '+(cust?cust.name:'—'),
+    { category:'system', refType:'customer', refId:cust?cust.id:null });
+  closeModal(); toast('رجعت السيارة للقوائم النشطة'); refreshContent();
+}
+/* ---------- تقرير السيارات المؤرشفة ---------- */
+function openArchivedCarsReport(){
+  const list = DB.cars.filter(c=>c.archived);
+  openModal(`
+    <h3>🗄️ تقرير السيارات المؤرشفة (${list.length})</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px">السيارات دي مختفية من القوائم النشطة بس <b>كل تاريخها محفوظ بالكامل</b> — تقدر ترجّع أي واحدة في أي وقت.</div>
+    ${list.length? `<div style="max-height:420px;overflow-y:auto">
+    <table><thead><tr><th>السيارة</th><th>العميل</th><th>السجل</th><th>أرشفها</th><th>السبب</th><th></th></tr></thead>
+    <tbody>${list.map(c=>{
+      const cu = DB.customers.find(x=>x.id===c.customerId);
+      const h = carHistoryCount(c.id);
+      return `<tr>
+        <td style="font-weight:600">${carLabelFull(c)}</td>
+        <td>${cu?`<a onclick="openCustomerHistory('${cu.id}')" style="cursor:pointer;color:var(--accent);font-weight:600">${cu.name}</a>`:'—'}</td>
+        <td class="muted" style="font-size:11.5px">${h.jobs} أمر · ${h.invoices} فاتورة</td>
+        <td class="muted" style="font-size:11.5px">${c.archivedBy||'—'}${c.archivedAt?'<br>'+fmtDate(c.archivedAt):''}</td>
+        <td class="muted" style="font-size:11.5px">${c.archiveReason||'—'}</td>
+        <td>${can('cars.archive')?`<button class="btn btn-sm" onclick="restoreCar('${c.id}')">♻️ استرجاع</button>`:''}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>` : `<div class="empty">مفيش سيارات مؤرشفة</div>`}
+  `, true);
+}
 function openCustomerHistory(customerId){ openModal(customerHistoryHTML(customerId)); }
 function customerHistoryHTML(customerId){
   const cust = DB.customers.find(c=>c.id===customerId);
@@ -1533,7 +1757,7 @@ function customerHistoryHTML(customerId){
   <label class="f-label">السيارات</label>
   <div style="margin:8px 0 16px">${cars.length? cars.map(c=>{
     const carJobs = jobs.filter(j=>j.carId===c.id);
-    return `<div style="background:var(--surface-2);padding:8px 10px;border-radius:8px;margin-bottom:6px;font-size:13px">${c.plate} — ${carLabel(c)} <span class="muted">(${carJobs.length} زيارة${c.vin?' · شاسيه: '+c.vin:''})</span></div>`;
+    return `<div style="background:var(--surface-2);padding:8px 10px;border-radius:8px;margin-bottom:6px;font-size:13px;${c.archived?'opacity:.62':''}">${c.plate} — ${carLabel(c)} <span class="muted">(${carJobs.length} زيارة${c.vin?' · شاسيه: '+c.vin:''})</span>${c.archived?' <span class="tag tag-cancel" style="font-size:10px">🗄️ مؤرشفة</span>':''}</div>`;
   }).join('') : '<div class="muted" style="font-size:12.5px">لا توجد سيارات مسجلة</div>'}</div>
   <label class="f-label">سجل أوامر الشغل والصيانات</label>
   <table style="margin-top:6px"><thead><tr><th>رقم</th><th>السيارة</th><th>التاريخ</th><th>الحالة</th><th>الخدمات/القطع</th><th>القيمة</th></tr></thead>
@@ -1586,8 +1810,9 @@ function similarNameCustomers(name, excludeId){
 /* منع تكرار السيارة: الشاسيه أولاً ثم اللوحة */
 function findVehicleDup(vin, plate, excludeId){
   const nv = normSearch(vin||''), npl = normSearch(plate||'');
-  if(nv){ const byVin = DB.cars.find(c=>c.id!==excludeId && c.vin && normSearch(c.vin)===nv); if(byVin) return {car:byVin, by:'الشاسيه'}; }
-  if(npl){ const byPl = DB.cars.find(c=>c.id!==excludeId && normSearch(c.plate)===npl); if(byPl) return {car:byPl, by:'رقم اللوحة'}; }
+  // المؤرشفة مستبعدة من كشف التكرار — عشان تقدر تعيد تسجيل السيارة تحت العميل الصح (م64)
+  if(nv){ const byVin = DB.cars.find(c=>c.id!==excludeId && !c.archived && c.vin && normSearch(c.vin)===nv); if(byVin) return {car:byVin, by:'الشاسيه'}; }
+  if(npl){ const byPl = DB.cars.find(c=>c.id!==excludeId && !c.archived && normSearch(c.plate)===npl); if(byPl) return {car:byPl, by:'رقم اللوحة'}; }
   return null;
 }
 function openExistingCustomer(custId){ openCustomerHistory(custId); }
@@ -1914,6 +2139,7 @@ function openPickCarForJob(){
   if(DB.cars.length===0){ toast('سجل عميل وسيارة الأول', true); openNewCustomerSearch(); return; }
   // سيارات العملاء المؤرشفين مش بتظهر في اختيار أمر شغل جديد
   const activeCars = DB.cars.filter(car=>{
+    if(car.archived) return false;                       // السيارات المؤرشفة مستبعدة (م64)
     const cust = DB.customers.find(c=>c.id===car.customerId);
     return !cust || !cust.archived;
   });
@@ -2174,6 +2400,7 @@ function jobInternalNotesHTML(job){
   </div>`;
 }
 async function addJobInternalNote(jobId){
+  if(!(canScreen('jobs'))){ toast('مالكش صلاحية على شاشة أوامر الشغل', true); return; }   /* حارس م65 */
   if(!session){ toast('لازم تكون داخل بحساب', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
   const text = ((document.getElementById('newInternalNote')||{}).value||'').trim();
@@ -2198,6 +2425,7 @@ function openEditInternalNote(jobId, noteId){
   `);
 }
 async function saveEditInternalNote(jobId, noteId){
+  if(!(canScreen('jobs'))){ toast('مالكش صلاحية على شاشة أوامر الشغل', true); return; }   /* حارس م65 */
   const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
   const n = (job.internalNotes||[]).find(x=>x.id===noteId);
   if(!n || !canEditInternalNote(job, n)){ toast('مالكش صلاحية التعديل', true); return; }
@@ -2413,6 +2641,7 @@ function deleteJobItem(jobId, itemId){
   });
 }
 async function toggleCustomerApproval(jobId){
+  if(!(can('jobs.edit'))){ toast('مالكش صلاحية تعديل أوامر الشغل', true); return; }   /* حارس م65 */
   const job = DB.jobs.find(j=>j.id===jobId);
   job.customerApproved = !job.customerApproved;
   await saveKey('jobs', DB.jobs);
@@ -2640,6 +2869,7 @@ function openNewAppointmentModal(){
   `);
 }
 async function saveNewAppointment(){
+  if(!(canScreen('appointments'))){ toast('مالكش صلاحية على شاشة المواعيد', true); return; }   /* حارس م65 */
   const customerName = document.getElementById('apName').value.trim();
   const phone = document.getElementById('apPhone').value.trim();
   const carInfo = document.getElementById('apCar').value.trim();
@@ -2652,6 +2882,7 @@ async function saveNewAppointment(){
   closeModal(); toast('تم حجز الموعد'); refreshContent();
 }
 async function cancelAppointment(id){
+  if(!(canScreen('appointments'))){ toast('مالكش صلاحية على شاشة المواعيد', true); return; }   /* حارس م65 */
   const a = DB.appointments.find(x=>x.id===id);
   a.status='ملغي';
   await saveKey('appointments', DB.appointments);
@@ -2799,6 +3030,7 @@ function openWarehousesModal(){
   `);
 }
 async function saveNewWarehouse(){
+  if(!(can('inv.item_create'))){ toast('مالكش صلاحية إضافة مخازن', true); return; }   /* حارس م65 */
   const name = document.getElementById('newWhName').value.trim();
   if(!name){ toast('اكتب اسم المخزن', true); return; }
   if(DB.warehouses.some(w=>w.name===name)){ toast('يوجد مخزن بنفس الاسم', true); return; }
@@ -3974,6 +4206,7 @@ function crUpdateSummary(jobId){
     </tbody></table>`;
 }
 async function saveCustomerReturn(){
+  if(!(can('inv.return'))){ toast('مالكش صلاحية تسجيل مرتجعات العملاء', true); return; }   /* حارس م65 */
   const partId = (document.getElementById('crPart')||{}).value;
   const qty = parseFloat((document.getElementById('crQty')||{}).value)||0;
   const reason = ((document.getElementById('crReason')||{}).value||'').trim();
@@ -4665,6 +4898,7 @@ function openInventoryCount(){
   `);
 }
 async function startInventoryCount(){
+  if(!(canScreen('inventory'))){ toast('مالكش صلاحية على شاشة المخزون', true); return; }   /* حارس م65 */
   const whId = document.getElementById('countWh').value || null;
   const items = activeInventory().filter(p=>!whId || partWhId(p)===whId);
   if(items.length===0){ toast('مفيش أصناف في المخزن ده', true); return; }
@@ -4766,11 +5000,13 @@ function setCountQty(idx, val){
   if(cell) cell.innerHTML = dCls?`<span class="tag ${dCls}">${dLbl}</span>`:dLbl;
 }
 async function saveCountProgress(){
+  if(!(canScreen('inventory'))){ toast('مالكش صلاحية على شاشة المخزون', true); return; }   /* حارس م65 */
   await saveKey('inventoryCounts', DB.inventoryCounts);
   toast('تم حفظ تقدم الجرد');
   refreshContent();
 }
 async function submitCountForApproval(icId){
+  if(!(canScreen('inventory'))){ toast('مالكش صلاحية على شاشة المخزون', true); return; }   /* حارس م65 */
   const ic = DB.inventoryCounts.find(x=>x.id===icId);
   ic.status = 'pending_approval';
   ic.submittedBy = actorName();
@@ -5380,6 +5616,7 @@ function openNewSupplierModal(){
   `);
 }
 async function saveNewSupplier(){
+  if(!(canScreen('suppliers'))){ toast('مالكش صلاحية على شاشة الموردين', true); return; }   /* حارس م65 */
   const f = readSupplierForm();
   if(!f.name){ toast('اكتب اسم المورد', true); return; }
   if(DB.suppliers.some(s=>s.name===f.name && !s.archived)){ toast('فيه مورد بنفس الاسم موجود بالفعل', true); return; }
@@ -5400,6 +5637,7 @@ function openEditSupplierModal(supplierId){
   `);
 }
 async function saveEditSupplier(supplierId){
+  if(!(canScreen('suppliers'))){ toast('مالكش صلاحية على شاشة الموردين', true); return; }   /* حارس م65 */
   const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
   const f = readSupplierForm();
   if(!f.name){ toast('اكتب اسم المورد', true); return; }
@@ -5534,6 +5772,7 @@ function openSupplierReturnModal(supplierId){
   `);
 }
 async function saveSupplierReturn(supplierId){
+  if(!(can('inv.receive'))){ toast('مالكش صلاحية مرتجعات الموردين', true); return; }   /* حارس م65 */
   const partId = document.getElementById('retPart').value;
   const qty = parseFloat(document.getElementById('retQty').value)||0;
   const cost = parseFloat(document.getElementById('retCost').value)||0;
@@ -7192,6 +7431,7 @@ function openAccountDetail(accId){
   `);
 }
 async function saveOpeningBalance(accId){
+  if(!(can('fin.manage'))){ toast('مالكش صلاحية إدارة الحسابات المالية', true); return; }   /* حارس م65 */
   const acc = DB.finAccounts.find(a=>a.id===accId);
   const v = parseFloat(document.getElementById('obAmount').value)||0;
   const old = acc.openingBalance||0;
@@ -7214,6 +7454,7 @@ function openAddAccountModal(){
   `);
 }
 async function saveFinAccount(){
+  if(!(can('fin.manage'))){ toast('مالكش صلاحية إدارة الحسابات المالية', true); return; }   /* حارس م65 */
   const name = document.getElementById('faName').value.trim();
   const kind = document.getElementById('faKind').value;
   const opening = parseFloat(document.getElementById('faOpening').value)||0;
@@ -7270,6 +7511,7 @@ function openExternalDepositModal(){
   `);
 }
 async function saveExternalDeposit(){
+  if(!(can('fin.manage'))){ toast('مالكش صلاحية إدارة الحسابات المالية', true); return; }   /* حارس م65 */
   const name = document.getElementById('edName').value.trim();
   const accId = document.getElementById('edAcc').value;
   const amount = parseFloat(document.getElementById('edAmount').value)||0;
@@ -7293,6 +7535,7 @@ function openCustodySettleModal(custodyId){
   `);
 }
 async function saveCustodySettle(custodyId){
+  if(!(can('fin.manage') || can('fin.custody_settle'))){ toast('مالكش صلاحية تسوية العهد', true); return; }   /* حارس م65 */
   const toId = document.getElementById('csAcc').value;
   const acc = DB.finAccounts.find(a=>a.id===custodyId);
   const to = DB.finAccounts.find(a=>a.id===toId);
@@ -7479,6 +7722,7 @@ function openNewExpenseCatModal(){
   `);
 }
 async function saveExpenseCat(){
+  if(!(can('fin.expenses'))){ toast('مالكش صلاحية إدارة بنود المصروفات', true); return; }   /* حارس م65 */
   const name = document.getElementById('ecName').value.trim();
   const group = (document.getElementById('ecGroup')||{}).value || EXPENSE_GROUPS[0];
   if(!name){ toast('اكتب اسم النوع', true); return; }
@@ -7489,6 +7733,7 @@ async function saveExpenseCat(){
   closeModal(); toast('تم إضافة النوع'); refreshContent();
 }
 async function deleteExpenseCat(id){
+  if(!(can('fin.expenses'))){ toast('مالكش صلاحية إدارة بنود المصروفات', true); return; }   /* حارس م65 */
   const c = DB.expenseCategories.find(x=>x.id===id);
   if(!c) return;
   const used = DB.expenses.some(e=>e.categoryId===id || e.category===c.name);
@@ -8128,6 +8373,7 @@ function openNewCannedServiceModal(){
   `);
 }
 async function saveCannedService(){
+  if(!(canScreen('services'))){ toast('مالكش صلاحية على شاشة قوائم الخدمات', true); return; }   /* حارس م65 */
   const name = document.getElementById('csName').value.trim();
   const price = parseFloat(document.getElementById('csPrice').value)||0;
   if(!name){ toast('اكتب اسم الخدمة', true); return; }
@@ -8136,6 +8382,7 @@ async function saveCannedService(){
   closeModal(); toast('تم إضافة الخدمة'); refreshContent();
 }
 async function deleteCannedService(id){
+  if(!(canScreen('services'))){ toast('مالكش صلاحية على شاشة قوائم الخدمات', true); return; }   /* حارس م65 */
   const cs = DB.cannedServices.find(s=>s.id===id);
   DB.cannedServices = DB.cannedServices.filter(s=>s.id!==id);
   await saveKey('cannedServices', DB.cannedServices);
@@ -8308,6 +8555,7 @@ function openNewEmployeeModal(){
     <button class="btn btn-accent" style="width:100%" onclick="saveNewEmployee()">حفظ ملف الموظف</button>`);
 }
 async function saveNewEmployee(){
+  if(!(can('hr.employees'))){ toast('مالكش صلاحية إدارة ملفات الموظفين', true); return; }   /* حارس م65 */
   const f = readEmployeeForm();
   if(!f.name){ toast('اكتب اسم الموظف', true); return; }
   if(DB.employees.some(e=>e.name===f.name && e.status!=='مستقيل')){ toast('فيه موظف بنفس الاسم موجود بالفعل', true); return; }
@@ -8324,6 +8572,7 @@ function openEditEmployeeModal(id){
     <button class="btn btn-accent" style="width:100%" onclick="saveEmployeeEdit('${id}')">حفظ التعديلات</button>`);
 }
 async function saveEmployeeEdit(id){
+  if(!(can('hr.employees'))){ toast('مالكش صلاحية إدارة ملفات الموظفين', true); return; }   /* حارس م65 */
   const e = DB.employees.find(x=>x.id===id);
   if(!e) return;
   const f = readEmployeeForm();
@@ -8473,6 +8722,7 @@ function openAbsenceModal(empId){
   `);
 }
 async function saveAbsence(empId){
+  if(!(can('hr.penalties'))){ toast('مالكش صلاحية تسجيل الغياب والخصومات', true); return; }   /* حارس م65 */
   const e = DB.employees.find(x=>x.id===empId);
   if(!e) return;
   const date = (document.getElementById('abDate')||{}).value;
@@ -8595,6 +8845,7 @@ function openNewLeaveModal(){
   `);
 }
 async function saveLeaveRequest(){
+  if(!(canScreen('hr'))){ toast('مالكش صلاحية على شاشة الموارد البشرية', true); return; }   /* حارس م65 */
   const empId = (document.getElementById('lvEmp')||{}).value;
   const type = (document.getElementById('lvType')||{}).value;
   const from = (document.getElementById('lvFrom')||{}).value;
@@ -8623,6 +8874,7 @@ async function saveLeaveRequest(){
   closeModal(); toast('تم تقديم الطلب — في انتظار الموافقة'); refreshContent();
 }
 function approveLeave(reqId){
+  if(!(can('hr.approve'))){ toast('مالكش صلاحية اعتماد الإجازات', true); return; }   /* حارس م65 */
   const r = DB.leaveRequests.find(x=>x.id===reqId);
   if(!r || r.status!=='pending') return;
   const emp = DB.employees.find(e=>e.id===r.employeeId);
@@ -8643,6 +8895,7 @@ function approveLeave(reqId){
   });
 }
 function rejectLeave(reqId){
+  if(!(can('hr.approve'))){ toast('مالكش صلاحية اعتماد الإجازات', true); return; }   /* حارس م65 */
   const r = DB.leaveRequests.find(x=>x.id===reqId);
   if(!r || r.status!=='pending') return;
   const emp = DB.employees.find(e=>e.id===r.employeeId);
@@ -8757,6 +9010,7 @@ function openNewPermitModal(kind){
   `);
 }
 async function savePermit(kind){
+  if(!(canScreen('hr'))){ toast('مالكش صلاحية على شاشة الموارد البشرية', true); return; }   /* حارس م65 */
   const isEarly = kind==='early';
   const empId = (document.getElementById('pmEmp')||{}).value;
   const date = (document.getElementById('pmDate')||{}).value;
@@ -8787,6 +9041,7 @@ async function savePermit(kind){
   closeModal(); toast('تم تقديم الطلب — في انتظار الاعتماد'); refreshContent();
 }
 function approvePermit(id){
+  if(!(can('hr.approve'))){ toast('مالكش صلاحية اعتماد الأذونات', true); return; }   /* حارس م65 */
   if(!hrCanManage()){ toast('الاعتماد صلاحية الحسابات أو صاحب المركز فقط', true); return; }
   const p = DB.permits.find(x=>x.id===id);
   if(!p || p.status!=='pending') return;
@@ -8802,6 +9057,7 @@ function approvePermit(id){
   });
 }
 function rejectPermit(id){
+  if(!(can('hr.approve'))){ toast('مالكش صلاحية اعتماد الأذونات', true); return; }   /* حارس م65 */
   if(!hrCanManage()){ toast('الرفض صلاحية الحسابات أو صاحب المركز فقط', true); return; }
   const p = DB.permits.find(x=>x.id===id);
   if(!p || p.status!=='pending') return;
@@ -8867,6 +9123,7 @@ function openAdvanceModal(empId){
   `);
 }
 async function saveAdvance(empId){
+  if(!(can('hr.payroll'))){ toast('مالكش صلاحية السلف والرواتب', true); return; }   /* حارس م65 */
   const e = DB.employees.find(x=>x.id===empId);
   if(!e) return;
   const date = (document.getElementById('advDate')||{}).value;
@@ -8916,6 +9173,7 @@ function openBonusModal(empId){
   `);
 }
 async function saveBonus(empId){
+  if(!(can('hr.payroll'))){ toast('مالكش صلاحية الحوافز والرواتب', true); return; }   /* حارس م65 */
   if(!hrCanManage()){ toast('صلاحية الحسابات أو صاحب المركز فقط', true); return; }
   const e = DB.employees.find(x=>x.id===empId);
   if(!e) return;
@@ -9316,6 +9574,7 @@ function openNewToolModal(){
     <button class="btn btn-accent" style="width:100%" onclick="saveNewTool()">حفظ العدة</button>`);
 }
 async function saveNewTool(){
+  if(!(can('tools.manage'))){ toast('مالكش صلاحية إدارة العدد', true); return; }   /* حارس م65 */
   if(!toolsCanManage()){ toast('إضافة العدد صلاحية صاحب المركز فقط', true); return; }
   const f = readToolForm();
   if(!f.name){ toast('اكتب اسم العدة', true); return; }
@@ -9334,6 +9593,7 @@ function openEditToolModal(toolId){
     <button class="btn btn-accent" style="width:100%" onclick="saveToolEdit('${toolId}')">حفظ التعديلات</button>`);
 }
 async function saveToolEdit(toolId){
+  if(!(can('tools.manage'))){ toast('مالكش صلاحية إدارة العدد', true); return; }   /* حارس م65 */
   if(!toolsCanManage()){ toast('التعديل صلاحية صاحب المركز فقط', true); return; }
   const x = DB.tools.find(t=>t.id===toolId);
   if(!x) return;
@@ -9347,6 +9607,7 @@ async function saveToolEdit(toolId){
   closeModal(); toast('تم حفظ التعديلات'); refreshContent();
 }
 function deleteTool(toolId){
+  if(!(can('tools.manage'))){ toast('مالكش صلاحية إدارة العدد', true); return; }   /* حارس م65 */
   if(!toolsCanManage()){ toast('الحذف صلاحية صاحب المركز فقط', true); return; }
   const x = DB.tools.find(t=>t.id===toolId);
   if(!x) return;
@@ -9429,6 +9690,7 @@ function openToolIssueModal(toolId){
   `);
 }
 async function saveToolIssue(toolId){
+  if(!(can('tools.issue'))){ toast('مالكش صلاحية صرف واستلام العدد', true); return; }   /* حارس م65 */
   if(!toolsCanIssue()){ toast('الصرف صلاحية المخزن أو صاحب المركز فقط', true); return; }
   const x = DB.tools.find(t=>t.id===toolId);
   if(!x) return;
@@ -9465,6 +9727,7 @@ function openToolReturnModal(toolId){
   `);
 }
 async function saveToolReturn(toolId){
+  if(!(can('tools.issue'))){ toast('مالكش صلاحية صرف واستلام العدد', true); return; }   /* حارس م65 */
   if(!toolsCanIssue()){ toast('الاستلام صلاحية المخزن أو صاحب المركز فقط', true); return; }
   const x = DB.tools.find(t=>t.id===toolId);
   const mv = openCheckout(toolId);
@@ -9517,6 +9780,8 @@ const NOTIF_SEVERITY = {
   custody_settle:'medium', expense_edit:'medium', voucher_edit:'medium',
   user_toggle:'medium', settings_change:'medium', tax_change:'high', payment_method:'medium',
   dup_customer:'medium', dup_item:'medium',
+  // الملاحظة 64: سيارات العملاء
+  car_delete:'critical', car_archive:'medium', car_restore:'low',
   // الملاحظة 63: فواتير الشراء
   purchase_edit:'medium', purchase_approved_edit:'high', purchase_closed_edit:'critical',
   purchase_reopen:'high', purchase_approve:'low', purchase_create:'low',
@@ -9798,6 +10063,7 @@ function openNotifDetail(id){
   `);
 }
 async function addNotifComment(id){
+  if(!(canScreen('notifications'))){ toast('مالكش صلاحية على مركز الإشعارات', true); return; }   /* حارس م65 */
   const n = DB.notifications.find(x=>x.id===id); if(!n) return;
   const el = document.getElementById('notifComment'); const t = (el?el.value:'').trim();
   if(!t){ toast('اكتب التعليق', true); return; }
@@ -9807,6 +10073,7 @@ async function addNotifComment(id){
   toast('تم إضافة التعليق'); openNotifDetail(id);
 }
 async function setNotifStatus(id, status){
+  if(!(canScreen('notifications'))){ toast('مالكش صلاحية على مركز الإشعارات', true); return; }   /* حارس م65 */
   const n = DB.notifications.find(x=>x.id===id); if(!n) return;
   n.status = status; n.seen = true;
   await saveKey('notifications');
@@ -9996,6 +10263,20 @@ function renderSettings(){
     })()}
   </div>
   ${!isOwner?'':`
+  <div class="card" style="max-width:520px;margin-top:18px">
+    <h3 style="margin-top:0">🔐 أمان الجهاز</h3>
+    <div style="font-size:12.5px;margin-bottom:8px">حالة الجهاز:
+      ${_deviceAuthed
+        ? '<span class="tag tag-paid">مفعّل ومحمي</span>'
+        : '<span class="tag tag-unpaid">مش مفعّل — وضع مؤقت</span>'}</div>
+    <p class="muted" style="font-size:12px;margin-top:0;line-height:1.8">
+      التفعيل بيربط الجهاز بحساب المركز على السيرفر — وبكده قاعدة بياناتك مابتفتحش لأي حد معاه اللينك.
+      بيتعمل <b>مرة واحدة على كل جهاز</b> وبعدها الجهاز فاكره.</p>
+    ${_deviceAuthed
+      ? `<button class="btn" style="width:100%;border-color:var(--danger);color:var(--danger)" onclick="deactivateDevice()">🚪 إلغاء تفعيل الجهاز ده</button>
+         <div class="muted" style="font-size:11.5px;margin-top:6px">استخدمها لو الجهاز اتسرق أو اتباع أو موظف مشي وهو ماسكه.</div>`
+      : `<button class="btn btn-accent" style="width:100%" onclick="promptDeviceActivation()">🔐 فعّل الجهاز دلوقتي</button>`}
+  </div>
   <div class="card" style="max-width:520px;margin-top:18px">
     <h3 style="margin-top:0">نسخة احتياطية من البيانات</h3>
     <p class="muted" style="font-size:12.5px;margin-top:0">حمّل نسخة كاملة من كل بيانات المركز (عملاء، أوامر شغل، فواتير، مخزون، موظفين، عهد...) بشكل دوري كأمان إضافي، وتقدر تسترجعها في أي وقت.</p>
