@@ -420,7 +420,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v79';
+const APP_VERSION = 'v80';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1027,6 +1027,7 @@ async function initApp(){
   render();
   startRealtime();
   startUpdateChecker();
+  startDevtoolsWatch();
   // إصلاح ذاتي: استرجاع أي حركات صرف اتفقدت بسبب فشل حفظ سابق
   try{ await repairMissingStockMoves(); }catch(e){ console.error('repair failed', e); }
   // فحص ذاتي للتخزين — مؤجل 8 ثواني بعيداً عن ذروة طلبات الفتح
@@ -1101,6 +1102,29 @@ function startUpdateChecker(){
   if(location.protocol === 'file:') return;
   setTimeout(()=>checkForUpdate(true), 1500);         // بسرعة بعد التحميل (يحل مشكلة كاش جتهب على شاشة الدخول)
   setInterval(()=>checkForUpdate(true), 60*1000);     // وكل دقيقة
+}
+/* ============ الملاحظة 67: كاشف أدوات المطوّر — مراقبة فقط ============
+   لو حد فتح Developer Tools على جهاز مفعّل، بيتسجّل في سجل العمليات وبيوصل
+   إشعار لصاحب المركز. مابيوقفش أي شغل، ومابيمنعش حد — مجرد كشف وتسجيل.
+   ملاحظة صريحة: بيكشف الوضع الشائع (الأدوات مرصوصة جنب الصفحة). الخبير اللي
+   بيفتحها في نافذة منفصلة ممكن مايتكشفش — بس بيفضل رادع ومُوثِّق. */
+let _devtoolsFlagged = false;
+function startDevtoolsWatch(){
+  if(typeof window === 'undefined' || typeof setInterval !== 'function') return;
+  const THRESH = 170;   // فرق مقاس أكبر من كده = الأدوات مفتوحة مرصوصة
+  function check(){
+    try{
+      if(_devtoolsFlagged || !session || !loaded) return;
+      const wDiff = (window.outerWidth||0) - (window.innerWidth||0);
+      const hDiff = (window.outerHeight||0) - (window.innerHeight||0);
+      if(wDiff > THRESH || hDiff > THRESH){
+        _devtoolsFlagged = true;   // مرة واحدة بس في الجلسة — مش بيزحم
+        try{ logAction('⚠️ فتح أدوات المطوّر (Developer Tools) على الجهاز'); }catch(e){}
+        try{ notify('devtools_open', '⚠️ حد فتح أدوات المطوّر على جهاز — راجع نشاطه', { category:'system' }); }catch(e){}
+      }
+    }catch(e){}
+  }
+  setInterval(check, 4000);
 }
 
 /* ======================= ICONS (inline svg) ======================= */
@@ -1231,24 +1255,52 @@ function loginHTML(){
   </div>`;
 }
 function pickRole(r){ pickedRole=r; render(); setTimeout(()=>{const el=document.getElementById('pinInput'); if(el) el.focus();},0); }
-function doStaffLogin(){
+/* ============ الملاحظة 67: تشفير كلمات سر الموظفين ============
+   قبل كده كانت كلمات السر متخزّنة نص صريح — أي حد يفتح أدوات المطوّر يشوفها.
+   دلوقتي بتتخزّن مشفّرة (SHA-256 مع مِلح) — ومستحيل ترجّعها لنص تاني.
+   ترحيل تلقائي: أول ما موظف يدخل بكلمته القديمة، بتتشفّر وتتحفظ مشفّرة. */
+async function hashSecret(text){
+  const salt = 'masters-erp::v67::';
+  const data = new TextEncoder().encode(salt + String(text==null?'':text));
+  try{
+    const buf = await crypto.subtle.digest('SHA-256', data);
+    return 'h1:' + [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  }catch(e){
+    // بديل لو التشفير المدمج مش متاح (بيئات نادرة) — أضعف بس أحسن من نص صريح
+    let h1=0x811c9dc5, h2=0;
+    const s = salt+String(text==null?'':text);
+    for(let i=0;i<s.length;i++){ const c=s.charCodeAt(i); h1=Math.imul(h1^c,16777619)>>>0; h2=Math.imul((h2+c)^(h2<<3),2246822519)>>>0; }
+    return 'h2:'+h1.toString(16).padStart(8,'0')+h2.toString(16).padStart(8,'0');
+  }
+}
+function isHashedSecret(v){ return typeof v==='string' && (v.indexOf('h1:')===0 || v.indexOf('h2:')===0); }
+async function verifySecret(plain, stored){
+  if(stored==null) return false;
+  if(isHashedSecret(stored)) return (await hashSecret(plain)) === stored;
+  return String(plain) === String(stored);   // توافق مع الكلمات القديمة (نص صريح)
+}
+async function doStaffLogin(){
   const err = document.getElementById('loginErr');
   const username = document.getElementById('staffUser').value.trim();
   const password = document.getElementById('staffPass').value;
   if(!username || !password){ err.textContent='اكتب اسم المستخدم وكلمة المرور'; return; }
-  const st = DB.staff.find(s=>s.username.toLowerCase()===username.toLowerCase() && s.password===password);
-  if(!st){ err.textContent='اسم المستخدم أو كلمة المرور غلط'; return; }
+  const st = DB.staff.find(s=>s.username.toLowerCase()===username.toLowerCase());
+  if(!st || !(await verifySecret(password, st.password))){ err.textContent='اسم المستخدم أو كلمة المرور غلط'; return; }
   if(st.active===false){ err.textContent='الحساب ده موقوف — كلم صاحب المركز'; return; }
+  // ترحيل: لو الكلمة لسه نص صريح، شفّرها دلوقتي (مرة واحدة)
+  if(!isHashedSecret(st.password)){ st.password = await hashSecret(password); saveKey('staff', DB.staff).catch(()=>{}); }
   session = buildSession(st.dept || st.role, st);
   currentTab = firstVisibleTab();
   logAction('تسجيل دخول');
   render();
 }
-function doLogin(){
+async function doLogin(){
   const err = document.getElementById('loginErr');
   if(!pickedRole){ err.textContent='اختار الدور الأول'; return; }
   const pin = document.getElementById('pinInput').value.trim();
-  if(DB.users[pickedRole] !== pin){ err.textContent='الرقم السري غلط'; return; }
+  if(!(await verifySecret(pin, DB.users[pickedRole]))){ err.textContent='الرقم السري غلط'; return; }
+  // ترحيل الرقم السري للتشفير
+  if(!isHashedSecret(DB.users[pickedRole])){ DB.users[pickedRole] = await hashSecret(pin); saveKey('users', DB.users).catch(()=>{}); }
   session = buildSession(pickedRole, null);   // دخول الأقسام = صلاحيات القسم كاملة (زي النظام القديم)
   currentTab = firstVisibleTab();
   render();
@@ -9780,6 +9832,7 @@ const NOTIF_SEVERITY = {
   custody_settle:'medium', expense_edit:'medium', voucher_edit:'medium',
   user_toggle:'medium', settings_change:'medium', tax_change:'high', payment_method:'medium',
   dup_customer:'medium', dup_item:'medium',
+  devtools_open:'high',   // الملاحظة 67: فتح أدوات المطوّر
   // الملاحظة 64: سيارات العملاء
   car_delete:'critical', car_archive:'medium', car_restore:'low',
   // الملاحظة 63: فواتير الشراء
@@ -10240,8 +10293,10 @@ function renderSettings(){
   ${!isOwner?'':`
   <div class="card" style="max-width:520px;margin-top:18px">
     <h3 style="margin-top:0">الأرقام السرية للدخول</h3>
+    <p class="muted" style="font-size:12px;margin-top:0">الأرقام مشفّرة ومش بتتعرض — سيب الخانة فاضية لو مش عايز تغيّر الرقم، أو اكتب رقم جديد عشان تغيّره.</p>
     ${Object.keys(ROLE_LABEL).map(r=>`
-      <div class="form-row"><label class="f-label">${ROLE_LABEL[r]}</label><input class="f" id="pin_${r}" value="${DB.users[r]}"></div>
+      <div class="form-row"><label class="f-label">${ROLE_LABEL[r]} ${isHashedSecret(DB.users[r])?'<span class="tag tag-paid" style="font-size:10px">مشفّر</span>':''}</label>
+        <input class="f" id="pin_${r}" type="password" autocomplete="new-password" placeholder="اكتب رقم جديد للتغيير"></div>
     `).join('')}
     <button class="btn btn-accent" onclick="savePins()">حفظ الأرقام السرية</button>
   </div>`}
@@ -10322,7 +10377,7 @@ async function saveNewStaff(){
   const tpl = allTemplates()[template];
   const perms = tpl ? { screens:[...tpl.screens], actions:[...tpl.actions] } : fullDeptPerms(dept);
   const emp = DB.employees.find(e=>e.name===name && e.status==='نشط');
-  DB.staff.push({ id:uid('st'), name, username, password,
+  DB.staff.push({ id:uid('st'), name, username, password: await hashSecret(password),   // مشفّرة من الأساس (م67)
     dept, role: dept, template, employeeId: emp?emp.id:null,
     screens: perms.screens, actions: perms.actions, permsV: 2,
     active:true, createdAt:new Date().toISOString() });
@@ -10510,7 +10565,7 @@ async function saveStaffPass(id){
   if(!isOwnerSession() && (st.dept||st.role)==='owner'){ toast('مينفعش تغيّر كلمة سر صاحب المركز', true); return; }
   const p = document.getElementById('newStPass').value;
   if(p.length<4){ toast('كلمة المرور لازم تكون 4 حروف/أرقام على الأقل', true); return; }
-  st.password = p;
+  st.password = await hashSecret(p);   // مشفّرة (م67)
   await saveKey('staff', DB.staff);
   await logAction('تغيير كلمة سر الموظف: '+st.name);
   notify('user_password', 'تغيير كلمة سر المستخدم: '+st.name, { category:'system', refType:'staff', refId:st.id });
@@ -10607,12 +10662,14 @@ async function saveCenterName(){
 }
 async function savePins(){
   if(!isOwnerSession()){ toast('الأرقام السرية لصاحب المركز فقط', true); return; }
-  Object.keys(ROLE_LABEL).forEach(r=>{
-    const v = document.getElementById('pin_'+r).value.trim();
-    if(v) DB.users[r] = v;
-  });
+  let changed = 0;
+  for(const r of Object.keys(ROLE_LABEL)){
+    const v = ((document.getElementById('pin_'+r)||{}).value||'').trim();
+    if(v){ DB.users[r] = await hashSecret(v); changed++; }   // مشفّرة (م67)
+  }
+  if(!changed){ toast('مفيش رقم جديد اتكتب', true); return; }
   await saveKey('users', DB.users);
-  toast('تم تحديث الأرقام السرية');
+  toast('تم تحديث الأرقام السرية ('+changed+')');
 }
 
 /* ======================= BOOT ======================= */
