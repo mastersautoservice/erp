@@ -251,7 +251,7 @@ const TABLE_MAP = {
   appointments:'appointments', cannedServices:'canned_services', activityLog:'activity_log',
   expenseCategories:'expense_categories', employees:'hr_employees', leaveRequests:'leave_requests',
   permits:'hr_permits', tools:'special_tools', toolMoves:'tool_moves',
-  notifications:'notifications', custodies:'custodies'
+  notifications:'notifications', custodies:'custodies', attendance:'attendance'
 };
 const DATA_KEYS = Object.keys(TABLE_MAP);
 const KV_KEYS = ['users','settings'];
@@ -414,13 +414,13 @@ function showStorageWarning(reason){
 function hideStorageWarning(){ const w=document.getElementById('storageWarnBar'); if(w) w.remove(); }
 
 /* ======================= APP STATE ======================= */
-const DB = { customers:[], cars:[], jobs:[], inventory:[], stockMoves:[], invoices:[], expenses:[], suppliers:[], purchases:[], supplierReturns:[], inventoryCounts:[], warehouses:[], staff:[], finAccounts:[], finMoves:[], appointments:[], cannedServices:[], activityLog:[], users:null, settings:null };
+const DB = { customers:[], cars:[], jobs:[], inventory:[], stockMoves:[], invoices:[], expenses:[], suppliers:[], purchases:[], supplierReturns:[], inventoryCounts:[], warehouses:[], staff:[], finAccounts:[], finMoves:[], appointments:[], cannedServices:[], activityLog:[], attendance:[], users:null, settings:null };
 let session = null; // {role, name}
 let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v80';
+const APP_VERSION = 'v84';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -492,9 +492,16 @@ const ACTION_GROUPS = [
     ['bill.history','عرض سجل الفاتورة'],
     ['bill.print','طباعة وتحميل الفاتورة'],
   ]],
-  ['المشتريات', [
-    ['pur.edit','تعديل فاتورة شراء مورد'],
-    ['pur.approve','اعتماد فاتورة شراء مورد'],
+  ['المشتريات وفواتير الموردين', [
+    ['pur.edit','تعديل فاتورة شراء مورد (عام)'],
+    ['pur.approve','اعتماد/إعادة فتح فاتورة الشراء'],
+    ['pur.review','مراجعة فاتورة المورد (كميات وأسعار وطريقة دفع)'],
+    ['pur.edit_qty','تعديل كميات فاتورة المورد'],
+    ['pur.edit_price','تعديل أسعار فاتورة المورد'],
+    ['pur.pay_method','تغيير طريقة دفع فاتورة المورد (كاش/آجل)'],
+    ['pur.fin_approve','الاعتماد المالي وإغلاق فاتورة المورد'],
+    ['sup.pay_specific','تسديد فاتورة/فواتير مورد محددة'],
+    ['sup.refund','تسجيل استرداد رصيد من المورد'],
   ]],
   ['المالية', [
     ['fin.expenses','تسجيل مصروفات'],
@@ -512,6 +519,8 @@ const ACTION_GROUPS = [
     ['hr.approve','اعتماد الإجازات والأذونات'],
     ['hr.payroll','الرواتب وكشوف المرتبات'],
     ['hr.penalties','الجزاءات والخصومات'],
+    ['hr.attendance','الحضور واستيراد البصمة'],
+    ['hr.att_edit','تعديل وتصحيح الحضور'],
   ]],
   ['الإدارة', [
     ['settings.users','إدارة المستخدمين والصلاحيات'],
@@ -560,6 +569,13 @@ const PERM_INFO = {
   'sup.pay':'سداد مستحقات الموردين من حسابات المركز.',
   'pur.edit':'تعديل أسعار وكميات بنود فاتورة شراء المورد + رقم وتاريخ فاتورة المورد والملاحظات. بيسمح كمان بتعديل الفواتير المعتمدة (بسبب موثق).',
   'pur.approve':'اعتماد فاتورة شراء المورد بعد وصول فاتورته الرسمية — بتتقفل الأسعار وتبقى نهائية.',
+  'pur.review':'فتح شاشة مراجعة فاتورة المورد (بانتظار المحاسب) — رؤية الكميات والأسعار وطريقة الدفع بدون تعديل.',
+  'pur.edit_qty':'تعديل كميات بنود فاتورة المورد أثناء المراجعة (بيتسجل قبل/بعد والسبب).',
+  'pur.edit_price':'تعديل أسعار بنود فاتورة المورد أثناء المراجعة (بيتسجل قبل/بعد والسبب).',
+  'pur.pay_method':'تغيير طريقة دفع الفاتورة (كاش↔آجل). النظام بيعكس الأثر المالي القديم ويطبّق الجديد تلقائياً — بدون ازدواج.',
+  'pur.fin_approve':'الاعتماد المالي وإغلاق فاتورة المورد نهائياً بعد مراجعتها.',
+  'sup.pay_specific':'تسديد فاتورة مورد محددة أو أكتر من فاتورة مع بعض (مش لازم تسدّد كل حساب المورد).',
+  'sup.refund':'تسجيل استرداد رصيد دائن من المورد (كاش/تحويل) وتخفيض الرصيد الدائن.',
   'fin.custody_create':'إصدار عهد مالية للموظفين. بتتخصم من المصدر فوراً.',
   'fin.custody_settle':'تسوية العهد: تحويل المصروفات الفعلية ورجوع الباقي لحساب.',
   'rep.profit':'رؤية التكاليف والأرباح وهوامش الربح في كل الشاشات. من غيرها بيشوف أسعار البيع بس.',
@@ -568,6 +584,8 @@ const PERM_INFO = {
   'hr.approve':'اعتماد أو رفض الإجازات والأذونات.',
   'hr.payroll':'رؤية وحساب كشوف المرتبات والرواتب.',
   'hr.penalties':'تسجيل جزاءات وخصومات على الموظفين.',
+  'hr.attendance':'شاشة الحضور: استيراد بصمات جهاز البصمة ومراجعة أيام الحضور والساعات والإضافي.',
+  'hr.att_edit':'تصحيح نتائج الحضور وربط أرقام البصمة بالموظفين وتعديل القواعد (بسجل تدقيق).',
   'settings.users':'إدارة المستخدمين والصلاحيات — أخطر صلاحية، لصاحب المركز فقط.',
 };
 /* توافق: الحسابات المحفوظة قبل الصلاحيات التفصيلية الجديدة بتاخد الصلاحيات اللي كانت ضمنية عندها
@@ -2546,6 +2564,20 @@ function brandedJobHTML(job){
   const cust = DB.customers.find(c=>c.id===job.customerId)||{};
   const total = job.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
   const s = DB.settings;
+  /* ============ الملاحظة 71: نسخة العميل من أمر الشغل — نفس تقسيمة فاتورة الصيانة ============
+     قسمين بس: قطع الغيار / المصنعية والخدمات. البنود بأسمائها بس —
+     **من غير أي مصدر أو تصنيف** (داخلي/خارجي) ولا اسم الفني ولا تكلفة ولا مورد.
+     ده تعديل عرض وطباعة فقط — البيانات الداخلية (kind/costPrice/supplierId/الفني)
+     كلها زي ما هي في القاعدة وبتظهر في التقارير والربحية والنسخة الداخلية. */
+  const jPartsItems = job.items.filter(it=>it.kind==='part'||it.kind==='ext_part');
+  const jLaborItems = job.items.filter(it=>it.kind!=='part'&&it.kind!=='ext_part');
+  const jPartsTotal = jPartsItems.reduce((sum,it)=>sum+it.qty*it.unitPrice,0);
+  const jLaborTotal = jLaborItems.reduce((sum,it)=>sum+it.qty*it.unitPrice,0);
+  const jRows = (items)=> items.map((it,i)=>`<tr><td style="width:34px;text-align:center">${i+1}</td><td>${it.name}</td><td>${it.unitPrice.toFixed(2)}</td><td>${it.qty}</td><td>${(it.qty*it.unitPrice).toFixed(2)}</td></tr>`).join('');
+  const jSection = (title, items, tot)=> items.length ? `
+        <tr><td colspan="5" class="binv-cat">${title}</td></tr>
+        ${jRows(items)}
+        <tr><td colspan="4" class="binv-sub">إجمالي ${title}</td><td class="binv-sub">${tot.toFixed(2)}</td></tr>` : '';
   return `
   <div class="binv">
     <div class="binv-head">
@@ -2575,8 +2607,12 @@ function brandedJobHTML(job){
       </tr>
     </tbody></table>
     <table>
-      <thead><tr><th>الصنف</th><th>الوصف</th><th>سعر الوحدة</th><th>الكمية</th><th>السعر</th></tr></thead>
-      <tbody>${job.items.map(it=>`<tr><td>${it.name}</td><td>${kindLabelFull(it)}${(it.technicianId||it.technician)?' — الفني: '+itemTechLabel(it, job):''}</td><td>${it.unitPrice.toFixed(2)}</td><td>${it.qty}</td><td>${(it.qty*it.unitPrice).toFixed(2)}</td></tr>`).join('') || '<tr><td colspan="5">لا توجد بنود</td></tr>'}</tbody>
+      <thead><tr><th style="width:34px">م</th><th>البيان</th><th>سعر الوحدة</th><th>الكمية</th><th>الإجمالي</th></tr></thead>
+      <tbody>
+        ${jSection('قطع الغيار', jPartsItems, jPartsTotal)}
+        ${jSection('المصنعية والخدمات', jLaborItems, jLaborTotal)}
+        ${job.items.length ? '' : '<tr><td colspan="5">لا توجد بنود</td></tr>'}
+      </tbody>
     </table>
     <div class="binv-totals"><div class="binv-grand"><span>الإجمالي</span><span>${total.toFixed(2)} ج.م</span></div></div>
     <div class="binv-foot">
@@ -3699,12 +3735,14 @@ function purStatusTag(p){
     : '<span class="tag tag-paid">🟢 معتمدة</span>') + lock;
 }
 /* مين مسموحله يعدّل الفاتورة دي دلوقتي؟ */
+/* الملاحظة 69: صلاحية التعديل الحبيبية — تعديل عام أو كمية أو سعر */
+function canEditPurchaseAny(){ return can('pur.edit') || can('pur.edit_qty') || can('pur.edit_price') || can('pur.approve'); }
 function canEditPurchase(p){
   if(!p) return { ok:false, why:'الفاتورة غير موجودة' };
   if(purIsClosed(p) && !isOwnerSession()) return { ok:false, why:'الفاتورة مقفولة مالياً — التعديل لصاحب المركز فقط' };
-  if(purStatus(p)==='pending') return can('pur.edit')||can('pur.approve')
+  if(purStatus(p)==='pending') return canEditPurchaseAny()
     ? { ok:true } : { ok:false, why:'مالكش صلاحية تعديل فواتير الشراء' };
-  return can('pur.edit') ? { ok:true } : { ok:false, why:'الفاتورة معتمدة — تعديلها محتاج صلاحية «تعديل فاتورة شراء»' };
+  return (can('pur.edit')||can('pur.edit_qty')||can('pur.edit_price')) ? { ok:true } : { ok:false, why:'الفاتورة معتمدة — تعديلها محتاج صلاحية تعديل فواتير الشراء' };
 }
 function purLog(p, action, changes, reason){
   p.history = Array.isArray(p.history) ? p.history : [];
@@ -3735,14 +3773,18 @@ function openEditPurchase(purchaseId){
       <div class="form-row"><label class="f-label">ملاحظات</label><input class="f" id="epNotes" value="${p.notes||''}"></div>
     </div>
     <div class="dsec">🧾 بنود الفاتورة — عدّل السطر اللي اتغيّر بس</div>
+    ${(()=>{ const q=can('pur.edit')||can('pur.edit_qty'), pr=can('pur.edit')||can('pur.edit_price');
+      return (!q||!pr)?`<div class="muted" style="font-size:11.5px;margin-bottom:6px">صلاحياتك: ${q?'تعديل الكمية ✅':'تعديل الكمية ❌'} · ${pr?'تعديل السعر ✅':'تعديل السعر ❌'}</div>`:''; })()}
     <div style="max-height:300px;overflow-y:auto">
     <table><thead><tr><th>الصنف</th><th>الكمية</th><th>سعر الشراء</th><th>الإجمالي</th><th>المتاح</th></tr></thead>
     <tbody>${(p.items||[]).map((it,i)=>{
       const part = it.partId ? DB.inventory.find(x=>x.id===it.partId) : null;
+      const qDis = (can('pur.edit')||can('pur.edit_qty')) ? '' : 'disabled style="opacity:.5;width:80px" title="مالكش صلاحية تعديل الكمية"';
+      const pDis = (can('pur.edit')||can('pur.edit_price')) ? '' : 'disabled style="opacity:.5;width:100px" title="مالكش صلاحية تعديل السعر"';
       return `<tr>
         <td style="font-size:12.5px">${it.name}${(part&&part.sku)?` <span class="muted" style="font-size:11px">${part.sku}</span>`:''}</td>
-        <td><input class="f" id="epQty_${i}" type="number" min="0" step="0.01" value="${it.qty}" style="width:80px" oninput="epRecalc('${p.id}')"></td>
-        <td><input class="f" id="epCost_${i}" type="number" min="0" step="0.01" value="${it.unitCost}" style="width:100px" oninput="epRecalc('${p.id}')"></td>
+        <td><input class="f" id="epQty_${i}" type="number" min="0" step="0.01" value="${it.qty}" ${qDis||'style="width:80px"'} oninput="epRecalc('${p.id}')"></td>
+        <td><input class="f" id="epCost_${i}" type="number" min="0" step="0.01" value="${it.unitCost}" ${pDis||'style="width:100px"'} oninput="epRecalc('${p.id}')"></td>
         <td id="epLineTot_${i}" style="font-weight:700">${money(it.qty*it.unitCost)}</td>
         <td class="muted" style="font-size:11.5px">${part?part.qty+' '+(part.unit||''):'—'}</td>
       </tr>`;
@@ -3882,7 +3924,7 @@ function reopenPurchase(purchaseId){
 }
 /* ---------- سجل فاتورة الشراء ---------- */
 const PUR_EVENT_LABEL = { created:'📄 إنشاء الفاتورة', edited:'✏️ تعديل', edited_approved:'✏️ تعديل بعد الاعتماد',
-  approved:'🟢 اعتماد', reopened:'🔄 إعادة فتح' };
+  approved:'🟢 اعتماد', reopened:'🔄 إعادة فتح', fin_approved:'🟢 اعتماد مالي', pay_method:'💳 تغيير طريقة الدفع' };
 function openPurchaseHistory(purchaseId){
   const p = DB.purchases.find(x=>x.id===purchaseId);
   if(!p){ toast('الفاتورة غير موجودة', true); return; }
@@ -5478,6 +5520,43 @@ function supOpeningSigned(sup){
   const v = Math.abs(parseFloat(sup.openingBalance)||0);
   return sup.openingType==='debit' ? -v : v;
 }
+/* ============ الملاحظة 69: محرك المطابقة المالية لفواتير الموردين ============
+   القاعدة الذهبية: أي تغيير في طريقة الدفع = عكس الأثر القديم ثم تطبيق الجديد،
+   عشان مفيش ازدواج مالي أبداً. الدفعة التلقائية (auto) بتمثّل «مدفوع كاش وقت الشراء». */
+function supName(id){ const s=DB.suppliers.find(x=>x.id===id); return s?s.name:'—'; }
+function purIsCredit(p){ return p.paymentMethod === 'آجل'; }
+function purManualPaid(p){ return (p.payments||[]).filter(x=>!x.auto).reduce((s,x)=>s+x.amount,0); }
+function purAutoPayment(p){ return (p.payments||[]).find(x=>x.auto); }
+/* يعكس الأثر المالي الحالي لطريقة الدفع (الدفعة التلقائية + حركتها المالية لو موجودة) */
+function purReversePayEffect(p){
+  const auto = purAutoPayment(p);
+  if(!auto) return false;   // آجل — مفيش أثر تلقائي يتعكس
+  if(auto.finMoveId){
+    const fm = DB.finMoves.find(m=>m.id===auto.finMoveId);
+    if(fm) addFinMove(fm.accountId, 'in', auto.amount, 'reversal', 'عكس دفع فاتورة شراء #'+p.purchaseNo+' (تغيير طريقة الدفع)', { refPurchase:p.id });
+  }
+  p.payments = (p.payments||[]).filter(x=>!x.auto);
+  return true;
+}
+/* يطبّق الأثر المالي لطريقة الدفع الحالية (كاش = دفعة تلقائية بالمتبقي، وحركة مالية لو اتحدد الحساب) */
+function purApplyPayEffect(p, accountId){
+  if(purIsCredit(p)) return;   // آجل — مفيش دفعة تلقائية
+  const remaining = Math.max(0, Math.round((p.total - purManualPaid(p))*100)/100);
+  if(remaining <= 0) return;
+  const pay = { id:uid('spay'), amount:remaining, date:new Date().toISOString(), auto:true, accountId: accountId||null };
+  if(accountId){
+    const acc = DB.finAccounts.find(a=>a.id===accountId);
+    if(acc){ const fm = addFinMove(acc.id, 'out', remaining, 'supplier', 'دفع فاتورة شراء #'+p.purchaseNo+' — '+supName(p.supplierId), { refPurchase:p.id }); pay.finMoveId = fm.id; }
+  }
+  p.payments = p.payments || [];
+  p.payments.push(pay);
+}
+/* دالة نقية: تغيير طريقة الدفع = عكس القديم ثم تطبيق الجديد (بدون ازدواج) — قابلة للاختبار */
+function purApplyMethodChange(p, newMethod, accountId){
+  purReversePayEffect(p);
+  p.paymentMethod = newMethod;
+  purApplyPayEffect(p, accountId);
+}
 function supplierBalance(supplierId){
   const sup = DB.suppliers.find(s=>s.id===supplierId);
   const purchases = DB.purchases.filter(p=>p.supplierId===supplierId);
@@ -5488,11 +5567,25 @@ function supplierBalance(supplierId){
   const led = supLedger(sup);
   const totalDiscounts = led.filter(e=>e.kind==='discount').reduce((s,e)=>s+(e.amount||0),0);
   const totalAdjust = led.filter(e=>e.kind==='adjustment').reduce((s,e)=>s+(e.amount||0),0);
+  const totalRefunds = led.filter(e=>e.kind==='refund').reduce((s,e)=>s+(e.amount||0),0);   // استرداد رصيد دائن (م69)
   const opening = supOpeningSigned(sup);
-  const balance = opening + totalPurchased - totalPaid - totalReturns - totalDiscounts + totalAdjust;
-  return { opening, totalPurchased, totalPaid, totalReturns, totalDiscounts, totalAdjust,
+  const balance = opening + totalPurchased - totalPaid - totalReturns - totalDiscounts + totalAdjust + totalRefunds;
+  // ============ الملاحظة 70: فصل واضح — موجب = مديونية علينا · سالب = رصيد دائن لنا ============
+  // الرصيد الدائن بيتطبّق تلقائياً على المديونية (رصيد واحد للمورد زي المحاسبة الصح).
+  // تصنيف كل مرتجع (خصم مديونية / رصيد دائن) متخزّن على المرتجع نفسه للتتبّع والعرض.
+  const liability = Math.max(0, balance);
+  const creditBalance = Math.max(0, -balance);
+  // إجمالي الرصيد الدائن اللي **أنشأته المرتجعات** (قبل التطبيق التلقائي) — للعرض والتتبّع
+  const returnsCredit = returns.reduce((s,r)=> s + (typeof r.creditAmount==='number' ? r.creditAmount : 0), 0);
+  return { opening, totalPurchased, totalPaid, totalReturns, totalDiscounts, totalAdjust, totalRefunds, returnsCredit,
     discountsCount: led.filter(e=>e.kind==='discount').length,
-    balance, count: purchases.length, returnsCount: returns.length };
+    balance, liability, creditBalance, count: purchases.length, returnsCount: returns.length };
+}
+/* المتبقي علينا لفاتورة معينة (الإجمالي − المدفوع − تخفيضات المرتجعات المرتبطة بيها) */
+function purchaseOutstanding(inv){
+  const paid = (inv.payments||[]).reduce((s,x)=>s+x.amount,0);
+  const red = DB.supplierReturns.filter(r=>r.invoiceId===inv.id).reduce((s,r)=>s+(r.payableReduction||0),0);
+  return Math.max(0, Math.round((inv.total - paid - red)*100)/100);
 }
 /* عليه أي حركة مالية؟ (لو أيوة → الرصيد الافتتاحي بيتقفل للحفاظ على سلامة الحسابات) */
 function supplierHasTransactions(supplierId){
@@ -5526,9 +5619,10 @@ function supplierStatement(supplierId){
     rows.push({ date:r.date, type:'مرتجع للمورد', desc:r.name||'—', amount:-(r.total||0) });
   });
   supLedger(sup).forEach(e=>{
-    rows.push({ date:e.date, type: e.kind==='discount'?'خصم من المورد':'تسوية رصيد',
+    const t = e.kind==='discount' ? 'خصم من المورد' : (e.kind==='refund' ? 'استرداد رصيد' : 'تسوية رصيد');
+    rows.push({ date:e.date, type: t,
       desc:(e.reason||'')+(e.notes?' — '+e.notes:'')+' · بواسطة '+(e.by||'—'),
-      amount: e.kind==='discount' ? -(e.amount||0) : (e.amount||0) });
+      amount: (e.kind==='discount') ? -(e.amount||0) : (e.amount||0) });   // الاسترداد والتسوية بيزوّدوا الرصيد نحو الصفر
   });
   rows.sort((a,b)=>new Date(a.date)-new Date(b.date));
   let run = 0;
@@ -5726,33 +5820,39 @@ function supplierDetailHTML(supplierId){
     ${sup.paymentTerms?'<br>🗓️ شروط السداد: '+sup.paymentTerms:''}${sup.creditLimit?' · 💳 حد الائتمان: '+money(sup.creditLimit):''}
     ${sup.note?'<br>📝 '+sup.note:''}
   </div>
-  ${sup.creditLimit && b.balance > sup.creditLimit ? `<div class="card" style="border:1px solid var(--danger);margin-bottom:12px;font-size:12.5px;color:var(--danger);font-weight:700">⚠️ الرصيد المستحق (${money(b.balance)}) تعدّى حد الائتمان (${money(sup.creditLimit)})</div>` : ''}
-  <div class="grid g4" style="margin-bottom:12px">
-    ${stat(money(b.opening),'الرصيد الافتتاحي')}
-    ${stat(money(b.totalPurchased),'إجمالي المشتريات')}
-    ${stat(money(b.totalPaid),'إجمالي المدفوعات')}
-    ${stat(money(b.totalDiscounts),'💸 إجمالي الخصومات'+(b.discountsCount?` (${b.discountsCount})`:''), b.totalDiscounts>0)}
+  ${sup.creditLimit && b.liability > sup.creditLimit ? `<div class="card" style="border:1px solid var(--danger);margin-bottom:10px;font-size:12.5px;color:var(--danger);font-weight:700">⚠️ المديونية علينا (${money(b.liability)}) تعدّت حد الائتمان (${money(sup.creditLimit)})</div>` : ''}
+  <!-- الملاحظة 69: ملخص أفقي مضغوط بدل الكروت الرأسية -->
+  <div style="overflow-x:auto;margin-bottom:12px">
+    <table style="white-space:nowrap;font-size:12.5px"><thead><tr>
+      <th>افتتاحي</th><th>المشتريات</th><th>المدفوع</th><th>المرتجعات</th><th>الخصومات</th>
+      <th style="color:var(--danger)">علينا للمورد</th><th style="color:var(--accent)">دائن لنا</th><th>آخر شراء</th><th>آخر سداد</th><th>متوسط السداد</th>
+    </tr></thead><tbody><tr>
+      <td>${money(b.opening)}</td><td>${money(b.totalPurchased)}</td><td>${money(b.totalPaid)}</td>
+      <td>${money(b.totalReturns)}</td><td>${money(b.totalDiscounts)}${b.discountsCount?' ('+b.discountsCount+')':''}</td>
+      <td style="font-weight:800;color:${b.liability>0?'var(--danger)':'inherit'}">${money(b.liability)}</td>
+      <td style="font-weight:800;color:${b.creditBalance>0?'var(--accent)':'inherit'}">${money(b.creditBalance)}</td>
+      <td class="muted">${lastPurchase?fmtDate(lastPurchase.date):'—'}</td>
+      <td class="muted">${lastPayment?fmtDate(lastPayment.date):'—'}</td>
+      <td class="muted">${avgDays!==null?avgDays+' يوم':'—'}</td>
+    </tr></tbody></table>
   </div>
-  <div class="grid g4" style="margin-bottom:16px">
-    ${stat(money(b.balance),'الرصيد الحالي (مستحق له)', b.balance>0)}
-    ${stat(lastPurchase?fmtDate(lastPurchase.date):'—','آخر عملية شراء')}
-    ${stat(lastPayment?fmtDate(lastPayment.date):'—','آخر عملية سداد')}
-    ${stat(avgDays!==null?avgDays+' يوم':'—','متوسط فترة السداد')}
-  </div>
-  ${b.totalAdjust!==0 || b.totalReturns>0 ? `<div class="muted" style="font-size:12px;margin-bottom:12px">إجمالي المرتجعات: ${money(b.totalReturns)}${b.totalAdjust!==0?' · إجمالي التسويات: '+(b.totalAdjust>0?'+':'')+money(b.totalAdjust):''}</div>`:''}
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
     <button class="btn btn-sm" onclick="openEditSupplierModal('${supplierId}')">✏️ تعديل بيانات المورد</button>
-    ${isOwnerSession()?`<button class="btn btn-sm" onclick="openSupplierAdjustModal('${supplierId}')">⚖️ تسوية الرصيد</button>`:''}
+    ${b.liability>0 && can('sup.pay') ? `<button class="btn btn-sm btn-accent" onclick="openSupplierPaymentModal('${supplierId}')">💵 تسديد للمورد</button>`:''}
+    ${b.creditBalance>0 && can('sup.refund') ? `<button class="btn btn-sm" onclick="openSupplierRefundModal('${supplierId}')">↩️ استرداد رصيد (${money(b.creditBalance)})</button>`:''}
+    <button class="btn btn-sm" onclick="openSupplierReturnModal('${supplierId}')">${ICONS.plus} مرتجع</button>
+    ${isOwnerSession()?`<button class="btn btn-sm" onclick="openSupplierAdjustModal('${supplierId}')">⚖️ تسوية</button>`:''}
   </div>
   <label class="f-label">📄 كشف الحساب الموحّد (${stmt.length} حركة)</label>
-  <div class="card" style="margin:6px 0 14px;max-height:32vh;overflow:auto">
-    <table><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th>المبلغ</th><th>الرصيد</th></tr></thead>
+  <div class="card" style="margin:6px 0 14px;max-height:30vh;overflow:auto;padding:8px">
+    <table style="white-space:nowrap;font-size:12px"><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th style="color:var(--danger)">مدين (علينا)</th><th style="color:var(--accent)">دائن (لنا)</th><th>الرصيد</th></tr></thead>
     <tbody>${stmt.length? stmt.map(r=>`<tr>
-      <td style="font-size:12px;white-space:nowrap">${fmtDate(r.date)}</td>
+      <td style="white-space:nowrap">${fmtDate(r.date)}</td>
       <td>${r.type}</td>
-      <td class="muted" style="font-size:11.5px">${r.desc||'—'}</td>
-      <td style="font-weight:700;color:${r.amount>0?'var(--danger)':'var(--accent)'}">${r.amount>0?'+ ':'− '}${money(Math.abs(r.amount))}</td>
-      <td style="font-weight:800">${money(r.running)}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">مفيش حركات</td></tr>'}
+      <td class="muted" style="font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis">${r.desc||'—'}</td>
+      <td style="color:var(--danger)">${r.amount>0?money(r.amount):''}</td>
+      <td style="color:var(--accent)">${r.amount<0?money(-r.amount):''}</td>
+      <td style="font-weight:800;color:${r.running<0?'var(--accent)':''}">${money(Math.abs(r.running))}${r.running<0?' <span style="font-size:9px">دائن</span>':''}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">مفيش حركات</td></tr>'}
     </tbody></table>
   </div>
   <div class="flex-between" style="margin-bottom:8px">
@@ -5782,8 +5882,8 @@ function supplierDetailHTML(supplierId){
         <tbody>${p.items.map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitCost)}</td><td>${money(it.qty*it.unitCost)}</td></tr>`).join('')}</tbody></table>
         ${(p.payments||[]).length?`<div class="muted" style="font-size:12px;margin-top:8px">الدفعات: ${p.payments.map(x=>money(x.amount)+' ('+fmtDate(x.date)+')').join(' · ')}</div>`:''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
-          ${purStatus(p)==='pending' && can('pur.approve')?`<button class="btn btn-sm btn-accent" onclick="approvePurchase('${p.id}')">🟢 اعتماد</button>`:''}
-          ${canEditPurchase(p).ok?`<button class="btn btn-sm" onclick="openEditPurchase('${p.id}')">✏️ تعديل الأسعار</button>`:''}
+          ${purStatus(p)==='pending' && (can('pur.review')||can('pur.fin_approve')||can('pur.approve')||can('pur.pay_method'))?`<button class="btn btn-sm btn-accent" onclick="openPurApprove('${p.id}')">🧾 مراجعة واعتماد</button>`:''}
+          ${canEditPurchase(p).ok?`<button class="btn btn-sm" onclick="openEditPurchase('${p.id}')">✏️ تعديل الكميات/الأسعار</button>`:''}
           ${purStatus(p)==='approved' && can('pur.edit')?`<button class="btn btn-sm" onclick="reopenPurchase('${p.id}')">🔄 إعادة فتح</button>`:''}
           <button class="btn btn-sm" onclick="openPurchaseHistory('${p.id}')">🕘 السجل</button>
         </div>
@@ -5792,12 +5892,16 @@ function supplierDetailHTML(supplierId){
   }).join('') : `<div class="empty">لسه مفيش فواتير شراء من المورد ده</div>`}
   </div>
   ${returns.length ? `
-  <label class="f-label" style="margin-top:16px;display:block">المرتجعات (خصم ${money(b.totalReturns)} من مديونيته)</label>
-  <table style="margin-top:6px"><thead><tr><th>التاريخ</th><th>الصنف</th><th>القيمة</th><th>ملاحظة</th></tr></thead>
+  <label class="f-label" style="margin-top:16px;display:block">المرتجعات (${money(b.totalReturns)})</label>
+  <div style="overflow-x:auto"><table style="margin-top:6px;white-space:nowrap;font-size:12px"><thead><tr><th>التاريخ</th><th>الصنف</th><th>القيمة</th><th>الفاتورة</th><th>الأثر</th><th>ملاحظة</th></tr></thead>
   <tbody>
-  ${returns.map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${r.name} ×${r.qty}</td><td>${money(r.total)}</td><td class="muted">${r.note||'—'}</td></tr>`).join('')}
-  </tbody></table>` : ''}
-  ${b.balance>0 && can('sup.pay') ? `<button class="btn btn-accent" style="width:100%;margin-top:16px" onclick="openSupplierPaymentModal('${supplierId}')">تسديد دفعة للمورد</button>` : ''}
+  ${returns.map(r=>{ const inv=r.invoiceId?DB.purchases.find(x=>x.id===r.invoiceId):null;
+    const eff = (r.creditAmount>0)
+      ? '<span class="tag tag-paid" style="font-size:9px">رصيد دائن '+money(r.creditAmount)+'</span>'+(r.payableReduction>0?' + خصم '+money(r.payableReduction):'')
+      : (r.payableReduction>0?'<span class="muted">خصم من المديونية '+money(r.payableReduction)+'</span>':'<span class="muted">—</span>');
+    return `<tr><td>${fmtDate(r.date)}</td><td>${r.name} ×${r.qty}</td><td>${money(r.total)}</td><td class="muted">${inv?'#'+inv.purchaseNo:'—'}</td><td>${eff}</td><td class="muted">${r.note||'—'}</td></tr>`;
+  }).join('')}
+  </tbody></table></div>` : ''}
   ${isOwnerSession() ? (sup.archived
     ? `<button class="btn" style="width:100%;margin-top:8px" onclick="restoreSupplier('${supplierId}')">♻️ استرجاع المورد من الأرشيف</button>`
     : `<button class="btn" style="width:100%;margin-top:8px;border-color:var(--danger);color:var(--danger)" onclick="archiveSupplier('${supplierId}')">🗄️ أرشفة المورد (بديل الحذف — بيتطلب رصيد صفر)</button>`) : ''}
@@ -5808,6 +5912,8 @@ function openSupplierReturnModal(supplierId){
   const parts = activeInventory().filter(p=>purchasedPartIds.has(p.id));
   const partsToShow = parts.length ? parts : activeInventory();
   if(partsToShow.length===0){ toast('مفيش أصناف في المخزون أصلاً', true); return; }
+  // الملاحظة 70: الفواتير للربط — عشان النظام يعرف الفاتورة مدفوعة ولا لأ
+  const supInvoices = DB.purchases.filter(p=>p.supplierId===supplierId).sort((a,b)=>new Date(b.date)-new Date(a.date));
   openModal(`
     <h3>تسجيل مرتجع للمورد</h3>
     <div class="form-row"><label class="f-label">القطعة</label>
@@ -5819,9 +5925,32 @@ function openSupplierReturnModal(supplierId){
       <div class="form-row"><label class="f-label">الكمية المرتجعة</label><input class="f" id="retQty" type="number" min="1" value="1"></div>
       <div class="form-row"><label class="f-label">سعر الوحدة (تكلفة)</label><input class="f" id="retCost" type="number" min="0" value="${partsToShow[0].costPrice}"></div>
     </div>
+    <div class="form-row"><label class="f-label">الفاتورة المرتبطة بالمرتجع</label>
+      <select class="f" id="retInvoice">
+        <option value="">— تلقائي (النظام بيختار) —</option>
+        ${supInvoices.map(p=>{ const out=purchaseOutstanding(p); return `<option value="${p.id}">#${p.purchaseNo} (${fmtDate(p.date)}) — ${out>0?'متبقي '+money(out):'مدفوعة بالكامل'}</option>`; }).join('')}
+      </select>
+      <div class="muted" style="font-size:11px;margin-top:4px">لو الفاتورة عليها متبقي → المرتجع بيقلّل المديونية. لو مدفوعة بالكامل → بيعمل رصيد دائن لنا.</div>
+    </div>
     <div class="form-row"><label class="f-label">سبب المرتجع (اختياري)</label><input class="f" id="retNote" placeholder="مثال: قطعة تالفة"></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveSupplierReturn('${supplierId}')">تأكيد المرتجع</button>
   `);
+}
+/* تصنيف المرتجع: قد المديونية اللي بيقلّلها وقد الرصيد الدائن اللي بيعمله (الملاحظة 70) */
+function classifySupplierReturn(supplierId, invoiceId, amount){
+  const inv = invoiceId ? DB.purchases.find(p=>p.id===invoiceId) : null;
+  let outstanding;
+  if(inv){ outstanding = purchaseOutstanding(inv); }
+  else {
+    // بدون فاتورة محددة: النظام بيختار أقدم فاتورة عليها متبقي، وإلا يقلّل إجمالي المديونية
+    const withOut = DB.purchases.filter(p=>p.supplierId===supplierId && purchaseOutstanding(p)>0)
+      .sort((a,b)=>new Date(a.date)-new Date(b.date));
+    if(withOut.length){ return classifySupplierReturn(supplierId, withOut[0].id, amount); }
+    outstanding = supplierBalance(supplierId).liability;   // اجمالي المديونية الحالية
+  }
+  const payableReduction = Math.min(amount, Math.max(0, outstanding));
+  const creditAmount = Math.round((amount - payableReduction)*100)/100;
+  return { invoiceId: inv ? inv.id : (invoiceId||null), payableReduction, creditAmount };
 }
 async function saveSupplierReturn(supplierId){
   if(!(can('inv.receive'))){ toast('مالكش صلاحية مرتجعات الموردين', true); return; }   /* حارس م65 */
@@ -5833,29 +5962,170 @@ async function saveSupplierReturn(supplierId){
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
   if(qty>p.qty){ toast('الكمية المرتجعة أكبر من المتاح في المخزون', true); return; }
   p.qty -= qty;
-  const ret = {id:uid('ret'), supplierId, partId, name:p.name, qty, unitCost:cost, total:qty*cost, date:new Date().toISOString(), note};
+  const total = qty*cost;
+  const invoiceId = ((document.getElementById('retInvoice')||{}).value) || null;
+  // الملاحظة 70: تصنيف المرتجع حسب حالة سداد الفاتورة المرتبطة
+  const cls = classifySupplierReturn(supplierId, invoiceId, total);
+  const ret = {id:uid('ret'), supplierId, partId, name:p.name, qty, unitCost:cost, total, date:new Date().toISOString(), note,
+    invoiceId: cls.invoiceId, payableReduction: cls.payableReduction, creditAmount: cls.creditAmount};
   DB.supplierReturns.push(ret);
   DB.stockMoves.push({id:uid('mv'), partId, type:'return', qty, unitCost:cost, date:new Date().toISOString(), note:'مرتجع لمورد'+(note?' — '+note:''), supplierId, retId: ret.id});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('supplierReturns', DB.supplierReturns), saveKey('stockMoves', DB.stockMoves)]);
-  closeModal(); toast('تم تسجيل المرتجع وخصمه من مديونية المورد'); refreshContent();
+  const linkedInv = cls.invoiceId ? DB.purchases.find(x=>x.id===cls.invoiceId) : null;
+  await logAction('مرتجع لمورد '+supName(supplierId)+' بقيمة '+money(total)+(linkedInv?' على فاتورة #'+linkedInv.purchaseNo:'')+
+    ' — '+(cls.payableReduction>0?'خصم '+money(cls.payableReduction)+' من المديونية':'')+
+    (cls.creditAmount>0?(cls.payableReduction>0?' + ':'')+'رصيد دائن '+money(cls.creditAmount):''));
+  notify('supplier_return', 'مرتجع لمورد '+supName(supplierId)+' بقيمة '+money(total)+
+    (cls.creditAmount>0?' — رصيد دائن لنا '+money(cls.creditAmount):' — خصم من المديونية'),
+    { category:'financial', refType:'supplier', refId:supplierId, amount:total });
+  closeModal();
+  toast(cls.creditAmount>0
+    ? 'تم المرتجع — رصيد دائن لنا '+money(cls.creditAmount)+(cls.payableReduction>0?' + خصم '+money(cls.payableReduction)+' من المديونية':'')
+    : 'تم المرتجع — خصم '+money(cls.payableReduction)+' من مديونية المورد');
+  refreshContent();
+}
+/* ============ الملاحظة 69: مراجعة المحاسب والاعتماد المالي ============ */
+function openPurApprove(purchaseId){
+  const p = DB.purchases.find(x=>x.id===purchaseId); if(!p){ toast('الفاتورة غير موجودة', true); return; }
+  const canReview = can('pur.review') || can('pur.fin_approve') || can('pur.approve') || can('pur.pay_method');
+  if(!canReview){ toast('مالكش صلاحية مراجعة فواتير الموردين', true); return; }
+  const sup = DB.suppliers.find(s=>s.id===p.supplierId);
+  const isCredit = purIsCredit(p);
+  const canMethod = can('pur.pay_method');
+  const canFin = can('pur.fin_approve') || can('pur.approve');
+  openModal(`
+    <div class="flex-between" style="margin-bottom:8px;gap:8px;flex-wrap:wrap"><h3 style="margin:0">🧾 مراجعة واعتماد فاتورة #${p.purchaseNo}</h3>${purStatusTag(p)}</div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">المورد: <b>${sup?sup.name:'—'}</b> · الإجمالي: <b>${money(p.total)}</b> · بتاريخ ${fmtDate(p.date)}</div>
+    <div class="dsec">🧾 البنود (للمراجعة)</div>
+    <div style="max-height:180px;overflow:auto;margin-bottom:6px">
+    <table><thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+    <tbody>${(p.items||[]).map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitCost)}</td><td>${money(it.qty*it.unitCost)}</td></tr>`).join('')}</tbody></table></div>
+    ${(can('pur.edit_qty')||can('pur.edit_price')||can('pur.edit'))?`<button class="btn btn-sm" style="margin-bottom:10px" onclick="closeModal();openEditPurchase('${p.id}')">✏️ تعديل الكميات/الأسعار</button>`:''}
+    <div class="dsec">💳 طريقة الدفع والاعتماد المالي</div>
+    ${canMethod?`
+    <div class="form-row"><label class="f-label">طريقة الدفع الفعلية</label>
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        <label><input type="radio" name="paMethod" value="كاش" ${!isCredit?'checked':''} onchange="paToggleSrc()"> كاش (مدفوع)</label>
+        <label><input type="radio" name="paMethod" value="آجل" ${isCredit?'checked':''} onchange="paToggleSrc()"> آجل (على الحساب)</label>
+      </div></label></div>`
+    : `<div class="muted" style="font-size:12.5px;margin-bottom:8px">طريقة الدفع الحالية: <b>${p.paymentMethod}</b>${!canMethod?' <span class="muted">(مالكش صلاحية تغييرها)</span>':''}</div>
+       <input type="hidden" name="paMethod" value="${p.paymentMethod}">`}
+    <div id="paSrcBox" style="display:${isCredit?'none':'block'}">
+      <div class="form-row"><label class="f-label">مصدر الدفع (الحساب اللي هيتخصم منه)</label>
+        <select class="f" id="paSrcAcc">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+      <div class="muted" style="font-size:11px;margin-bottom:6px">${purAutoPayment(p)&&purAutoPayment(p).finMoveId?'الفاتورة متخصومة بالفعل — الاعتماد هيسجّل المصدر.':'هيتخصم '+money(Math.max(0,p.total-purManualPaid(p)))+' من الحساب المختار.'}</div>
+    </div>
+    <div class="card" style="border-right:3px solid var(--accent-2);padding:8px 10px;margin-bottom:10px;font-size:11.5px">
+      عند الاعتماد: النظام بيعكس الأثر المالي القديم ويطبّق الجديد — <b>بدون أي ازدواج</b>. آجل يرفع مديونية المورد، وكاش يخصم من الخزنة.</div>
+    <div class="form-row"><label class="f-label">ملاحظة/سبب (اختياري)</label><input class="f" id="paReason" placeholder="لو غيّرت طريقة الدفع، اكتب السبب"></div>
+    ${canFin
+      ? `<button class="btn btn-accent" style="width:100%" onclick="purFinApprove('${p.id}')">✅ اعتماد مالي وإغلاق الفاتورة</button>`
+      : `<div class="muted" style="font-size:12px">عندك صلاحية المراجعة بس — الاعتماد المالي محتاج صلاحية «الاعتماد المالي».</div>`}
+  `, true);
+}
+function paToggleSrc(){
+  const m = (document.querySelector('input[name="paMethod"]:checked')||{}).value;
+  const box = document.getElementById('paSrcBox'); if(box) box.style.display = (m==='آجل') ? 'none' : 'block';
+}
+async function purFinApprove(purchaseId){
+  if(!can('pur.fin_approve') && !can('pur.approve')){ toast('مالكش صلاحية الاعتماد المالي', true); return; }
+  const p = DB.purchases.find(x=>x.id===purchaseId); if(!p) return;
+  if(purStatus(p)==='approved'){ toast('الفاتورة معتمدة بالفعل', true); return; }
+  const reason = ((document.getElementById('paReason')||{}).value||'').trim();
+  const wantMethod = ((document.querySelector('input[name="paMethod"]:checked')||{}).value) || p.paymentMethod;
+  const isCredit = wantMethod === 'آجل';
+  const srcAcc = isCredit ? null : ((document.getElementById('paSrcAcc')||{}).value || null);
+  if(!isCredit && !srcAcc){ toast('اختار مصدر الدفع (الحساب)', true); return; }
+  const methodChanged = wantMethod !== p.paymentMethod;
+  if(methodChanged && !can('pur.pay_method')){ toast('مالكش صلاحية تغيير طريقة الدفع', true); return; }
+  const oldMethod = p.paymentMethod;
+  const beforeBal = supplierBalance(p.supplierId).balance;
+  // القاعدة الذهبية: عكس القديم ثم تطبيق الجديد (بدون ازدواج)
+  purApplyMethodChange(p, wantMethod, srcAcc);
+  const changes = [];
+  if(methodChanged) changes.push({ field:'طريقة الدفع', before:oldMethod, after:wantMethod });
+  changes.push({ field:'الحالة', before:'بانتظار مراجعة المحاسب', after:'معتمدة مالياً' });
+  p.status = 'approved'; p.finApproved = true; p.finApprovedBy = actorName(); p.finApprovedAt = new Date().toISOString();
+  purLog(p, 'fin_approved', changes, reason);
+  await Promise.all([saveKey('purchases', DB.purchases), saveKey('finMoves', DB.finMoves)]);
+  const afterBal = supplierBalance(p.supplierId).balance;
+  await logAction('🟢 اعتماد مالي لفاتورة شراء #'+p.purchaseNo+auditDetails([
+    ['المورد', supName(p.supplierId)], ['طريقة الدفع', wantMethod+(methodChanged?' (كانت '+oldMethod+')':'')],
+    ['مديونية المورد', money(beforeBal)+' ← '+money(afterBal)], ['السبب', reason||'—']
+  ]));
+  notify('purchase_approve', 'اعتماد مالي لفاتورة شراء #'+p.purchaseNo+' — '+supName(p.supplierId)+' ('+wantMethod+')'+(methodChanged?' [تغيّرت من '+oldMethod+']':''),
+    { category:'financial', refType:'purchase', refId:p.id, refNo:p.purchaseNo, amount:p.total });
+  closeModal(); toast('تم الاعتماد المالي للفاتورة'); refreshContent();
+}
+/* ---------- استرداد رصيد دائن من المورد ---------- */
+function openSupplierRefundModal(supplierId){
+  if(!can('sup.refund')){ toast('مالكش صلاحية تسجيل الاسترداد', true); return; }
+  const b = supplierBalance(supplierId);
+  if(b.creditBalance<=0){ toast('مفيش رصيد دائن عند المورد ده', true); return; }
+  openModal(`
+    <h3>↩️ استرداد رصيد من المورد — ${supName(supplierId)}</h3>
+    <div class="card" style="margin-bottom:12px"><div class="flex-between"><span>الرصيد الدائن لنا عند المورد</span><span style="font-weight:800;color:var(--accent)">${money(b.creditBalance)}</span></div></div>
+    <div class="form-row"><label class="f-label">المبلغ المسترد</label><input class="f" id="refAmt" type="number" min="0" max="${b.creditBalance}" step="any" value="${b.creditBalance}"></div>
+    <div class="form-row"><label class="f-label">استلام في حساب</label>
+      <select class="f" id="refAcc">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select></div>
+    <div class="form-row"><label class="f-label">ملاحظة (اختياري)</label><input class="f" id="refNote" placeholder="مثال: استرداد نقدي، تحويل بنكي"></div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveSupplierRefund('${supplierId}')">تأكيد الاسترداد</button>
+  `);
+}
+async function saveSupplierRefund(supplierId){
+  if(!can('sup.refund')){ toast('مالكش صلاحية تسجيل الاسترداد', true); return; }
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  const b = supplierBalance(supplierId);
+  const amount = Math.max(0, parseFloat((document.getElementById('refAmt')||{}).value)||0);
+  const accId = (document.getElementById('refAcc')||{}).value;
+  const note = ((document.getElementById('refNote')||{}).value||'').trim();
+  if(amount<=0){ toast('اكتب مبلغ صحيح', true); return; }
+  if(amount > b.creditBalance + 0.01){ toast('المبلغ أكبر من الرصيد الدائن ('+money(b.creditBalance)+')', true); return; }
+  const acc = DB.finAccounts.find(a=>a.id===accId);
+  sup.ledger = sup.ledger || [];
+  sup.ledger.push({ id:uid('sled'), kind:'refund', amount, reason:'استرداد رصيد دائن'+(note?' — '+note:''), date:new Date().toISOString(), by:actorName() });
+  if(acc) addFinMove(acc.id, 'in', amount, 'supplier_refund', 'استرداد رصيد من المورد '+sup.name);
+  await Promise.all([saveKey('suppliers', DB.suppliers), saveKey('finMoves', DB.finMoves)]);
+  await logAction('↩️ استرداد رصيد '+money(amount)+' من المورد '+sup.name+(acc?' في '+acc.name:''));
+  notify('supplier_refund', 'استرداد رصيد '+money(amount)+' من المورد '+sup.name, { category:'financial', refType:'supplier', refId:sup.id, amount });
+  closeModal(); toast('تم تسجيل الاسترداد'); refreshContent();
 }
 function openSupplierPaymentModal(supplierId){
   const b = supplierBalance(supplierId);
+  // فواتير مفتوحة (عليها متبقي) — للسداد المحدد (الملاحظة 69)
+  const openInvs = DB.purchases.filter(p=>p.supplierId===supplierId)
+    .map(p=>({ p, remaining: Math.round((p.total - (p.payments||[]).reduce((s,x)=>s+x.amount,0))*100)/100 }))
+    .filter(x=>x.remaining>0.01).sort((a,b)=>new Date(a.p.date)-new Date(b.p.date));
+  const canSpecific = can('sup.pay_specific');
   openModal(`
-    <h3>تسديد دفعة للمورد</h3>
-    <div class="card" style="margin-bottom:12px"><div class="flex-between"><span>رصيد المورد المستحق</span><span style="font-weight:800">${money(b.balance)}</span></div></div>
+    <h3>تسديد للمورد — ${supName(supplierId)}</h3>
+    <div class="card" style="margin-bottom:12px"><div class="flex-between"><span>المديونية علينا للمورد</span><span style="font-weight:800">${money(b.liability)}</span></div>
+      ${b.creditBalance>0?`<div class="flex-between" style="margin-top:4px"><span class="muted">لنا رصيد دائن عنده</span><span style="color:var(--accent);font-weight:700">${money(b.creditBalance)}</span></div>`:''}</div>
+    ${(canSpecific && openInvs.length)?`
+    <div class="dsec">🎯 تسديد فواتير محددة (اختياري — سيب الكل فاضي لتسديد عام على الأقدم)</div>
+    <div style="max-height:150px;overflow:auto;margin-bottom:10px">
+      ${openInvs.map(x=>`<label style="display:flex;justify-content:space-between;gap:8px;padding:5px 8px;background:var(--surface-2);border-radius:8px;margin-bottom:4px;font-size:12.5px;cursor:pointer">
+        <span><input type="checkbox" class="supPaySel" value="${x.p.id}" data-rem="${x.remaining}" onchange="supPaySelChanged(${b.liability})"> فاتورة #${x.p.purchaseNo} <span class="muted">(${fmtDate(x.p.date)})</span></span>
+        <span style="font-weight:700">متبقي ${money(x.remaining)}</span></label>`).join('')}
+    </div>`:''}
     <div class="form-row"><label class="f-label">💸 خصم من المورد (اختياري)</label>
-      <input class="f" id="supDiscAmt" type="number" min="0" step="any" value="0" oninput="supPayRecalc(${b.balance})"></div>
+      <input class="f" id="supDiscAmt" type="number" min="0" step="any" value="0" oninput="supPayRecalc(${b.liability})"></div>
     <div class="form-row" id="supDiscReasonRow" style="display:none"><label class="f-label">سبب الخصم * (إلزامي مع أي خصم)</label>
-      <input class="f" id="supDiscReason" placeholder="مثال: خصم تسوية نهاية السنة، خصم كمية، تعويض عن تأخير"></div>
+      <input class="f" id="supDiscReason" placeholder="مثال: خصم تسوية، خصم كمية، تعويض تأخير"></div>
     <div class="form-row"><label class="f-label">المبلغ المدفوع</label>
-      <input class="f" id="supPayAmt" type="number" min="0" step="any" value="${b.balance}" oninput="supPayRecalc(${b.balance})"></div>
+      <input class="f" id="supPayAmt" type="number" min="0" step="any" value="${b.liability}" oninput="supPayRecalc(${b.liability})"></div>
     <div class="card" id="supPayPreview" style="margin-bottom:12px"></div>
     <div class="form-row"><label class="f-label">الدفع من حساب</label>
       <select class="f" id="supPayAcc">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveSupplierPayment('${supplierId}')">تأكيد الدفع</button>
   `);
-  supPayRecalc(b.balance);
+  supPayRecalc(b.liability);
+}
+function supPaySelChanged(liability){
+  const sel = [...document.querySelectorAll('.supPaySel:checked')];
+  const amtEl = document.getElementById('supPayAmt');
+  if(sel.length && amtEl){ amtEl.value = sel.reduce((s,c)=>s+(parseFloat(c.getAttribute('data-rem'))||0),0); }
+  supPayRecalc(liability);
 }
 function supPayRecalc(bal){
   const disc = Math.max(parseFloat((document.getElementById('supDiscAmt')||{}).value)||0, 0);
@@ -5878,8 +6148,8 @@ async function saveSupplierPayment(supplierId){
   const discReason = ((document.getElementById('supDiscReason')||{}).value||'').trim();
   if(discAmt>0 && !discReason){ toast('اكتب سبب الخصم — إلزامي مع أي خصم', true); return; }
   if(amount<=0 && discAmt<=0){ toast('اكتب مبلغ صحيح', true); return; }
-  const bal = supplierBalance(supplierId).balance;
-  if(discAmt + amount > bal + 0.001){ toast('الخصم + المدفوع أكبر من المستحق للمورد ('+money(bal)+')', true); return; }
+  const bal = supplierBalance(supplierId).liability;   // المديونية علينا (م69)
+  if(discAmt + amount > bal + 0.001){ toast('الخصم + المدفوع أكبر من المديونية علينا ('+money(bal)+')', true); return; }
   const supForDisc = DB.suppliers.find(s=>s.id===supplierId);
   if(discAmt>0){
     supForDisc.ledger = supForDisc.ledger || [];
@@ -5893,29 +6163,37 @@ async function saveSupplierPayment(supplierId){
   if(amount<=0){
     closeModal(); toast('اتسجل الخصم '+money(discAmt)+' على حساب المورد'); refreshContent(); return;
   }
-  // Apply payment across unpaid purchases, oldest first
-  const purchases = DB.purchases.filter(p=>p.supplierId===supplierId).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  // الملاحظة 69: فواتير محددة (لو المستخدم اختار) وإلا الأقدم أولاً
+  const selIds = [...document.querySelectorAll('.supPaySel:checked')].map(c=>c.value);
+  if(selIds.length && !can('sup.pay_specific')){ toast('مالكش صلاحية تسديد فواتير محددة', true); return; }
+  let purchases = DB.purchases.filter(p=>p.supplierId===supplierId);
+  if(selIds.length){ const set=new Set(selIds); purchases = purchases.filter(p=>set.has(p.id)); }
+  purchases = purchases.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const paidInvoices = [];
   for(const p of purchases){
     if(amount<=0) break;
     const paidSoFar = (p.payments||[]).reduce((s,x)=>s+x.amount,0);
-    const remaining = p.total - paidSoFar;
-    if(remaining<=0) continue;
+    const remaining = Math.round((p.total - paidSoFar)*100)/100;
+    if(remaining<=0) continue;   // مسدَّدة بالكامل — مابتتسددش تاني
     const toPay = Math.min(remaining, amount);
     p.payments = p.payments || [];
     p.payments.push({id:uid('spay'), amount:toPay, date:new Date().toISOString()});
     amount -= toPay;
+    paidInvoices.push('#'+p.purchaseNo+' ('+money(toPay)+')');
   }
   await saveKey('purchases', DB.purchases);
   const paidTotal = parseFloat(document.getElementById('supPayAmt').value)||0;
-  const supName = (DB.suppliers.find(s=>s.id===supplierId)||{}).name;
+  const supNm = (DB.suppliers.find(s=>s.id===supplierId)||{}).name;
   // خصم من الحساب المالي المختار
   const accId = (document.getElementById('supPayAcc')||{}).value;
   const acc = DB.finAccounts.find(a=>a.id===accId);
-  if(acc) addFinMove(acc.id, 'out', paidTotal, 'supplier', 'سداد مورد: '+supName);
+  if(acc) addFinMove(acc.id, 'out', paidTotal, 'supplier', 'سداد مورد: '+supNm);
   // also log as an expense so it reflects in accounts/reports
-  DB.expenses.push({id:uid('exp'), category:'سداد مورد', amount: paidTotal, note: supName, accountId:acc?acc.id:null, payAccount:acc?acc.name:null, date:new Date().toISOString()});
+  DB.expenses.push({id:uid('exp'), category:'سداد مورد', amount: paidTotal, note: supNm, accountId:acc?acc.id:null, payAccount:acc?acc.name:null, date:new Date().toISOString()});
   await Promise.all([saveKey('expenses', DB.expenses), saveKey('finMoves', DB.finMoves)]);
-  await logAction('سداد '+money(paidTotal)+' للمورد '+supName+(acc?' من '+acc.name:''));
+  await logAction('سداد '+money(paidTotal)+' للمورد '+supNm+(acc?' من '+acc.name:'')+(paidInvoices.length?' — فواتير: '+paidInvoices.join(' · '):''));
+  notify(selIds.length?'supplier_pay_specific':'supplier_pay', 'سداد '+money(paidTotal)+' للمورد '+supNm+(selIds.length?' (فواتير محددة: '+paidInvoices.join(' · ')+')':''),
+    { category:'financial', refType:'supplier', refId:supplierId, amount:paidTotal });
   closeModal(); toast('تم تسجيل الدفعة للمورد'+(acc?' وخصمها من '+acc.name:'')); refreshContent();
 }
 
@@ -6361,8 +6639,10 @@ async function savePurchaseInvoice(){
     history: [{ id:uid('ph'), at:new Date().toISOString(), actor:actorName(), action:'created',
       changes:[{ field:'إجمالي الفاتورة', before:'—', after:money(total) }], reason:'' }]
   };
+  // الملاحظة 69: كاش = دفعة تلقائية (المديونية مابتزيدش) لكن الخصم الفعلي من الخزنة
+  // بيتعمل وقت اعتماد المحاسب لما يحدّد المصدر. آجل = مفيش دفعة (المديونية بتزيد فوراً).
   if(purchaseDraft.paymentMethod !== 'آجل'){
-    purchase.payments.push({id:uid('pay'), amount: total, date: new Date().toISOString()});
+    purchase.payments.push({id:uid('pay'), amount: total, date: new Date().toISOString(), auto:true, accountId:null });
   }
   DB.purchases.push(purchase);
   await saveKey('purchases', DB.purchases);
@@ -7387,8 +7667,10 @@ function accBalance(accId){
   });
   return b;
 }
-function addFinMove(accountId, type, amount, kind, note){
-  DB.finMoves.push({id:uid('fm'), accountId, type, amount, kind, note, actor:actorName(), date:new Date().toISOString()});
+function addFinMove(accountId, type, amount, kind, note, extra){
+  const m = Object.assign({id:uid('fm'), accountId, type, amount, kind, note, actor:actorName(), date:new Date().toISOString()}, extra||{});
+  DB.finMoves.push(m);
+  return m;
 }
 function accountForMethod(methodName){
   // مطابقة وسيلة الدفع بالحساب المناسب تلقائياً
@@ -8492,11 +8774,511 @@ function leaveStatusTag(st){
   if(st==='approved') return '<span class="tag tag-paid">مقبولة</span>';
   return '<span class="tag tag-unpaid">مرفوضة</span>';
 }
+/* ============ الملاحظة 68: نظام الحضور والانصراف واستيراد البصمة ============
+   المبدأ: جهاز البصمة مصدر بصمات خام فقط (Raw Punches). كل المعالجة والقواعد
+   والحساب والمراجعة **جوّه النظام**. الافتراضي «حضور مرن» (Flexible) — مفيش
+   شيفت ثابت مفروض على حد. المحرك سياقي: بيربط البصمات بجلسة الحضور الصح حتى
+   لو الشغل عدّى نص الليل، ومابيعتبرش 12:00AM حد بين دخول وخروج. */
+function attRules(){
+  const s = (DB.settings && DB.settings.att) || {};
+  return {
+    otEnabled:        s.otEnabled !== false,
+    otThresholdHours: s.otThresholdHours != null ? s.otThresholdHours : 9,   // بعدها إضافي (للمرن)
+    maxSessionHours:  s.maxSessionHours  != null ? s.maxSessionHours  : 16,  // أطول جلسة منطقية
+    dedupWindowMins:  s.dedupWindowMins  != null ? s.dedupWindowMins  : 3,   // بصمتين خلالها = تكرار
+    minSessionMins:   s.minSessionMins   != null ? s.minSessionMins   : 5,
+    defaultGraceMin:  s.defaultGraceMin  != null ? s.defaultGraceMin  : 15,
+  };
+}
+const ATT_STATUS_LABEL = { ok:'مكتمل', review:'يحتاج مراجعة', unmatched:'موظف غير معروف', manual:'مُصحّح يدوياً' };
+/* ---------- تحليل التاريخ والوقت (يدعم صيغ كتير) ---------- */
+function attParseDate(str, fmt){
+  str = String(str||'').trim(); if(!str) return null;
+  let m = str.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);          // ISO yyyy-mm-dd
+  if(m) return { y:+m[1], mo:+m[2], d:+m[3] };
+  m = str.match(/(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/);            // dd/mm/yyyy أو mm/dd/yyyy
+  if(m){ let a=+m[1], b=+m[2], y=+m[3]; if(y<100) y+=2000;
+    return (fmt==='mdy') ? { y, mo:a, d:b } : { y, mo:b, d:a }; }   // الافتراضي يوم/شهر (مصر)
+  return null;
+}
+function attParseTime(str){
+  str = String(str||'').trim(); if(!str) return null;
+  const ampm = /p\.?\s*m/i.test(str) ? 'pm' : (/a\.?\s*m/i.test(str) ? 'am' : null);
+  const m = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/); if(!m) return null;
+  let h=+m[1]; const mi=+m[2], se=+(m[3]||0);
+  if(ampm==='pm' && h<12) h+=12;
+  if(ampm==='am' && h===12) h=0;
+  return { h, mi, se };
+}
+function attToTs(dateStr, timeStr, fmt){
+  const d = attParseDate(dateStr, fmt); if(!d) return null;
+  const t = attParseTime(timeStr) || attParseTime(dateStr) || { h:0, mi:0, se:0 };
+  const dt = new Date(d.y, d.mo-1, d.d, t.h, t.mi, t.se||0);
+  return isNaN(dt.getTime()) ? null : dt.getTime();
+}
+function attDateStr(ts){ const d=new Date(ts); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function attTimeStr(ts){ if(ts==null) return '—'; const d=new Date(ts); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function fmtMins(m){ if(m==null||isNaN(m)) return '—'; m=Math.max(0,Math.round(m)); const h=Math.floor(m/60), mm=m%60; return (h?h+'س ':'')+(mm||!h?mm+'د':''); }
+/* ---------- تحليل ملف CSV/TSV (بدون أي مكتبات) ---------- */
+function attParseDelimited(text){
+  text = String(text||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n').replace(/﻿/g,'').trim();
+  if(!text) return [];
+  const first = text.split('\n')[0];
+  const delim = first.indexOf('\t')>=0 ? '\t' : (first.split(';').length > first.split(',').length ? ';' : ',');
+  const rows = [];
+  text.split('\n').forEach(line=>{
+    if(!line.trim()) return;
+    const cells=[]; let cur='', inQ=false;
+    for(let i=0;i<line.length;i++){ const ch=line[i];
+      if(inQ){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else inQ=false; } else cur+=ch; }
+      else { if(ch==='"') inQ=true; else if(ch===delim){ cells.push(cur); cur=''; } else cur+=ch; } }
+    cells.push(cur);
+    rows.push(cells.map(c=>String(c).trim()));
+  });
+  return rows;
+}
+/* ---------- المحرك السياقي: تجميع البصمات في جلسات ---------- */
+/* punches: [{ts, punchId}] لموظف واحد. بيرجّع جلسات + بصمات مكررة اتشالت. */
+function attBuildSessions(punches, rules){
+  const R = rules || attRules();
+  const sorted = punches.slice().filter(p=>p.ts!=null).sort((a,b)=>a.ts-b.ts);
+  const kept=[], dupIds=[];
+  sorted.forEach(p=>{
+    if(kept.length && (p.ts - kept[kept.length-1].ts) < R.dedupWindowMins*60000) dupIds.push(p.punchId);
+    else kept.push(p);
+  });
+  const sessions=[]; let i=0;
+  while(i < kept.length){
+    const inP = kept[i];
+    if(i+1 >= kept.length){
+      sessions.push({ inTs:inP.ts, outTs:null, punchIds:[inP.punchId], status:'review', reason:'دخول بدون خروج' });
+      break;
+    }
+    const outP = kept[i+1];
+    const durMs = outP.ts - inP.ts;
+    if(durMs > R.maxSessionHours*3600000){
+      // الخروج بعيد جداً — دخول ناقص خروجه، والبصمة اللي بعده بداية جلسة جديدة
+      sessions.push({ inTs:inP.ts, outTs:null, punchIds:[inP.punchId], status:'review', reason:'دخول بدون خروج (فرق غير منطقي مع البصمة التالية)' });
+      i += 1; continue;
+    }
+    // زوج صحيح — ممكن يعدّي نص الليل (تاريخ الحضور = تاريخ الدخول)
+    const short = durMs < R.minSessionMins*60000;
+    sessions.push({ inTs:inP.ts, outTs:outP.ts, punchIds:[inP.punchId, outP.punchId],
+      status: short ? 'review' : 'ok', reason: short ? 'مدة عمل قصيرة غير طبيعية' : '' });
+    i += 2;
+  }
+  return { sessions, dupIds };
+}
+/* ---------- حساب الساعات (مرن أو ثابت) ---------- */
+function attComputeHours(sess, emp, rules){
+  const R = rules || attRules();
+  if(sess.outTs == null) return { workedMins:0, regularMins:0, otMins:0, lateMins:0 };
+  const workedMins = Math.round((sess.outTs - sess.inTs)/60000);
+  const mode = (emp && emp.attMode) === 'fixed' ? 'fixed' : 'flexible';
+  let regularMins = workedMins, otMins = 0, lateMins = 0;
+  if(mode==='fixed' && emp && emp.shiftStart && emp.shiftEnd){
+    const inD = new Date(sess.inTs);
+    const [sh,sm] = String(emp.shiftStart).split(':').map(Number);
+    const [eh,em] = String(emp.shiftEnd).split(':').map(Number);
+    const startTs = new Date(inD.getFullYear(),inD.getMonth(),inD.getDate(),sh||0,sm||0).getTime();
+    let endTs = new Date(inD.getFullYear(),inD.getMonth(),inD.getDate(),eh||0,em||0).getTime();
+    if(endTs <= startTs) endTs += 24*3600000;   // شيفت بيعدّي نص الليل
+    const grace = (emp.graceMin!=null ? emp.graceMin : R.defaultGraceMin) * 60000;
+    lateMins = Math.max(0, Math.round((sess.inTs - (startTs+grace))/60000));
+    otMins   = R.otEnabled ? Math.max(0, Math.round((sess.outTs - endTs)/60000)) : 0;
+    regularMins = Math.max(0, workedMins - otMins);
+  } else {
+    // مرن: الإضافي بعد عتبة الساعات المعتمدة
+    if(R.otEnabled && workedMins > R.otThresholdHours*60){
+      otMins = workedMins - R.otThresholdHours*60;
+      regularMins = R.otThresholdHours*60;
+    }
+  }
+  return { workedMins, regularMins, otMins, lateMins };
+}
+/* ---------- التخزين والمعالجة (فصل البصمة الخام عن النتيجة المعالَجة) ---------- */
+function resolveEmpByFp(fpId){
+  const f = String(fpId==null?'':fpId).trim(); if(!f) return null;
+  return DB.employees.find(e=> String(e.fpId||'').trim()===f && e.status!=='مستقيل') || null;
+}
+function punchHash(fpId, ts){ return String(fpId==null?'':fpId).trim()+'|'+ts; }
+function attSessionsFor(empId){ return DB.attendance.filter(r=>r.kind==='session' && r.empId===empId); }
+/* إعادة معالجة بصمات موظف → توليد جلسات (بيحافظ على الجلسات المُصححة يدوياً) */
+function attReprocessEmployee(empId){
+  const rules = attRules();
+  const emp = DB.employees.find(e=>e.id===empId);
+  const punches = DB.attendance.filter(r=>r.kind==='punch' && r.empId===empId).map(r=>({ ts:r.ts, punchId:r.id }));
+  const manualKeys = new Set(DB.attendance.filter(s=>s.kind==='session' && s.empId===empId && s.manual).map(s=>s.dateStr));
+  // شيل الجلسات التلقائية القديمة (المُصححة يدوياً بتفضل)
+  DB.attendance = DB.attendance.filter(r=>!(r.kind==='session' && r.empId===empId && !r.manual));
+  DB.attendance.forEach(r=>{ if(r.kind==='punch' && r.empId===empId) r.dup=false; });
+  const { sessions, dupIds } = attBuildSessions(punches, rules);
+  if(dupIds.length){ const ds=new Set(dupIds); DB.attendance.forEach(r=>{ if(r.kind==='punch' && ds.has(r.id)) r.dup=true; }); }
+  sessions.forEach(s=>{
+    const dateStr = attDateStr(s.inTs);
+    if(manualKeys.has(dateStr)) return;
+    const hrs = attComputeHours(s, emp, rules);
+    DB.attendance.push({ id:uid('att'), kind:'session', empId, dateStr, inTs:s.inTs, outTs:s.outTs,
+      mode:(emp&&emp.attMode)==='fixed'?'fixed':'flexible',
+      workedMins:hrs.workedMins, regularMins:hrs.regularMins, otMins:hrs.otMins, lateMins:hrs.lateMins,
+      status:s.status, reason:s.reason, punchIds:s.punchIds, corrections:[], manual:false,
+      processedAt:new Date().toISOString() });
+  });
+}
+function attReprocessAll(){
+  [...new Set(DB.attendance.filter(r=>r.kind==='punch' && r.empId).map(r=>r.empId))].forEach(attReprocessEmployee);
+}
+/* ---------- منطق الاستيراد ---------- */
+let attImportDraft = null;   // { fileName, headers, rows, mapping:{empId,empName,date,time,dateFmt} }
+const ATT_MAP_FIELDS = [['empId','رقم الموظف (البصمة) *'],['empName','اسم الموظف (اختياري)'],['date','التاريخ *'],['time','الوقت *']];
+function attGuessMapping(headers){
+  const norm = s => String(s||'').toLowerCase().replace(/\s|_/g,'');
+  const find = keys => { for(let i=0;i<headers.length;i++){ const h=norm(headers[i]); if(keys.some(k=>h.includes(k))) return i; } return -1; };
+  return {
+    empId: find(['empid','employeeid','userid','acno','رقمالموظف','كودالموظف','رقمالبصمة','id']),
+    empName: find(['name','اسم','employeename']),
+    date: find(['date','تاريخ','يوم']),
+    time: find(['time','وقت','ساعة','clock','punch']),
+    dateFmt: 'dmy'
+  };
+}
+function attStartImportFromText(text, fileName){
+  const rows = attParseDelimited(text);
+  if(rows.length < 2){ toast('الملف فاضي أو مفيهوش بيانات كفاية', true); return; }
+  // أول صف يبان إنه عناوين لو مافيهوش أرقام كتير
+  const headers = rows[0];
+  const body = rows.slice(1).filter(r=>r.some(c=>c!==''));
+  attImportDraft = { fileName: fileName||'لصق يدوي', headers, rows: body,
+    mapping: (DB.settings && DB.settings.attMapping && DB.settings.attMapping.headersSig===headers.join('|'))
+      ? Object.assign({}, DB.settings.attMapping) : attGuessMapping(headers) };
+  refreshContent();
+}
+function attMapVal(row, idx){ return (idx!=null && idx>=0 && idx<row.length) ? row[idx] : ''; }
+function attPreviewRow(row, mp){
+  const fpId = attMapVal(row, mp.empId);
+  const dateS = attMapVal(row, mp.date);
+  const timeS = attMapVal(row, mp.time);
+  const ts = attToTs(dateS, timeS, mp.dateFmt);
+  const emp = resolveEmpByFp(fpId);
+  let problem = '';
+  if(!fpId) problem = 'رقم موظف فاضي';
+  else if(ts==null) problem = 'تاريخ/وقت غير مقروء';
+  else if(!emp) problem = 'موظف غير معروف';
+  return { fpId, ts, emp, dateS, timeS, name: attMapVal(row, mp.empName), problem };
+}
+async function attCommitImport(){
+  if(!(can('hr.attendance'))){ toast('مالكش صلاحية استيراد الحضور', true); return; }
+  const d = attImportDraft; if(!d){ return; }
+  const mp = d.mapping;
+  if(mp.empId==null||mp.empId<0 || mp.date==null||mp.date<0 || mp.time==null||mp.time<0){
+    toast('لازم تحدد أعمدة: رقم الموظف والتاريخ والوقت', true); return;
+  }
+  const existingHashes = new Set(DB.attendance.filter(r=>r.kind==='punch').map(r=>r.hash));
+  const importId = uid('imp');
+  const now = new Date().toISOString();
+  let accepted=0, dup=0, bad=0, unmatched=0; const seenThis=new Set(); const touchedEmps=new Set(); const unmatchedFps=new Set();
+  d.rows.forEach(row=>{
+    const pr = attPreviewRow(row, mp);
+    if(!pr.fpId || pr.ts==null){ bad++; return; }
+    const hash = punchHash(pr.fpId, pr.ts);
+    if(existingHashes.has(hash) || seenThis.has(hash)){ dup++; return; }
+    seenThis.add(hash);
+    const empId = pr.emp ? pr.emp.id : null;
+    if(!empId){ unmatched++; unmatchedFps.add(String(pr.fpId).trim()); }
+    DB.attendance.push({ id:uid('pnc'), kind:'punch', importId, fpId:String(pr.fpId).trim(),
+      empId, ts:pr.ts, hash, raw:{ date:pr.dateS, time:pr.timeS, name:pr.name }, dup:false, at:now });
+    accepted++;
+    if(empId) touchedEmps.add(empId);
+  });
+  touchedEmps.forEach(attReprocessEmployee);
+  const reviewCount = DB.attendance.filter(r=>r.kind==='session' && touchedEmps.has(r.empId) && r.status==='review').length;
+  DB.attendance.push({ id:importId, kind:'import', fileName:d.fileName, at:now, by:actorName(),
+    total:d.rows.length, accepted, review:reviewCount, unmatched, dup, unmatchedFps:[...unmatchedFps],
+    status: (bad||unmatched||dup)?'مكتمل بملاحظات':'مكتمل' });
+  // حفظ الـmapping للمرة الجاية
+  DB.settings.attMapping = Object.assign({}, mp, { headersSig:d.headers.join('|') });
+  await Promise.all([saveKey('attendance'), saveKey('settings', DB.settings)]);
+  await logAction('استيراد بصمة: '+d.fileName+' — '+accepted+' بصمة مقبولة · '+dup+' مكرر · '+unmatched+' غير معروف');
+  notify('att_import', 'استيراد حضور: '+d.fileName+' — '+accepted+' بصمة'+(unmatched?' · '+unmatched+' موظف غير معروف':''),
+    { category:'system' });
+  attImportDraft = null;
+  toast('تم الاستيراد: '+accepted+' بصمة'+(dup?' ('+dup+' مكرر اتجاهل)':''));
+  refreshContent();
+}
+/* ---------- شاشة استيراد البصمة ---------- */
+function attReadFile(input){
+  const file = input.files && input.files[0]; if(!file) return;
+  const rd = new FileReader();
+  rd.onload = e => attStartImportFromText(String(e.target.result||''), file.name);
+  rd.onerror = () => toast('تعذّر قراءة الملف', true);
+  rd.readAsText(file, 'utf-8');
+}
+function attPasteImport(){
+  const t = (document.getElementById('attPaste')||{}).value || '';
+  if(!t.trim()){ toast('الصق بيانات البصمة الأول', true); return; }
+  attStartImportFromText(t, 'لصق من Excel');
+}
+function attSetMap(field, val){ if(attImportDraft){ attImportDraft.mapping[field] = (field==='dateFmt'?val:(val===''?null:+val)); refreshContent(); } }
+function renderAttImport(){
+  if(!can('hr.attendance')) return `<div class="card"><div class="empty">🔒 مالكش صلاحية على الحضور</div></div>`;
+  const d = attImportDraft;
+  const imports = DB.attendance.filter(r=>r.kind==='import').sort((a,b)=>new Date(b.at)-new Date(a.at));
+  const colOpts = (sel) => `<option value="">— بدون —</option>` + (d?d.headers.map((h,i)=>`<option value="${i}" ${sel===i?'selected':''}>${h||('عمود '+(i+1))}</option>`).join(''):'');
+  let body = '';
+  if(!d){
+    body = `
+    <div class="card" style="margin-bottom:16px">
+      <div class="dsec">📥 استيراد ملف بصمة</div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:10px">ارفع ملف <b>CSV</b> من برنامج البصمة، أو <b>انسخ الجدول من Excel والصقه تحت</b> (النظام بيفهم الاتنين). مش محتاج تعدّل الملف بإيدك.</div>
+      <div class="form-row"><label class="f-label">اختار ملف (CSV / TSV)</label>
+        <input class="f" type="file" accept=".csv,.tsv,.txt" onchange="attReadFile(this)"></div>
+      <div class="form-row"><label class="f-label">أو الصق البيانات من Excel هنا</label>
+        <textarea class="f" id="attPaste" rows="5" placeholder="انسخ الأعمدة من Excel (رقم الموظف · التاريخ · الوقت) والصقها هنا"></textarea></div>
+      <button class="btn btn-accent" onclick="attPasteImport()">قراءة البيانات الملصوقة</button>
+    </div>`;
+  } else {
+    const mp = d.mapping;
+    const preview = d.rows.slice(0,8).map(r=>attPreviewRow(r, mp));
+    const okCount = d.rows.filter(r=>{ const p=attPreviewRow(r,mp); return !p.problem; }).length;
+    const unk = d.rows.filter(r=>{ const p=attPreviewRow(r,mp); return p.problem==='موظف غير معروف'; }).length;
+    body = `
+    <div class="card" style="margin-bottom:16px">
+      <div class="flex-between" style="margin-bottom:8px"><div class="dsec" style="margin:0">🔗 ربط الأعمدة — ${d.fileName}</div>
+        <button class="btn btn-sm" onclick="attImportDraft=null;refreshContent()">إلغاء</button></div>
+      <div class="muted" style="font-size:12px;margin-bottom:10px">حدّد كل عمود بيقابل إيه. النظام بيحفظ الربط ويستخدمه تلقائي المرة الجاية لو نفس تنسيق الملف.</div>
+      <div class="grid g4">
+        ${ATT_MAP_FIELDS.map(([f,lbl])=>`<div class="form-row"><label class="f-label">${lbl}</label>
+          <select class="f" onchange="attSetMap('${f}',this.value)">${colOpts(mp[f])}</select></div>`).join('')}
+      </div>
+      <div class="form-row" style="max-width:220px"><label class="f-label">ترتيب التاريخ في الملف</label>
+        <select class="f" onchange="attSetMap('dateFmt',this.value)">
+          <option value="dmy" ${mp.dateFmt!=='mdy'?'selected':''}>يوم/شهر/سنة</option>
+          <option value="mdy" ${mp.dateFmt==='mdy'?'selected':''}>شهر/يوم/سنة</option>
+        </select></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="dsec">👁️ معاينة (${d.rows.length} صف — ${okCount} جاهز · ${unk} موظف غير معروف)</div>
+      <div style="max-height:320px;overflow:auto">
+      <table><thead><tr><th>رقم البصمة</th><th>الموظف</th><th>التاريخ والوقت</th><th>الحالة</th></tr></thead>
+      <tbody>${preview.map(p=>`<tr>
+        <td>${p.fpId||'—'}</td>
+        <td>${p.emp?p.emp.name:(p.name||'—')}</td>
+        <td>${p.ts!=null?fmtDate(p.ts)+' '+attTimeStr(p.ts):('<span class="muted">'+(p.dateS||'')+' '+(p.timeS||'')+'</span>')}</td>
+        <td>${p.problem?`<span class="tag tag-unpaid">${p.problem}</span>`:`<span class="tag tag-paid">تمام</span>`}</td>
+      </tr>`).join('')}</tbody></table></div>
+      ${d.rows.length>8?`<div class="muted" style="font-size:11.5px;margin-top:6px">... وبيتعرض أول 8 صفوف بس. الاستيراد بيشمل كل الصفوف.</div>`:''}
+      <button class="btn btn-accent" style="width:100%;margin-top:12px" onclick="attCommitImport()">✅ اعتماد الاستيراد (${d.rows.length} بصمة)</button>
+      <div class="muted" style="font-size:11.5px;margin-top:6px">البصمات المكررة بتتكتشف وتتجاهل تلقائياً، والبصمات الخام بتتحفظ زي ما هي.</div>
+    </div>`;
+  }
+  // سجل الاستيراد
+  body += `
+  <div class="section-head"><h3>📋 سجل عمليات الاستيراد</h3></div>
+  <div class="card">
+    <table><thead><tr><th>الملف</th><th>التاريخ</th><th>بواسطة</th><th>الإجمالي</th><th>مقبول</th><th>مراجعة</th><th>غير معروف</th><th>مكرر</th></tr></thead>
+    <tbody>${imports.length? imports.map(im=>`<tr>
+      <td>${im.fileName}</td><td style="white-space:nowrap">${fmtDateTime(im.at)}</td><td class="muted">${im.by||'—'}</td>
+      <td>${im.total}</td><td style="color:#1a7f37;font-weight:700">${im.accepted}</td>
+      <td>${im.review?`<span class="tag tag-partial">${im.review}</span>`:'0'}</td>
+      <td>${im.unmatched?`<span class="tag tag-unpaid">${im.unmatched}</span>`:'0'}</td>
+      <td class="muted">${im.dup||0}</td>
+    </tr>`).join('') : `<tr><td colspan="8" class="empty">لسه مفيش عمليات استيراد</td></tr>`}</tbody></table>
+  </div>`;
+  return body;
+}
+/* ---------- شاشة مراجعة الحضور ---------- */
+let attReviewFilter = { emp:'', from:'', to:'', status:'' };
+function renderAttReview(){
+  if(!can('hr.attendance')) return `<div class="card"><div class="empty">🔒 مالكش صلاحية على الحضور</div></div>`;
+  const f = attReviewFilter;
+  // الموظفين غير المعروفين
+  const unmatchedFps = [...new Set(DB.attendance.filter(r=>r.kind==='punch' && !r.empId).map(r=>r.fpId))];
+  let sessions = DB.attendance.filter(r=>r.kind==='session');
+  if(f.emp) sessions = sessions.filter(s=>s.empId===f.emp);
+  if(f.status) sessions = sessions.filter(s=> f.status==='review' ? s.status==='review' : s.status!=='review');
+  if(f.from) sessions = sessions.filter(s=>s.dateStr>=f.from);
+  if(f.to) sessions = sessions.filter(s=>s.dateStr<=f.to);
+  sessions = sessions.sort((a,b)=> b.dateStr.localeCompare(a.dateStr) || (b.inTs||0)-(a.inTs||0));
+  const reviewN = DB.attendance.filter(r=>r.kind==='session' && r.status==='review').length;
+  const empName = id => { const e=DB.employees.find(x=>x.id===id); return e?e.name:'—'; };
+  return `
+  ${unmatchedFps.length?`
+  <div class="card" style="border:1px solid var(--danger);margin-bottom:16px">
+    <div class="dsec" style="color:var(--danger)">⚠️ أرقام بصمة لموظفين غير معروفين (${unmatchedFps.length})</div>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">اربط كل رقم بالموظف الصح — النظام مش بيعمل موظف جديد لوحده.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${unmatchedFps.map(fp=>`<button class="btn btn-sm" onclick="openAttMapEmp('${fp}')">🔗 رقم ${fp} (${DB.attendance.filter(r=>r.kind==='punch'&&r.fpId===fp).length} بصمة)</button>`).join('')}
+    </div>
+  </div>`:''}
+  <div class="grid g3" style="margin-bottom:16px">
+    ${stat(String(DB.attendance.filter(r=>r.kind==='session').length),'إجمالي أيام الحضور')}
+    ${stat(String(reviewN),'تحتاج مراجعة', reviewN>0)}
+    ${stat(String(DB.attendance.filter(r=>r.kind==='punch').length),'بصمة خام محفوظة')}
+  </div>
+  <div class="card" style="margin-bottom:14px">
+    <div class="grid g4">
+      <div class="form-row"><label class="f-label">الموظف</label>
+        <select class="f" onchange="attReviewFilter.emp=this.value;refreshContent()">
+          <option value="">الكل</option>
+          ${DB.employees.filter(e=>e.status==='نشط').map(e=>`<option value="${e.id}" ${f.emp===e.id?'selected':''}>${e.name}</option>`).join('')}
+        </select></div>
+      <div class="form-row"><label class="f-label">الحالة</label>
+        <select class="f" onchange="attReviewFilter.status=this.value;refreshContent()">
+          <option value="">الكل</option>
+          <option value="review" ${f.status==='review'?'selected':''}>تحتاج مراجعة</option>
+          <option value="ok" ${f.status==='ok'?'selected':''}>مكتملة</option>
+        </select></div>
+      <div class="form-row"><label class="f-label">من تاريخ</label><input class="f" type="date" value="${f.from}" onchange="attReviewFilter.from=this.value;refreshContent()"></div>
+      <div class="form-row"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${f.to}" onchange="attReviewFilter.to=this.value;refreshContent()"></div>
+    </div>
+    <button class="btn btn-sm" onclick="attReviewFilter={emp:'',from:'',to:'',status:''};refreshContent()">مسح الفلاتر</button>
+  </div>
+  <div class="card" style="overflow-x:auto">
+    <table><thead><tr><th>الموظف</th><th>التاريخ</th><th>النوع</th><th>دخول</th><th>خروج</th><th>ساعات فعلية</th><th>أساسي</th><th>إضافي</th><th>تأخير</th><th>الحالة</th><th></th></tr></thead>
+    <tbody>${sessions.length? sessions.slice(0,300).map(s=>`<tr ${s.status==='review'?'style="background:rgba(220,50,50,.06)"':''}>
+      <td style="font-weight:600">${empName(s.empId)}</td>
+      <td style="white-space:nowrap">${fmtDate(s.inTs)}</td>
+      <td>${s.mode==='fixed'?'<span class="tag tag-inspect">ثابت</span>':'<span class="tag tag-ready">مرن</span>'}${s.manual?' <span class="tag tag-working" style="font-size:9px">مُصحّح</span>':''}</td>
+      <td>${attTimeStr(s.inTs)}</td>
+      <td>${s.outTs?attTimeStr(s.outTs)+(attDateStr(s.outTs)!==s.dateStr?' <span class="muted" style="font-size:10px">(اليوم التالي)</span>':''):'—'}</td>
+      <td style="font-weight:700">${fmtMins(s.workedMins)}</td>
+      <td>${fmtMins(s.regularMins)}</td>
+      <td>${s.otMins?'<span style="color:var(--accent-2);font-weight:700">'+fmtMins(s.otMins)+'</span>':'—'}</td>
+      <td>${s.lateMins?'<span style="color:var(--danger)">'+fmtMins(s.lateMins)+'</span>':'—'}</td>
+      <td>${s.status==='review'?`<span class="tag tag-unpaid" title="${s.reason||''}">مراجعة</span>`:`<span class="tag tag-paid">مكتمل</span>`}</td>
+      <td>${can('hr.att_edit')?`<button class="btn btn-sm" onclick="openAttCorrect('${s.id}')">✎</button>`:''}</td>
+    </tr>`).join('') : `<tr><td colspan="11" class="empty">مفيش سجلات حضور مطابقة</td></tr>`}</tbody></table>
+    ${sessions.length>300?`<div class="muted" style="font-size:11.5px;margin-top:6px">بيتعرض أول 300 — استخدم الفلاتر.</div>`:''}
+  </div>`;
+}
+/* ---------- ربط رقم بصمة بموظف ---------- */
+function openAttMapEmp(fpId){
+  if(!can('hr.att_edit') && !can('hr.employees')){ toast('مالكش صلاحية الربط', true); return; }
+  const sample = DB.attendance.filter(r=>r.kind==='punch' && r.fpId===fpId).slice(0,3).map(r=>fmtDate(r.ts)+' '+attTimeStr(r.ts));
+  openModal(`
+    <h3>🔗 ربط رقم البصمة ${fpId} بموظف</h3>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">عينة بصمات: ${sample.join(' · ')||'—'}</div>
+    <div class="form-row"><label class="f-label">اختار الموظف</label>
+      <select class="f" id="attMapEmp"><option value="">— اختار —</option>
+        ${DB.employees.filter(e=>e.status==='نشط').map(e=>`<option value="${e.id}">${e.name}${e.fpId?' (رقم بصمته: '+e.fpId+')':''}</option>`).join('')}</select></div>
+    <div class="muted" style="font-size:11.5px;margin-bottom:10px">هيتحفظ الرقم ده على ملف الموظف، وكل بصماته هتترحّل وتتعالج تلقائي.</div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveAttMapEmp('${fpId}')">ربط ومعالجة</button>
+  `);
+}
+async function saveAttMapEmp(fpId){
+  if(!can('hr.att_edit') && !can('hr.employees')){ toast('مالكش صلاحية', true); return; }
+  const empId = (document.getElementById('attMapEmp')||{}).value;
+  const emp = DB.employees.find(e=>e.id===empId);
+  if(!emp){ toast('اختار الموظف', true); return; }
+  emp.fpId = String(fpId).trim();
+  DB.attendance.forEach(r=>{ if(r.kind==='punch' && r.fpId===emp.fpId && !r.empId) r.empId = emp.id; });
+  attReprocessEmployee(emp.id);
+  await Promise.all([saveKey('employees'), saveKey('attendance')]);
+  await logAction('ربط رقم بصمة '+fpId+' بالموظف '+emp.name);
+  closeModal(); toast('تم الربط ومعالجة بصمات '+emp.name); refreshContent();
+}
+/* ---------- تصحيح جلسة حضور (بسجل تدقيق) ---------- */
+function openAttCorrect(sessionId){
+  if(!can('hr.att_edit')){ toast('مالكش صلاحية تعديل الحضور', true); return; }
+  const s = DB.attendance.find(r=>r.id===sessionId); if(!s) return;
+  const emp = DB.employees.find(e=>e.id===s.empId);
+  const inT = s.inTs?attTimeStr(s.inTs):''; const outT = s.outTs?attTimeStr(s.outTs):'';
+  openModal(`
+    <h3>✎ تصحيح حضور — ${emp?emp.name:'—'} · ${fmtDate(s.inTs)}</h3>
+    <div class="card" style="background:var(--surface-2);padding:8px 10px;margin-bottom:10px;font-size:12px">
+      البصمات الخام محفوظة زي ما هي ومش بتتغير — ده تصحيح للنتيجة المعالَجة بس، وبيتسجل مين عدّل وإيه.</div>
+    ${s.reason?`<div class="muted" style="font-size:12px;margin-bottom:8px">سبب المراجعة: ${s.reason}</div>`:''}
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">وقت الدخول</label><input class="f" id="acIn" type="time" value="${inT}"></div>
+      <div class="form-row"><label class="f-label">وقت الخروج</label><input class="f" id="acOut" type="time" value="${outT}">
+        <label class="muted" style="font-size:11px;display:block;margin-top:4px"><input type="checkbox" id="acNextDay" ${(s.outTs&&attDateStr(s.outTs)!==s.dateStr)?'checked':''}> الخروج اليوم التالي</label></div>
+    </div>
+    <div class="form-row"><label class="f-label">الحالة</label>
+      <select class="f" id="acStatus"><option value="ok" ${s.status!=='review'?'selected':''}>مكتمل</option><option value="review" ${s.status==='review'?'selected':''}>يحتاج مراجعة</option></select></div>
+    <div class="form-row"><label class="f-label">سبب التعديل *</label><input class="f" id="acReason" placeholder="مثال: الموظف نسي يبصم الخروج"></div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveAttCorrect('${sessionId}')">حفظ التصحيح</button>
+  `);
+}
+async function saveAttCorrect(sessionId){
+  if(!can('hr.att_edit')){ toast('مالكش صلاحية تعديل الحضور', true); return; }
+  const s = DB.attendance.find(r=>r.id===sessionId); if(!s) return;
+  const reason = ((document.getElementById('acReason')||{}).value||'').trim();
+  if(!reason){ toast('اكتب سبب التعديل', true); return; }
+  const emp = DB.employees.find(e=>e.id===s.empId);
+  const base = new Date(s.inTs); const mkTs = (hhmm, nextDay)=>{ if(!hhmm) return null;
+    const [h,m]=hhmm.split(':').map(Number); const dt=new Date(base.getFullYear(),base.getMonth(),base.getDate(),h,m);
+    if(nextDay) dt.setDate(dt.getDate()+1); return dt.getTime(); };
+  const newIn = mkTs((document.getElementById('acIn')||{}).value, false);
+  const newOut = mkTs((document.getElementById('acOut')||{}).value, (document.getElementById('acNextDay')||{}).checked);
+  const newStatus = (document.getElementById('acStatus')||{}).value;
+  const changes = [];
+  if(newIn!=null && newIn!==s.inTs){ changes.push(['الدخول', attTimeStr(s.inTs), attTimeStr(newIn)]); s.inTs=newIn; }
+  if(newOut!==s.outTs){ changes.push(['الخروج', s.outTs?attTimeStr(s.outTs):'—', newOut?attTimeStr(newOut):'—']); s.outTs=newOut; }
+  if(newStatus!==(s.status==='review'?'review':'ok')){ changes.push(['الحالة', ATT_STATUS_LABEL[s.status]||s.status, ATT_STATUS_LABEL[newStatus]]); }
+  // إعادة حساب الساعات بعد التعديل
+  const hrs = attComputeHours({ inTs:s.inTs, outTs:s.outTs }, emp, attRules());
+  s.workedMins=hrs.workedMins; s.regularMins=hrs.regularMins; s.otMins=hrs.otMins; s.lateMins=hrs.lateMins;
+  s.status = newStatus; s.manual = true;
+  s.corrections = s.corrections || [];
+  s.corrections.push({ by:actorName(), at:new Date().toISOString(), reason, changes });
+  await saveKey('attendance');
+  await logAction('تصحيح حضور '+(emp?emp.name:'')+' يوم '+s.dateStr+auditDetails([
+    ...changes.map(c=>[c[0], c[1]+' ← '+c[2]]), ['السبب', reason] ]));
+  notify('att_edit', 'تصحيح حضور '+(emp?emp.name:'')+' ('+s.dateStr+') — '+changes.map(c=>c[0]).join('، ')+' — '+reason,
+    { category:'system' });
+  closeModal(); toast('تم حفظ التصحيح'); refreshContent();
+}
+/* ---------- إعدادات قواعد الحضور ---------- */
+function openAttRules(){
+  if(!isOwnerSession() && !can('hr.att_edit')){ toast('صلاحية إدارة الحضور فقط', true); return; }
+  const r = attRules();
+  openModal(`
+    <h3>⚙️ قواعد الحضور والإضافي</h3>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">القواعد دي بتتطبق على الحضور المرن. الموظف الثابت بتتحسب قواعده من شيفت ملفه.</div>
+    <div class="form-row"><label class="f-label"><input type="checkbox" id="arOt" ${r.otEnabled?'checked':''}> تفعيل حساب الإضافي (Overtime)</label></div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">ساعات العمل قبل احتساب إضافي (مرن)</label><input class="f" id="arOtThr" type="number" min="1" max="24" step="0.5" value="${r.otThresholdHours}"></div>
+      <div class="form-row"><label class="f-label">أطول جلسة عمل منطقية (ساعة)</label><input class="f" id="arMaxSess" type="number" min="6" max="24" value="${r.maxSessionHours}"></div>
+    </div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">نافذة تجاهل التكرار (دقيقة)</label><input class="f" id="arDedup" type="number" min="0" max="30" value="${r.dedupWindowMins}"></div>
+      <div class="form-row"><label class="f-label">سماح التأخير الافتراضي (دقيقة)</label><input class="f" id="arGrace" type="number" min="0" max="120" value="${r.defaultGraceMin}"></div>
+    </div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveAttRules()">حفظ القواعد وإعادة المعالجة</button>
+    <div class="muted" style="font-size:11.5px;margin-top:6px">بعد الحفظ بتتعاد معالجة كل البصمات بالقواعد الجديدة (البصمات الخام مش بتتغير).</div>
+  `);
+}
+async function saveAttRules(){
+  if(!isOwnerSession() && !can('hr.att_edit')){ toast('صلاحية إدارة الحضور فقط', true); return; }
+  DB.settings.att = {
+    otEnabled: (document.getElementById('arOt')||{}).checked,
+    otThresholdHours: parseFloat((document.getElementById('arOtThr')||{}).value)||9,
+    maxSessionHours: parseFloat((document.getElementById('arMaxSess')||{}).value)||16,
+    dedupWindowMins: parseFloat((document.getElementById('arDedup')||{}).value)||3,
+    minSessionMins: attRules().minSessionMins,
+    defaultGraceMin: parseFloat((document.getElementById('arGrace')||{}).value)||15,
+  };
+  attReprocessAll();
+  await Promise.all([saveKey('settings', DB.settings), saveKey('attendance')]);
+  await logAction('تعديل قواعد الحضور وإعادة معالجة البصمات');
+  closeModal(); toast('اتحفظت القواعد واتعادت المعالجة'); refreshContent();
+}
+function renderAttendance(){
+  return `
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+    <button class="btn btn-sm ${attSubView==='review'?'btn-accent':''}" onclick="attSubView='review';refreshContent()">📋 مراجعة الحضور</button>
+    <button class="btn btn-sm ${attSubView==='import'?'btn-accent':''}" onclick="attSubView='import';refreshContent()">📥 استيراد البصمة</button>
+    ${(isOwnerSession()||can('hr.att_edit'))?`<button class="btn btn-sm" onclick="openAttRules()">⚙️ القواعد</button>`:''}
+  </div>
+  ${attSubView==='import' ? renderAttImport() : renderAttReview()}`;
+}
+let attSubView = 'review';
 function renderHR(){
   // الشاشات الفرعية بتظهر حسب صلاحيات المستخدم (الملاحظة 32)
   const views = [];
   if(can('hr.employees')) views.push(['employees','👥 ملفات الموظفين']);
   views.push(['leaves','🏖️ طلبات الإجازات'], ['early','⏰ أذونات الانصراف'], ['errands','🚗 المأموريات']);
+  if(can('hr.attendance')) views.push(['attendance','🕒 الحضور والانصراف']);
   if(can('hr.payroll')) views.push(['payroll','💵 الرواتب']);
   if(!views.some(v=>v[0]===hrView)) hrView = views[0][0];
   const tabsBar = `
@@ -8506,6 +9288,7 @@ function renderHR(){
   const body = hrView==='leaves' ? renderLeaveRequests()
     : hrView==='early' ? renderPermits('early')
     : hrView==='errands' ? renderPermits('errand')
+    : hrView==='attendance' ? renderAttendance()
     : hrView==='payroll' ? renderPayroll()
     : renderEmployees();
   return tabsBar + body;
@@ -8579,6 +9362,22 @@ function employeeFormHTML(e){
       <div class="form-row"><label class="f-label">رصيد الإجازات الدورية (سنوي)</label><input class="f" id="emLeaveR" type="number" min="0" value="${e.leaveRoutine!==undefined?e.leaveRoutine:21}"></div>
       <div class="form-row"><label class="f-label">رصيد الإجازات الطارئة (سنوي)</label><input class="f" id="emLeaveE" type="number" min="0" value="${e.leaveEmergency!==undefined?e.leaveEmergency:7}"></div>
     </div>
+    <div class="dsec">🕒 الحضور والبصمة (الملاحظة 68)</div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">رقم الموظف في جهاز البصمة</label><input class="f" id="emFpId" value="${e.fpId||''}" placeholder="زي ما هو في ملف البصمة"></div>
+      <div class="form-row"><label class="f-label">نوع الحضور</label>
+        <select class="f" id="emAttMode" onchange="(document.getElementById('emFixedBox')||{}).style.display=this.value==='fixed'?'block':'none'">
+          <option value="flexible" ${e.attMode!=='fixed'?'selected':''}>مرن (الافتراضي — للفنيين والصنايعية)</option>
+          <option value="fixed" ${e.attMode==='fixed'?'selected':''}>مواعيد ثابتة</option>
+        </select></div>
+    </div>
+    <div id="emFixedBox" style="display:${e.attMode==='fixed'?'block':'none'}">
+      <div class="grid g3">
+        <div class="form-row"><label class="f-label">بداية الشيفت</label><input class="f" id="emShiftStart" type="time" value="${e.shiftStart||'09:00'}"></div>
+        <div class="form-row"><label class="f-label">نهاية الشيفت</label><input class="f" id="emShiftEnd" type="time" value="${e.shiftEnd||'17:00'}"></div>
+        <div class="form-row"><label class="f-label">سماح التأخير (دقيقة)</label><input class="f" id="emGrace" type="number" min="0" max="120" value="${e.graceMin!=null?e.graceMin:15}"></div>
+      </div>
+    </div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="emNotes" value="${e.notes||''}"></div>`;
 }
 function readEmployeeForm(){
@@ -8598,6 +9397,11 @@ function readEmployeeForm(){
     status: (document.getElementById('emStatus')||{}).value || 'نشط',
     leaveRoutine: parseFloat(document.getElementById('emLeaveR').value)||0,
     leaveEmergency: parseFloat(document.getElementById('emLeaveE').value)||0,
+    fpId: ((document.getElementById('emFpId')||{}).value||'').trim(),
+    attMode: (document.getElementById('emAttMode')||{}).value || 'flexible',
+    shiftStart: (document.getElementById('emShiftStart')||{}).value || '09:00',
+    shiftEnd: (document.getElementById('emShiftEnd')||{}).value || '17:00',
+    graceMin: parseFloat((document.getElementById('emGrace')||{}).value)||0,
     notes: document.getElementById('emNotes').value.trim()
   };
 }
@@ -9833,11 +10637,13 @@ const NOTIF_SEVERITY = {
   user_toggle:'medium', settings_change:'medium', tax_change:'high', payment_method:'medium',
   dup_customer:'medium', dup_item:'medium',
   devtools_open:'high',   // الملاحظة 67: فتح أدوات المطوّر
+  att_import:'low', att_edit:'medium',   // الملاحظة 68: الحضور
   // الملاحظة 64: سيارات العملاء
   car_delete:'critical', car_archive:'medium', car_restore:'low',
   // الملاحظة 63: فواتير الشراء
   purchase_edit:'medium', purchase_approved_edit:'high', purchase_closed_edit:'critical',
   purchase_reopen:'high', purchase_approve:'low', purchase_create:'low',
+  supplier_refund:'high', supplier_pay_specific:'medium', supplier_pay:'low', supplier_return:'medium',   // الملاحظة 69/70
   // 🔵 معلومة
   custody_open:'low', job_reopen:'low', count_approve:'low', leave_decision:'low', early_leave_decision:'low',
 };
