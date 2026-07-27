@@ -197,6 +197,20 @@ label.f-label{font-size:12.5px;color:var(--muted);margin-bottom:6px;display:bloc
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px;}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:min(560px,100%);max-height:88vh;overflow-y:auto;padding:26px;}
 .modal-wide{width:min(920px,100%);padding:20px;}
+/* الملاحظة 72: نافذة عريضة جداً للشاشات التفصيلية (كشف حساب المورد) — بتستغل عرض الشاشة كله */
+.modal-xwide{width:min(1600px,98vw);max-height:94vh;padding:18px;}
+/* شبكة معلومات مضغوطة: خانات واضحة الحدود، عمود لكل معلومة */
+.igrid{display:grid;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:10px;overflow:hidden;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));}
+.icell{background:var(--surface);padding:7px 10px;min-width:0;}
+.icell .ik{display:block;color:var(--muted);font-size:10.5px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.icell .iv{display:block;font-weight:700;font-size:12.5px;line-height:1.45;overflow-wrap:anywhere;}
+/* جدول مضغوط للشاشات التفصيلية — الملاحظة 73: خط عريض وأوضح للقراءة المريحة */
+.tcompact{width:100%;font-size:12.5px;border-collapse:collapse;}
+.tcompact th,.tcompact td{padding:4px 7px;border-bottom:1px solid var(--border);font-weight:700;}
+.tcompact th{position:sticky;top:0;background:var(--surface-2);z-index:1;font-size:12px;font-weight:800;white-space:nowrap;}
+/* الأعمدة الثانوية (البيان/الملاحظات) تفضل أخف شوية عشان الأرقام تبان أكتر */
+.tcompact td.muted{font-weight:600;}
 .modal h3{margin:0 0 18px;font-size:17px;}
 .modal-close{position:absolute;left:22px;top:22px;background:var(--surface-2);width:30px;height:30px;border-radius:50%;color:var(--muted);}
 .toast-wrap{position:fixed;bottom:22px;left:22px;z-index:200;display:flex;flex-direction:column;gap:8px;}
@@ -420,7 +434,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v84';
+const APP_VERSION = 'v88';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1178,13 +1192,14 @@ function toast(msg, isErr){
 }
 
 /* ======================= MODAL ======================= */
-/* wide=true بيوسّع النافذة (للشاشات اللي بتعرض بيانات في شبكة أفقية) — الافتراضي زي ما هو */
+/* wide: true = نافذة عريضة (920px) · 'xwide' = عريضة جداً (1600px للشاشات التفصيلية) — الافتراضي زي ما هو */
 function openModal(html, wide){
   closeModal();
   const ov = document.createElement('div');
   ov.className='overlay'; ov.id='modalOverlay';
   ov.onclick=(e)=>{ if(e.target===ov) closeModal(); };
-  ov.innerHTML = `<div class="modal${wide?' modal-wide':''}" style="position:relative">
+  const cls = wide==='xwide' ? ' modal-xwide' : (wide ? ' modal-wide' : '');
+  ov.innerHTML = `<div class="modal${cls}" style="position:relative">
     <button class="modal-close" onclick="closeModal()">✕</button>${html}</div>`;
   document.body.appendChild(ov);
 }
@@ -5800,7 +5815,8 @@ async function saveEditSupplier(supplierId){
   closeModal(); toast('تم حفظ بيانات المورد'); openSupplierDetail(supplierId); refreshContent();
 }
 function openSupplierDetail(supplierId){
-  openModal(supplierDetailHTML(supplierId));
+  // الملاحظة 72: نافذة عريضة جداً — كل التفاصيل في شاشة واحدة بدون لف يمين وشمال
+  openModal(supplierDetailHTML(supplierId), 'xwide');
 }
 function supplierDetailHTML(supplierId){
   const sup = DB.suppliers.find(s=>s.id===supplierId);
@@ -5813,77 +5829,97 @@ function supplierDetailHTML(supplierId){
   const avgDays = supAvgPaymentDays(supplierId);
   const stmt = supplierStatement(supplierId);
   return `
-  <h3>كشف حساب المورد — ${sup.name}${sup.archived?' <span class="muted" style="font-size:12px">🗄️ مؤرشف</span>':''}</h3>
-  <div class="muted" style="font-size:13px;margin-bottom:10px">
-    ${[sup.phone, sup.phone2, sup.contactPerson, sup.area, sup.city].filter(Boolean).join(' · ')||'—'}
-    ${sup.email?'<br>📧 '+sup.email:''}${sup.address?'<br>📍 '+sup.address:''}
-    ${sup.paymentTerms?'<br>🗓️ شروط السداد: '+sup.paymentTerms:''}${sup.creditLimit?' · 💳 حد الائتمان: '+money(sup.creditLimit):''}
-    ${sup.note?'<br>📝 '+sup.note:''}
+  <!-- ============ الملاحظة 72: كشف حساب المورد بالعرض — كل حاجة في شاشة واحدة ============ -->
+  <div class="flex-between" style="margin-bottom:10px;gap:10px;flex-wrap:wrap">
+    <h3 style="margin:0">كشف حساب المورد — ${sup.name}${sup.archived?' <span class="muted" style="font-size:12px">🗄️ مؤرشف</span>':''}</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="openEditSupplierModal('${supplierId}')">✏️ تعديل</button>
+      ${b.liability>0 && can('sup.pay') ? `<button class="btn btn-sm btn-accent" onclick="openSupplierPaymentModal('${supplierId}')">💵 تسديد</button>`:''}
+      ${b.creditBalance>0 && can('sup.refund') ? `<button class="btn btn-sm" onclick="openSupplierRefundModal('${supplierId}')">↩️ استرداد (${money(b.creditBalance)})</button>`:''}
+      <button class="btn btn-sm" onclick="openSupplierReturnModal('${supplierId}')">${ICONS.plus} مرتجع</button>
+      ${isOwnerSession()?`<button class="btn btn-sm" onclick="openSupplierAdjustModal('${supplierId}')">⚖️ تسوية</button>`:''}
+    </div>
   </div>
-  ${sup.creditLimit && b.liability > sup.creditLimit ? `<div class="card" style="border:1px solid var(--danger);margin-bottom:10px;font-size:12.5px;color:var(--danger);font-weight:700">⚠️ المديونية علينا (${money(b.liability)}) تعدّت حد الائتمان (${money(sup.creditLimit)})</div>` : ''}
-  <!-- الملاحظة 69: ملخص أفقي مضغوط بدل الكروت الرأسية -->
-  <div style="overflow-x:auto;margin-bottom:12px">
-    <table style="white-space:nowrap;font-size:12.5px"><thead><tr>
-      <th>افتتاحي</th><th>المشتريات</th><th>المدفوع</th><th>المرتجعات</th><th>الخصومات</th>
-      <th style="color:var(--danger)">علينا للمورد</th><th style="color:var(--accent)">دائن لنا</th><th>آخر شراء</th><th>آخر سداد</th><th>متوسط السداد</th>
-    </tr></thead><tbody><tr>
-      <td>${money(b.opening)}</td><td>${money(b.totalPurchased)}</td><td>${money(b.totalPaid)}</td>
-      <td>${money(b.totalReturns)}</td><td>${money(b.totalDiscounts)}${b.discountsCount?' ('+b.discountsCount+')':''}</td>
-      <td style="font-weight:800;color:${b.liability>0?'var(--danger)':'inherit'}">${money(b.liability)}</td>
-      <td style="font-weight:800;color:${b.creditBalance>0?'var(--accent)':'inherit'}">${money(b.creditBalance)}</td>
-      <td class="muted">${lastPurchase?fmtDate(lastPurchase.date):'—'}</td>
-      <td class="muted">${lastPayment?fmtDate(lastPayment.date):'—'}</td>
-      <td class="muted">${avgDays!==null?avgDays+' يوم':'—'}</td>
-    </tr></tbody></table>
+  ${sup.creditLimit && b.liability > sup.creditLimit ? `<div class="card" style="border:1px solid var(--danger);margin-bottom:8px;padding:6px 10px;font-size:12px;color:var(--danger);font-weight:700">⚠️ المديونية علينا (${money(b.liability)}) تعدّت حد الائتمان (${money(sup.creditLimit)})</div>` : ''}
+
+  <!-- الأرصدة: خانات واضحة الحدود، كلها ظاهرة بدون لف -->
+  <div class="dsec" style="margin-top:0">💰 الأرصدة والملخص المالي</div>
+  <div class="igrid" style="margin-bottom:10px">
+    <div class="icell"><span class="ik">الرصيد الافتتاحي</span><span class="iv">${money(b.opening)}</span></div>
+    <div class="icell"><span class="ik">إجمالي المشتريات (${b.count})</span><span class="iv">${money(b.totalPurchased)}</span></div>
+    <div class="icell"><span class="ik">إجمالي المدفوع</span><span class="iv">${money(b.totalPaid)}</span></div>
+    <div class="icell"><span class="ik">المرتجعات (${b.returnsCount})</span><span class="iv">${money(b.totalReturns)}</span></div>
+    <div class="icell"><span class="ik">الخصومات${b.discountsCount?' ('+b.discountsCount+')':''}</span><span class="iv">${money(b.totalDiscounts)}</span></div>
+    ${b.totalAdjust?`<div class="icell"><span class="ik">التسويات</span><span class="iv">${(b.totalAdjust>0?'+':'')+money(b.totalAdjust)}</span></div>`:''}
+    ${b.totalRefunds?`<div class="icell"><span class="ik">المسترد</span><span class="iv">${money(b.totalRefunds)}</span></div>`:''}
+    <div class="icell" style="background:${b.liability>0?'rgba(220,50,50,.07)':'var(--surface)'}">
+      <span class="ik">🔴 علينا للمورد</span><span class="iv" style="font-size:14px;color:${b.liability>0?'var(--danger)':'inherit'}">${money(b.liability)}</span></div>
+    <div class="icell" style="background:${b.creditBalance>0?'rgba(30,150,90,.07)':'var(--surface)'}">
+      <span class="ik">🟢 دائن لنا عنده</span><span class="iv" style="font-size:14px;color:${b.creditBalance>0?'var(--accent)':'inherit'}">${money(b.creditBalance)}</span></div>
+    <div class="icell"><span class="ik">آخر شراء</span><span class="iv">${lastPurchase?fmtDate(lastPurchase.date):'—'}</span></div>
+    <div class="icell"><span class="ik">آخر سداد</span><span class="iv">${lastPayment?fmtDate(lastPayment.date):'—'}</span></div>
+    <div class="icell"><span class="ik">متوسط فترة السداد</span><span class="iv">${avgDays!==null?avgDays+' يوم':'—'}</span></div>
   </div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-    <button class="btn btn-sm" onclick="openEditSupplierModal('${supplierId}')">✏️ تعديل بيانات المورد</button>
-    ${b.liability>0 && can('sup.pay') ? `<button class="btn btn-sm btn-accent" onclick="openSupplierPaymentModal('${supplierId}')">💵 تسديد للمورد</button>`:''}
-    ${b.creditBalance>0 && can('sup.refund') ? `<button class="btn btn-sm" onclick="openSupplierRefundModal('${supplierId}')">↩️ استرداد رصيد (${money(b.creditBalance)})</button>`:''}
-    <button class="btn btn-sm" onclick="openSupplierReturnModal('${supplierId}')">${ICONS.plus} مرتجع</button>
-    ${isOwnerSession()?`<button class="btn btn-sm" onclick="openSupplierAdjustModal('${supplierId}')">⚖️ تسوية</button>`:''}
+
+  <!-- بيانات المورد: خانات منفصلة واضحة بدل سطر متلزق -->
+  <div class="dsec">🏭 بيانات المورد</div>
+  <div class="igrid" style="margin-bottom:10px">
+    <div class="icell"><span class="ik">تليفون</span><span class="iv" style="direction:ltr;text-align:right">${sup.phone||'—'}</span></div>
+    <div class="icell"><span class="ik">تليفون إضافي</span><span class="iv" style="direction:ltr;text-align:right">${sup.phone2||'—'}</span></div>
+    <div class="icell"><span class="ik">مسؤول التواصل</span><span class="iv">${sup.contactPerson||'—'}</span></div>
+    <div class="icell"><span class="ik">المنطقة / المدينة</span><span class="iv">${[sup.area,sup.city].filter(Boolean).join(' — ')||'—'}</span></div>
+    <div class="icell"><span class="ik">الإيميل</span><span class="iv" style="direction:ltr;text-align:right">${sup.email||'—'}</span></div>
+    <div class="icell"><span class="ik">شروط السداد</span><span class="iv">${sup.paymentTerms||'—'}</span></div>
+    <div class="icell"><span class="ik">حد الائتمان</span><span class="iv">${sup.creditLimit?money(sup.creditLimit):'—'}</span></div>
+    <div class="icell"><span class="ik">العنوان</span><span class="iv">${sup.address||'—'}</span></div>
+    ${sup.note?`<div class="icell" style="grid-column:1/-1"><span class="ik">📝 ملاحظات</span><span class="iv" style="font-weight:500">${sup.note}</span></div>`:''}
   </div>
-  <label class="f-label">📄 كشف الحساب الموحّد (${stmt.length} حركة)</label>
-  <div class="card" style="margin:6px 0 14px;max-height:30vh;overflow:auto;padding:8px">
-    <table style="white-space:nowrap;font-size:12px"><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th style="color:var(--danger)">مدين (علينا)</th><th style="color:var(--accent)">دائن (لنا)</th><th>الرصيد</th></tr></thead>
+
+  <!-- كشف الحساب + الفواتير جنب بعض (عمودين على الشاشات الكبيرة) -->
+  <div class="grid g2" style="gap:12px;align-items:start">
+  <div style="min-width:0">
+  <div class="dsec">📄 كشف الحساب الموحّد (${stmt.length} حركة)</div>
+  <div class="card" style="margin:0;max-height:41vh;overflow:auto;padding:6px">
+    <table class="tcompact"><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th style="color:var(--danger)">مدين</th><th style="color:var(--accent)">دائن</th><th>الرصيد</th></tr></thead>
     <tbody>${stmt.length? stmt.map(r=>`<tr>
       <td style="white-space:nowrap">${fmtDate(r.date)}</td>
       <td>${r.type}</td>
-      <td class="muted" style="font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis">${r.desc||'—'}</td>
+      <td class="muted" style="max-width:240px;overflow:hidden;text-overflow:ellipsis">${r.desc||'—'}</td>
       <td style="color:var(--danger)">${r.amount>0?money(r.amount):''}</td>
       <td style="color:var(--accent)">${r.amount<0?money(-r.amount):''}</td>
       <td style="font-weight:800;color:${r.running<0?'var(--accent)':''}">${money(Math.abs(r.running))}${r.running<0?' <span style="font-size:9px">دائن</span>':''}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">مفيش حركات</td></tr>'}
     </tbody></table>
   </div>
-  <div class="flex-between" style="margin-bottom:8px">
-    <label class="f-label" style="margin:0">فواتير الشراء (اضغط على الفاتورة لعرض بنودها)</label>
-    <button class="btn btn-sm" onclick="openSupplierReturnModal('${supplierId}')">${ICONS.plus} تسجيل مرتجع</button>
   </div>
-  <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+  <div style="min-width:0">
+  <div class="dsec" style="margin-top:0">🧾 فواتير الشراء (${purchases.length}) — اضغط الفاتورة لبنودها</div>
+  <div class="card" style="margin:0;max-height:41vh;overflow:auto;padding:6px">
   ${purchases.length? purchases.map(p=>{
     const paid = (p.payments||[]).reduce((s,x)=>s+x.amount,0);
     const st = paid<=0?['غير مدفوعة','tag-unpaid']:(paid<p.total?['مدفوعة جزئياً','tag-partial']:['مدفوعة','tag-paid']);
+    const out = purchaseOutstanding(p);
     return `
-    <div class="card" style="padding:12px 14px">
-      <div class="flex-between" style="cursor:pointer" onclick="const d=document.getElementById('pu_${p.id}'); d.style.display=d.style.display==='none'?'block':'none';">
-        <div>
-          <span style="font-weight:800">فاتورة شراء #${p.purchaseNo}</span>
-          <span class="muted" style="font-size:12px;margin-right:10px">${fmtDate(p.date)}</span>
-          ${p.paymentMethod?`<span class="muted" style="font-size:12px;margin-right:10px">${p.paymentMethod}</span>`:''}
+    <div style="border-bottom:1px solid var(--border);padding:6px 4px">
+      <div class="flex-between" style="cursor:pointer;gap:6px;flex-wrap:wrap" onclick="const d=document.getElementById('pu_${p.id}'); d.style.display=d.style.display==='none'?'block':'none';">
+        <div style="font-size:12px">
+          <b>#${p.purchaseNo}</b>
+          <span class="muted" style="margin-right:6px">${fmtDate(p.date)}</span>
+          ${p.paymentMethod?`<span class="muted" style="margin-right:6px">${p.paymentMethod}</span>`:''}
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11px">
           ${purStatusTag(p)}
-          <span style="font-weight:800">${money(p.total)}</span>
-          <span class="tag ${st[1]}">${st[0]}</span>
+          <b style="font-size:12px">${money(p.total)}</b>
+          ${out>0?`<span class="muted">متبقي ${money(out)}</span>`:''}
+          <span class="tag ${st[1]}" style="font-size:9px">${st[0]}</span>
         </div>
       </div>
-      <div id="pu_${p.id}" style="display:none;margin-top:10px;border-top:1px dashed var(--border);padding-top:10px">
-        <table><thead><tr><th>الصنف</th><th>الكمية</th><th>سعر الشراء</th><th>الإجمالي</th></tr></thead>
+      <div id="pu_${p.id}" style="display:none;margin-top:6px;border-top:1px dashed var(--border);padding-top:6px">
+        <table class="tcompact"><thead><tr><th>الصنف</th><th>الكمية</th><th>سعر الشراء</th><th>الإجمالي</th></tr></thead>
         <tbody>${p.items.map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitCost)}</td><td>${money(it.qty*it.unitCost)}</td></tr>`).join('')}</tbody></table>
-        ${(p.payments||[]).length?`<div class="muted" style="font-size:12px;margin-top:8px">الدفعات: ${p.payments.map(x=>money(x.amount)+' ('+fmtDate(x.date)+')').join(' · ')}</div>`:''}
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+        ${(p.payments||[]).length?`<div class="muted" style="font-size:11px;margin-top:5px">الدفعات: ${p.payments.map(x=>money(x.amount)+' ('+fmtDate(x.date)+')').join(' · ')}</div>`:''}
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
           ${purStatus(p)==='pending' && (can('pur.review')||can('pur.fin_approve')||can('pur.approve')||can('pur.pay_method'))?`<button class="btn btn-sm btn-accent" onclick="openPurApprove('${p.id}')">🧾 مراجعة واعتماد</button>`:''}
-          ${canEditPurchase(p).ok?`<button class="btn btn-sm" onclick="openEditPurchase('${p.id}')">✏️ تعديل الكميات/الأسعار</button>`:''}
+          ${canEditPurchase(p).ok?`<button class="btn btn-sm" onclick="openEditPurchase('${p.id}')">✏️ الكميات/الأسعار</button>`:''}
           ${purStatus(p)==='approved' && can('pur.edit')?`<button class="btn btn-sm" onclick="reopenPurchase('${p.id}')">🔄 إعادة فتح</button>`:''}
           <button class="btn btn-sm" onclick="openPurchaseHistory('${p.id}')">🕘 السجل</button>
         </div>
@@ -5891,15 +5927,18 @@ function supplierDetailHTML(supplierId){
     </div>`;
   }).join('') : `<div class="empty">لسه مفيش فواتير شراء من المورد ده</div>`}
   </div>
+  </div>
+  </div>
   ${returns.length ? `
-  <label class="f-label" style="margin-top:16px;display:block">المرتجعات (${money(b.totalReturns)})</label>
-  <div style="overflow-x:auto"><table style="margin-top:6px;white-space:nowrap;font-size:12px"><thead><tr><th>التاريخ</th><th>الصنف</th><th>القيمة</th><th>الفاتورة</th><th>الأثر</th><th>ملاحظة</th></tr></thead>
+  <div class="dsec">↩️ المرتجعات (${returns.length} — ${money(b.totalReturns)})</div>
+  <div class="card" style="margin:0 0 8px;max-height:20vh;overflow:auto;padding:6px">
+  <table class="tcompact"><thead><tr><th>التاريخ</th><th>الصنف</th><th>القيمة</th><th>الفاتورة</th><th>الأثر المالي</th><th>ملاحظة</th></tr></thead>
   <tbody>
   ${returns.map(r=>{ const inv=r.invoiceId?DB.purchases.find(x=>x.id===r.invoiceId):null;
     const eff = (r.creditAmount>0)
       ? '<span class="tag tag-paid" style="font-size:9px">رصيد دائن '+money(r.creditAmount)+'</span>'+(r.payableReduction>0?' + خصم '+money(r.payableReduction):'')
       : (r.payableReduction>0?'<span class="muted">خصم من المديونية '+money(r.payableReduction)+'</span>':'<span class="muted">—</span>');
-    return `<tr><td>${fmtDate(r.date)}</td><td>${r.name} ×${r.qty}</td><td>${money(r.total)}</td><td class="muted">${inv?'#'+inv.purchaseNo:'—'}</td><td>${eff}</td><td class="muted">${r.note||'—'}</td></tr>`;
+    return `<tr><td style="white-space:nowrap">${fmtDate(r.date)}</td><td>${r.name} ×${r.qty}</td><td>${money(r.total)}</td><td class="muted">${inv?'#'+inv.purchaseNo:'—'}</td><td>${eff}</td><td class="muted">${r.note||'—'}</td></tr>`;
   }).join('')}
   </tbody></table></div>` : ''}
   ${isOwnerSession() ? (sup.archived
@@ -10672,19 +10711,39 @@ function notify(type, action, opts){
   });
 }
 /* فتح السجل المرتبط بالإشعار مباشرة (البند: Direct link to open the related record) */
+/* ============ الملاحظة 74: فتح السجل المرتبط بالإشعار — توجيه ذكي حسب نوع العملية ============
+   إصلاح: نوعي 'purchase' و'employee' ماكانوش مدعومين خالص، فكل إشعارات فواتير
+   الشراء (إنشاء/اعتماد/تعديل سعر/تعديل كمية/إعادة فتح) كانت بتطلّع «السجل المرتبط مش متاح».
+   دلوقتي: إشعارات التعديل بتفتح **سجل الفاتورة** (مين عدّل وإيه — قبل/بعد والسبب)،
+   وإشعارات الإنشاء/الاعتماد بتفتح **الفاتورة نفسها ببنودها** (وفيها زرار السجل).
+   وبدل رسالة الرفض، النظام بيوجّه للشاشة المناسبة بدل ما يسيب المستخدم في اللاشيء. */
+const NOTIF_EDIT_TYPES = new Set(['purchase_edit','purchase_approved_edit','purchase_closed_edit','purchase_reopen',
+  'invoice_edit','invoice_paid_edit','job_item_edit','att_edit']);
 function openNotifRef(notifId){
   const n = DB.notifications.find(x=>x.id===notifId);
   if(!n){ toast('الإشعار غير موجود', true); return; }
-  const t = n.refType, id = n.refId;
+  const t = n.refType, id = n.refId, no = n.refNo;
+  const isEdit = NOTIF_EDIT_TYPES.has(n.type);
   try{
     if(t==='job'){
-      const j = id ? DB.jobs.find(x=>x.id===id) : DB.jobs.find(x=>x.jobNo===n.refNo);
+      const j = (id && DB.jobs.find(x=>x.id===id)) || DB.jobs.find(x=>String(x.jobNo)===String(no));
       if(j) return openWorkOrderReport(j.id);
+      return goTab('jobs');
     }
     if(t==='invoice'){
-      const iv = id ? DB.invoices.find(x=>x.id===id) : DB.invoices.find(x=>x.invNo===n.refNo);
+      const iv = (id && DB.invoices.find(x=>x.id===id)) || DB.invoices.find(x=>String(x.invNo)===String(no));
       if(iv) return can('bill.history') ? openInvoiceHistory(iv.id) : goTab('invoices');
       return goTab('invoices');
+    }
+    // فواتير شراء الموردين (الإصلاح الأساسي)
+    if(t==='purchase'){
+      const pu = (id && DB.purchases.find(x=>x.id===id)) || DB.purchases.find(x=>String(x.purchaseNo)===String(no));
+      if(pu) return isEdit ? openPurchaseHistory(pu.id) : openPurchaseView(pu.id);
+      // الفاتورة اتشالت؟ نفتح حساب المورد لو عارفينه، وإلا شاشة الموردين
+      const supFromNotif = DB.suppliers.find(s=>String(n.action||'').includes(s.name));
+      if(supFromNotif && canScreen('suppliers')) { toast('الفاتورة مش موجودة — فتحنا حساب المورد', true); return openSupplierDetail(supFromNotif.id); }
+      toast('فاتورة الشراء دي مش موجودة (اتشالت) — دي شاشة الموردين', true);
+      return goTab('suppliers');
     }
     if(t==='inventory'){
       const p = id ? DB.inventory.find(x=>x.id===id) : null;
@@ -10694,11 +10753,20 @@ function openNotifRef(notifId){
     if(t==='move'){ const m = id?DB.stockMoves.find(x=>x.id===id):null; if(m) return openMoveDetails(m.id); return goTab('stockmoves'); }
     if(t==='customer'){ const c = id?DB.customers.find(x=>x.id===id):null; if(c) return openCustomerHistory(c.id); return goTab('customers'); }
     if(t==='supplier'){ const s = id?DB.suppliers.find(x=>x.id===id):null; if(s && canScreen('suppliers')) return openSupplierDetail(s.id); return goTab('suppliers'); }
+    // ملف الموظف (إجازات/أذونات/جزاءات)
+    if(t==='employee'){
+      const e = id ? DB.employees.find(x=>x.id===id) : null;
+      if(e && canScreen('hr')) return openEmployeeDetail(e.id);
+      return goTab('hr');
+    }
     if(t==='expense') return goTab('expenses');
     if(t==='staff' || t==='settings') return goTab('settings');
     if(t==='hr') return goTab('hr');
   }catch(e){ /* الفتح ماينفعش يوقّع الشاشة */ }
-  toast('السجل المرتبط مش متاح', true);
+  // مفيش نوع معروف — نوجّه لأقرب شاشة منطقية بدل رسالة رفض
+  const fallback = { financial:'invoices', inventory:'inventory', jobs:'jobs', system:'activitylog' }[n.category] || 'dashboard';
+  toast('مفيش سجل مربوط بالإشعار ده — دي أقرب شاشة ليه', true);
+  goTab(canScreen(fallback) ? fallback : firstVisibleTab());
 }
 function pushNotif(opts){
   try{
@@ -10881,15 +10949,38 @@ function renderNotifications(){
     </div></div>
   <div class="card">
     <table><thead><tr><th>الأولوية</th><th>القسم</th><th>الإجراء</th><th>المستخدم</th><th>الوقت</th><th>الحالة</th><th></th></tr></thead>
-    <tbody>${list.length? list.slice(0,120).map(n=>`<tr style="${n.seen?'':'background:rgba(242,212,16,.06)'}">
+    <tbody>${list.length? list.slice(0,120).map(n=>{
+      /* ============ الملاحظة 75: الإجراءات تحت كل إشعار مباشرة (واجهة فقط) ============
+         اتشال زرار «تفاصيل» — و«تعليق / تمت المراجعة / متابعة» اتنقلوا من نافذة
+         التفاصيل لتحت الإشعار نفسه. الوظائف والصلاحيات والسجل كلهم زي ما هم. */
+      const canAct = canScreen('notifications');
+      const cmts = n.comments||[];
+      const rowBg = n.seen?'':'background:rgba(242,212,16,.06)';
+      return `<tr style="${rowBg}">
       <td>${priorityTag(n.priority)}</td>
       <td class="muted">${NOTIF_CAT_LABEL[n.category]||n.category}</td>
       <td>${n.action}${n.amount?` <b>${money(n.amount)}</b>`:''}${n.refNo?` <span class="muted" style="font-size:11px">#${n.refNo}</span>`:''}</td>
       <td>${n.userName}<div class="muted" style="font-size:10.5px">${n.position||''}</div></td>
       <td style="white-space:nowrap;font-size:12px">${fmtDateTime(n.date)}</td>
       <td>${notifStatusTag(n.status)}</td>
-      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openNotifDetail('${n.id}')">تفاصيل</button>${(n.refType&&(n.refId||n.refNo))?` <button class="btn btn-sm btn-accent" onclick="openNotifRef('${n.id}')" title="افتح السجل المرتبط">↗ فتح السجل</button>`:''}</td>
-    </tr>`).join('') : `<tr><td colspan="7" class="empty">مفيش إشعارات — كله تمام 👏</td></tr>`}
+      <td style="white-space:nowrap">${(n.refType&&(n.refId||n.refNo))?`<button class="btn btn-sm btn-accent" onclick="openNotifRef('${n.id}')" title="افتح السجل المرتبط">↗ فتح السجل</button>`:''}</td>
+    </tr>
+    <tr style="${rowBg}"><td colspan="7" style="padding-top:0;border-bottom:2px solid var(--border)">
+      ${cmts.length?`<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:7px">
+        ${cmts.map(c=>`<div style="background:var(--surface-2);padding:5px 9px;border-radius:7px;font-size:12px">💬 ${c.text}
+          <span class="muted" style="font-size:10.5px">— ${c.by} · ${fmtDateTime(c.at)}</span></div>`).join('')}
+      </div>`:''}
+      ${canAct?`
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <input class="f" id="notifComment_${n.id}" placeholder="أضف تعليق / ملاحظة متابعة..."
+          style="flex:1;min-width:180px;padding:6px 10px;font-size:12.5px;margin:0"
+          onkeydown="if(event.key==='Enter')addNotifComment('${n.id}')">
+        <button class="btn btn-sm" onclick="addNotifComment('${n.id}')">💬 تعليق</button>
+        <button class="btn btn-sm btn-accent" onclick="setNotifStatus('${n.id}','approved')">✔ تمت المراجعة</button>
+        <button class="btn btn-sm btn-danger" onclick="setNotifStatus('${n.id}','rejected')">⚠ متابعة</button>
+      </div>`:''}
+    </td></tr>`;
+    }).join('') : `<tr><td colspan="7" class="empty">مفيش إشعارات — كله تمام 👏</td></tr>`}
     </tbody></table>
   </div>`;
 }
@@ -10924,12 +11015,16 @@ function openNotifDetail(id){
 async function addNotifComment(id){
   if(!(canScreen('notifications'))){ toast('مالكش صلاحية على مركز الإشعارات', true); return; }   /* حارس م65 */
   const n = DB.notifications.find(x=>x.id===id); if(!n) return;
-  const el = document.getElementById('notifComment'); const t = (el?el.value:'').trim();
+  // الملاحظة 75: الحقل بقى تحت كل إشعار (بمعرّف خاص بيه) — والقديم للتوافق
+  const el = document.getElementById('notifComment_'+id) || document.getElementById('notifComment');
+  const t = (el?el.value:'').trim();
   if(!t){ toast('اكتب التعليق', true); return; }
   if(!n.comments) n.comments = [];
   n.comments.push({ text:t, by:actorName(), at:new Date().toISOString() });
+  if(el) el.value = '';
   await saveKey('notifications');
-  toast('تم إضافة التعليق'); openNotifDetail(id);
+  toast('تم إضافة التعليق');
+  if(document.getElementById('modalOverlay')) openNotifDetail(id); else refreshContent();
 }
 async function setNotifStatus(id, status){
   if(!(canScreen('notifications'))){ toast('مالكش صلاحية على مركز الإشعارات', true); return; }   /* حارس م65 */
