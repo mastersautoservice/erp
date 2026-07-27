@@ -299,7 +299,7 @@ function deviceActivationHTML(blocked){
     <p class="login-title">🔐 تفعيل الجهاز</p>
     <p class="login-sub" style="line-height:2">
       ${blocked
-        ? 'الجهاز ده لسه <b>مش مفعّل</b>، وقاعدة البيانات محمية — لازم تفعّله مرة واحدة عشان يشتغل.'
+        ? 'الجهاز ده <b>مش مفعّل</b>، وقاعدة البيانات محمية — عشان كده مش بيقرا أي بيانات، وبيقول «البيانات مش محمّلة» أو «الرقم السري غلط».<br><b>فعّله مرة واحدة من هنا والجهاز يرجع يشتغل عادي.</b>'
         : 'فعّل الجهاز ده مرة واحدة بحساب المركز عشان يفضل شغال بأمان.'}
       <br><span class="muted" style="font-size:12.5px">بتتكتب <b>مرة واحدة بس</b> على الجهاز ده — وبعدها الجهاز فاكرها ومش هيسألك تاني.
       دي <b>مش</b> بيانات دخول الموظفين، دي بيانات المركز اللي عند صاحب المركز.</span>
@@ -311,7 +311,8 @@ function deviceActivationHTML(blocked){
         onkeydown="if(event.key==='Enter')activateDevice()"></div>
     <div id="devErr" style="color:var(--danger);font-size:12.5px;min-height:18px;margin-bottom:8px"></div>
     <button class="btn btn-accent" id="devBtn" style="width:100%" onclick="activateDevice()">تفعيل الجهاز</button>
-    ${blocked?'':`<button class="btn" style="width:100%;margin-top:8px" onclick="skipDeviceActivation()">دخول من غير تفعيل (مؤقت)</button>`}
+    ${blocked?'':`<button class="btn" style="width:100%;margin-top:8px" onclick="skipDeviceActivation()">دخول من غير تفعيل (مؤقت)</button>
+    <p class="muted" style="font-size:11.5px;margin:6px 0 0;line-height:1.7">التخطي مؤقت بجد — أول ما القاعدة تمنع القراءة، الجهاز هيرجّعك لشاشة التفعيل دي تاني.</p>`}
   </div></div>`;
 }
 async function activateDevice(){
@@ -434,7 +435,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v89';
+const APP_VERSION = 'v90';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -919,6 +920,12 @@ function keyDefault(k){
   return [];
 }
 function seedDefaults(){
+  /* ⚠️ م77: ممنوع نزرع أي افتراضيات لو القراءة من القاعدة مرفوضة (جهاز مش مفعّل).
+     القاعدة بترجع فاضية بدون رسالة خطأ، فالسيستم كان بيفتكر إن المركز مالوش
+     مخازن ولا حسابات ولا بنود مصروفات — ويحاول يزرع مخزن رئيسي و4 حسابات
+     مالية وكل بنود المصروفات **فوق** اللي موجود فعلاً. لولا إن الحماية رفضت
+     الكتابة كان المركز صحي على حسابات مالية مكررة. */
+  if(window._readBlocked) return;
   let dirty = [];
   if(DB.warehouses.length===0){ DB.warehouses.push({id:'wh_main', name:'المخزن الرئيسي'}); dirty.push('warehouses'); }
   if(DB.finAccounts.length===0){
@@ -941,7 +948,13 @@ async function loadAllData(){
   // تحميل القاعدة كلها بطلب واحد (دالة load_all في القاعدة)
   const { data, error } = await sb.rpc('load_all');
   if(error) throw error;
-  window._firstRun = !(data && data.settings);
+  /* ⚠️ م77: "أول تشغيل" لازم يتحدد بيقين — مش بمجرد إن القاعدة رجعت فاضية.
+     لو الجهاز مش مفعّل، حماية القاعدة (RLS) بترجّع فاضي بدون رسالة خطأ،
+     فالسيستم كان بيفتكر إنها قاعدة جديدة ويكتب فوقها الإعدادات والأرقام
+     السرية الافتراضية! لولا إن الحماية رفضت الكتابة كانت البيانات الحقيقية
+     اتمسحت. دلوقتي: مفيش "أول تشغيل" ولا كتابة افتراضيات إلا لو الجهاز مفعّل. */
+  window._readBlocked = !_deviceAuthed && !(data && data.settings);
+  window._firstRun = _deviceAuthed && !(data && data.settings);
   DATA_KEYS.forEach(k=>{
     DB[k] = (data && data[k]) ? data[k] : keyDefault(k);
     _shadow[k] = _snapshot(k);
@@ -1041,10 +1054,24 @@ async function initApp(){
   }
   try{
     await loadAllData();
+    /* ⚠️ م77 — إصلاح الفخ اللي عطّل جهاز الحسابات:
+       زرار "دخول من غير تفعيل (مؤقت)" كان بيتساب في الجهاز للأبد. بعد ما
+       شدّدنا حماية القاعدة، الجهاز اللي اتخطّى التفعيل بقى بيقرا فاضي بدون
+       أي رسالة خطأ → مفيش موظفين يدخلوا بيهم، والأرقام السرية بترجع
+       للافتراضي → "الرقم السري غلط" و"البيانات مش محمّلة" — و**مفيش أي
+       طريق يوصله لشاشة التفعيل تاني**. يعني الجهاز مقفول من غير مخرج.
+       الحل: لو الجهاز مش مفعّل والقراءة رجعت فاضية، نفرض شاشة التفعيل
+       ونتجاهل التخطي القديم — التخطي بيبقى بلا معنى بعد تشديد الحماية. */
+    if(window._readBlocked){
+      try{ localStorage.removeItem('masters_skip_activation'); }catch(e){}
+      document.getElementById('root').innerHTML = deviceActivationHTML(true);
+      return;
+    }
   }catch(e){
     console.error('initial load failed', e);
     // لو الجهاز مش مفعّل والقاعدة رفضت → دي الحماية شغالة، لازم تفعيل
     if(!_deviceAuthed){
+      try{ localStorage.removeItem('masters_skip_activation'); }catch(e){}
       document.getElementById('root').innerHTML = deviceActivationHTML(true);
       return;
     }
