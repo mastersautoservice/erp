@@ -293,14 +293,13 @@ async function deviceSession(){
   try{ const r = await sb.auth.getSession(); return (r && r.data && r.data.session) ? r.data.session : null; }
   catch(e){ return null; }
 }
-function deviceActivationHTML(blocked){
+function deviceActivationHTML(){   // م78: مفيش حالة "مع تخطي" — الشاشة واحدة ومفيش مخرج غير التفعيل
   return `
   <div class="login-wrap"><div class="login-card" style="text-align:right;max-width:520px">
     <p class="login-title">🔐 تفعيل الجهاز</p>
     <p class="login-sub" style="line-height:2">
-      ${blocked
-        ? 'الجهاز ده <b>مش مفعّل</b>، وقاعدة البيانات محمية — عشان كده مش بيقرا أي بيانات، وبيقول «البيانات مش محمّلة» أو «الرقم السري غلط».<br><b>فعّله مرة واحدة من هنا والجهاز يرجع يشتغل عادي.</b>'
-        : 'فعّل الجهاز ده مرة واحدة بحساب المركز عشان يفضل شغال بأمان.'}
+      الجهاز ده <b>مش مفعّل</b>، وقاعدة البيانات محمية — عشان كده مش بيقرا أي بيانات،
+      وبيقول «البيانات مش محمّلة» أو «الرقم السري غلط».<br><b>فعّله مرة واحدة من هنا والجهاز يرجع يشتغل عادي.</b>
       <br><span class="muted" style="font-size:12.5px">بتتكتب <b>مرة واحدة بس</b> على الجهاز ده — وبعدها الجهاز فاكرها ومش هيسألك تاني.
       دي <b>مش</b> بيانات دخول الموظفين، دي بيانات المركز اللي عند صاحب المركز.</span>
     </p>
@@ -311,8 +310,7 @@ function deviceActivationHTML(blocked){
         onkeydown="if(event.key==='Enter')activateDevice()"></div>
     <div id="devErr" style="color:var(--danger);font-size:12.5px;min-height:18px;margin-bottom:8px"></div>
     <button class="btn btn-accent" id="devBtn" style="width:100%" onclick="activateDevice()">تفعيل الجهاز</button>
-    ${blocked?'':`<button class="btn" style="width:100%;margin-top:8px" onclick="skipDeviceActivation()">دخول من غير تفعيل (مؤقت)</button>
-    <p class="muted" style="font-size:11.5px;margin:6px 0 0;line-height:1.7">التخطي مؤقت بجد — أول ما القاعدة تمنع القراءة، الجهاز هيرجّعك لشاشة التفعيل دي تاني.</p>`}
+    <p class="muted" style="font-size:11.5px;margin:8px 0 0;line-height:1.8">مفيش دخول من غير تفعيل — التفعيل مرة واحدة وخلاص. لو مش معاك بيانات المركز، كلم صاحب المركز.</p>
   </div></div>`;
 }
 async function activateDevice(){
@@ -335,14 +333,20 @@ async function activateDevice(){
     if(btn){ btn.disabled = false; btn.textContent = 'تفعيل الجهاز'; }
   }
 }
-function skipDeviceActivation(){ try{ localStorage.setItem('masters_skip_activation','1'); }catch(e){} location.reload(); }
+/* م78: زرار «دخول من غير تفعيل (مؤقت)» اتشال خالص — هو اللي عطّل جهاز الحسابات.
+   الاسم كان بيقول "مؤقت" بس العلامة كانت تفضل على الجهاز للأبد، وبعد تشديد
+   حماية القاعدة الجهاز المتخطّي بقى مقفول من غير مخرج. دلوقتي: أي جهاز مش
+   مفعّل بيشوف شاشة التفعيل على طول، ومفيش أي طريق يتخطاها.
+   العلامة بتتشال بس — مافيش أي مكان بيسجّلها تاني. */
+const SKIP_FLAG = 'masters_skip_activation';
+function clearSkipFlag(){ try{ localStorage.removeItem(SKIP_FLAG); }catch(e){} }
 /* رجوع لشاشة التفعيل (من تنبيه الرئيسية أو الإعدادات) */
-function promptDeviceActivation(){ try{ localStorage.removeItem('masters_skip_activation'); }catch(e){} location.reload(); }
+function promptDeviceActivation(){ clearSkipFlag(); location.reload(); }
 async function deactivateDevice(){
   if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
   askConfirm('إلغاء تفعيل الجهاز ده؟<br><span class="muted" style="font-size:12px">هيتطلب بيانات دخول المركز تاني عشان يشتغل. استخدمها لو الجهاز اتسرق أو اتباع.</span>', async ()=>{
     try{ await sb.auth.signOut(); }catch(e){}
-    try{ localStorage.removeItem('masters_skip_activation'); }catch(e){}
+    clearSkipFlag();
     location.reload();
   });
 }
@@ -435,7 +439,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v90';
+const APP_VERSION = 'v95';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -474,7 +478,9 @@ const ACTION_GROUPS = [
     ['jobs.print','طباعة وتحميل أمر الشغل'],
     ['jobs.cancel','إلغاء أمر شغل'],
     ['jobs.reopen','إعادة فتح أمر شغل متفوتر'],
-    ['jobs.delete','حذف أمر شغل نهائياً'],
+    /* م82: «حذف أمر شغل نهائياً» اتشال من هنا — كان شيك بوكس مالوش أي تأثير.
+       الحذف النهائي مقفول على صاحب المركز في الكود نفسه (isOwnerSession)،
+       فوجوده في القائمة كان بيوهّم إنك تقدر تديه لموظف وهو مش بيتدي. */
   ]],
   ['العملاء', [
     ['customers.create','إضافة عميل وسيارة'],
@@ -509,7 +515,8 @@ const ACTION_GROUPS = [
   ]],
   ['المشتريات وفواتير الموردين', [
     ['pur.edit','تعديل فاتورة شراء مورد (عام)'],
-    ['pur.approve','اعتماد/إعادة فتح فاتورة الشراء'],
+    ['pur.approve','اعتماد فاتورة الشراء'],
+    ['pur.reopen','إعادة فتح فاتورة شراء معتمدة (لتعديلها)'],
     ['pur.review','مراجعة فاتورة المورد (كميات وأسعار وطريقة دفع)'],
     ['pur.edit_qty','تعديل كميات فاتورة المورد'],
     ['pur.edit_price','تعديل أسعار فاتورة المورد'],
@@ -555,7 +562,6 @@ const PERM_INFO = {
   'jobs.print':'طباعة أمر الشغل وتحميله كملف. عرض فقط — مفيش أي تعديل.',
   'jobs.cancel':'إلغاء أمر شغل بسبب موثق. الأوامر اللي عليها معاملات مالية/مخزنية إلغاؤها لصاحب المركز فقط.',
   'jobs.reopen':'إعادة فتح أمر شغل متفوتر عشان تعدّل بنوده — بيلغي الفاتورة الحالية ويرجّع الأمر للشغل، وبعدها تصدر فاتورة جديدة.',
-  'jobs.delete':'حذف أمر الشغل الملغي نهائياً من السجلات (صاحب المركز فقط عملياً).',
   'customers.create':'إضافة عملاء جدد وسياراتهم وتعديل بياناتهم.',
   'customers.archive':'أرشفة عميل (إخفاؤه من القوائم مع الاحتفاظ بسجله).',
   'customers.delete':'حذف عميل نهائياً بكل سجلاته. خطيرة — يفضل تفضل لصاحب المركز.',
@@ -582,8 +588,9 @@ const PERM_INFO = {
   'fin.expenses':'تسجيل مصروفات المركز. بتتخصم من الحساب المختار.',
   'fin.manage':'إدارة الخزنة والحسابات: أرصدة افتتاحية وتحويلات وإيداعات.',
   'sup.pay':'سداد مستحقات الموردين من حسابات المركز.',
-  'pur.edit':'تعديل أسعار وكميات بنود فاتورة شراء المورد + رقم وتاريخ فاتورة المورد والملاحظات. بيسمح كمان بتعديل الفواتير المعتمدة (بسبب موثق).',
-  'pur.approve':'اعتماد فاتورة شراء المورد بعد وصول فاتورته الرسمية — بتتقفل الأسعار وتبقى نهائية.',
+  'pur.edit':'تعديل أسعار وكميات بنود فاتورة شراء المورد + رقم وتاريخ فاتورة المورد والملاحظات — <b>قبل الاعتماد بس</b>. الفاتورة المعتمدة مقفولة تماماً، ومحدش يعدّلها إلا بعد إعادة فتحها.',
+  'pur.approve':'اعتماد فاتورة شراء المورد بعد وصول فاتورته الرسمية — بتتقفل الأسعار والكميات وتبقى نهائية. <b>الاعتماد لوحده مابيديش حق إعادة الفتح.</b>',
+  'pur.reopen':'إعادة فتح فاتورة معتمدة عشان تتعدّل تاني (كمية/سعر/طريقة دفع) — بسبب إلزامي وبيتسجّل في السجل والتدقيق والإشعارات. <b>دي الطريقة الوحيدة لتعديل فاتورة معتمدة</b>، وبتتدي لموظفين محددين بس غير اللي بيعتمدوا (فصل رقابي).',
   'pur.review':'فتح شاشة مراجعة فاتورة المورد (بانتظار المحاسب) — رؤية الكميات والأسعار وطريقة الدفع بدون تعديل.',
   'pur.edit_qty':'تعديل كميات بنود فاتورة المورد أثناء المراجعة (بيتسجل قبل/بعد والسبب).',
   'pur.edit_price':'تعديل أسعار بنود فاتورة المورد أثناء المراجعة (بيتسجل قبل/بعد والسبب).',
@@ -1045,11 +1052,11 @@ async function initApp(){
   initSupabase();
   // الملاحظة 66: هل الجهاز مفعّل بحساب المركز؟
   _deviceAuthed = !!(await deviceSession());
-  let skipped = false;
-  try{ skipped = localStorage.getItem('masters_skip_activation')==='1'; }catch(e){}
-  // الجهاز مش مفعّل ولا اتخطّى قبل كده → اعرض شاشة التفعيل (مع إمكانية التخطي مؤقتاً)
-  if(!_deviceAuthed && !skipped){
-    document.getElementById('root').innerHTML = deviceActivationHTML(false);
+  /* م78: الجهاز مش مفعّل ⇒ شاشة التفعيل على طول، ومفيش أي تخطي.
+     وبنشيل علامة التخطي القديمة من أي جهاز لسه شايلها من النسخ القديمة. */
+  clearSkipFlag();
+  if(!_deviceAuthed){
+    document.getElementById('root').innerHTML = deviceActivationHTML();
     return;
   }
   try{
@@ -1063,16 +1070,16 @@ async function initApp(){
        الحل: لو الجهاز مش مفعّل والقراءة رجعت فاضية، نفرض شاشة التفعيل
        ونتجاهل التخطي القديم — التخطي بيبقى بلا معنى بعد تشديد الحماية. */
     if(window._readBlocked){
-      try{ localStorage.removeItem('masters_skip_activation'); }catch(e){}
-      document.getElementById('root').innerHTML = deviceActivationHTML(true);
+      clearSkipFlag();
+      document.getElementById('root').innerHTML = deviceActivationHTML();
       return;
     }
   }catch(e){
     console.error('initial load failed', e);
     // لو الجهاز مش مفعّل والقاعدة رفضت → دي الحماية شغالة، لازم تفعيل
     if(!_deviceAuthed){
-      try{ localStorage.removeItem('masters_skip_activation'); }catch(e){}
-      document.getElementById('root').innerHTML = deviceActivationHTML(true);
+      clearSkipFlag();
+      document.getElementById('root').innerHTML = deviceActivationHTML();
       return;
     }
     document.getElementById('root').innerHTML = `
@@ -3856,7 +3863,14 @@ function canEditPurchase(p){
   if(purIsClosed(p) && !isOwnerSession()) return { ok:false, why:'الفاتورة مقفولة مالياً — التعديل لصاحب المركز فقط' };
   if(purStatus(p)==='pending') return canEditPurchaseAny()
     ? { ok:true } : { ok:false, why:'مالكش صلاحية تعديل فواتير الشراء' };
-  return (can('pur.edit')||can('pur.edit_qty')||can('pur.edit_price')) ? { ok:true } : { ok:false, why:'الفاتورة معتمدة — تعديلها محتاج صلاحية تعديل فواتير الشراء' };
+  /* ⚠️ م81: الفاتورة المعتمدة مقفولة تماماً — ممنوع أي تعديل عليها مهما كانت الصلاحية.
+     قبل كده أي حد معاه صلاحية تعديل كان بيقدر يعدّل فاتورة معتمدة **من غير ما يفتحها**،
+     يعني الاعتماد ماكانش بيقفل حاجة فعلياً. دلوقتي الطريق الوحيد: إعادة فتح
+     (بصلاحية pur.reopen وبسبب موثق ومسجّل) وبعدها التعديل وبعدها الاعتماد تاني.
+     كده الاعتماد بقى له معنى، والرقابة بتشوف كل فتحة وكل تعديل. */
+  return { ok:false, why: can('pur.reopen')
+    ? 'الفاتورة معتمدة ومقفولة — لازم تعمل «🔄 إعادة فتح» الأول (بسبب موثق) وبعدها تعدّلها'
+    : 'الفاتورة معتمدة ومقفولة — التعديل محتاج إعادة فتحها، ودي صلاحية مخصوصة مش معاك' };
 }
 function purLog(p, action, changes, reason){
   p.history = Array.isArray(p.history) ? p.history : [];
@@ -4020,7 +4034,8 @@ function approvePurchase(purchaseId){
 }
 /* ---------- إعادة فتح فاتورة معتمدة ---------- */
 function reopenPurchase(purchaseId){
-  if(!can('pur.edit')){ toast('مالكش صلاحية تعديل فواتير الشراء', true); return; }
+  // م81: إعادة الفتح بقت صلاحية مستقلة تماماً — مش تابعة للتعديل ولا للاعتماد
+  if(!can('pur.reopen')){ toast('مالكش صلاحية إعادة فتح فاتورة معتمدة', true); return; }
   const p = DB.purchases.find(x=>x.id===purchaseId);
   if(!p || purStatus(p)!=='approved'){ toast('الفاتورة مش معتمدة أصلاً', true); return; }
   if(purIsClosed(p) && !isOwnerSession()){ toast('الفاتورة مقفولة مالياً — إعادة فتحها لصاحب المركز فقط', true); return; }
@@ -4049,7 +4064,7 @@ function openPurchaseHistory(purchaseId){
     <div class="flex-between" style="margin-bottom:8px;gap:10px;flex-wrap:wrap">
       <h3 style="margin:0">🕘 سجل فاتورة الشراء #${p.purchaseNo}</h3>${purStatusTag(p)}</div>
     <div class="muted" style="font-size:12.5px;margin-bottom:10px">${sup?sup.name:'—'} · الإجمالي الحالي: <b>${money(p.total)}</b>${p.supInvNo?' · فاتورة المورد: '+p.supInvNo:''}</div>
-    <!-- الملاحظة 76: سلسلة تنقّل للرقابة — من السجل للفاتورة لحساب المورد -->
+    <!-- الملاحظة 79: سلسلة تنقّل للرقابة — من السجل للفاتورة لحساب المورد -->
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
       <button class="btn btn-sm btn-accent" onclick="openPurchaseView('${p.id}')">📦 فتح الفاتورة نفسها (#${p.purchaseNo})</button>
       ${sup && canScreen('suppliers')?`<button class="btn btn-sm" onclick="openSupplierDetail('${sup.id}')">🏭 حساب المورد — ${sup.name}</button>`:''}
@@ -4089,7 +4104,7 @@ function openPurchaseView(purchaseId){
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
       ${purStatus(pu)==='pending' && can('pur.approve')?`<button class="btn btn-sm btn-accent" onclick="approvePurchase('${pu.id}')">🟢 اعتماد الفاتورة</button>`:''}
       ${canEditPurchase(pu).ok?`<button class="btn btn-sm" onclick="openEditPurchase('${pu.id}')">✏️ تعديل الأسعار</button>`:''}
-      ${purStatus(pu)==='approved' && can('pur.edit')?`<button class="btn btn-sm" onclick="reopenPurchase('${pu.id}')">🔄 إعادة فتح</button>`:''}
+      ${purStatus(pu)==='approved' && can('pur.reopen')?`<button class="btn btn-sm" onclick="reopenPurchase('${pu.id}')">🔄 إعادة فتح</button>`:''}
       <button class="btn btn-sm" onclick="openPurchaseHistory('${pu.id}')">🕘 السجل</button>
     </div>
     <table style="margin-bottom:12px"><thead><tr><th>الصنف</th><th>الكمية</th><th>تكلفة الوحدة</th><th>الإجمالي</th></tr></thead>
@@ -5687,8 +5702,17 @@ function supplierBalance(supplierId){
   const totalDiscounts = led.filter(e=>e.kind==='discount').reduce((s,e)=>s+(e.amount||0),0);
   const totalAdjust = led.filter(e=>e.kind==='adjustment').reduce((s,e)=>s+(e.amount||0),0);
   const totalRefunds = led.filter(e=>e.kind==='refund').reduce((s,e)=>s+(e.amount||0),0);   // استرداد رصيد دائن (م69)
+  /* ⚠️ م80: سداد على الرصيد الافتتاحي.
+     المشكلة اللي كانت: الدفعة كانت بتتوزّع على الفواتير بس. لو دفعت للمورد
+     أكتر من إجمالي فواتيره (لأن عليه رصيد افتتاحي قديم كمان)، الزيادة كانت
+     **بتضيع خالص**: الفلوس بتخرج من الخزنة، والمورد مابياخدش حقها في حسابه،
+     فالسيستم يفضل فاكر إننا مدينين له بمبلغ إحنا دفعناه فعلاً.
+     دلوقتي: أي جزء من الدفعة مالقاش فاتورة بيتسجّل هنا كسداد على الرصيد
+     الافتتاحي — فالمدفوع في حساب المورد = المدفوع من الخزنة بالظبط، دايماً. */
+  const totalOpeningPaid = led.filter(e=>e.kind==='payment').reduce((s,e)=>s+(e.amount||0),0);
+  const totalPaidAll = totalPaid + totalOpeningPaid;
   const opening = supOpeningSigned(sup);
-  const balance = opening + totalPurchased - totalPaid - totalReturns - totalDiscounts + totalAdjust + totalRefunds;
+  const balance = opening + totalPurchased - totalPaidAll - totalReturns - totalDiscounts + totalAdjust + totalRefunds;
   // ============ الملاحظة 70: فصل واضح — موجب = مديونية علينا · سالب = رصيد دائن لنا ============
   // الرصيد الدائن بيتطبّق تلقائياً على المديونية (رصيد واحد للمورد زي المحاسبة الصح).
   // تصنيف كل مرتجع (خصم مديونية / رصيد دائن) متخزّن على المرتجع نفسه للتتبّع والعرض.
@@ -5696,7 +5720,8 @@ function supplierBalance(supplierId){
   const creditBalance = Math.max(0, -balance);
   // إجمالي الرصيد الدائن اللي **أنشأته المرتجعات** (قبل التطبيق التلقائي) — للعرض والتتبّع
   const returnsCredit = returns.reduce((s,r)=> s + (typeof r.creditAmount==='number' ? r.creditAmount : 0), 0);
-  return { opening, totalPurchased, totalPaid, totalReturns, totalDiscounts, totalAdjust, totalRefunds, returnsCredit,
+  return { opening, totalPurchased, totalPaid: totalPaidAll, totalInvoicePaid: totalPaid, totalOpeningPaid,
+    totalReturns, totalDiscounts, totalAdjust, totalRefunds, returnsCredit,
     discountsCount: led.filter(e=>e.kind==='discount').length,
     balance, liability, creditBalance, count: purchases.length, returnsCount: returns.length };
 }
@@ -5705,6 +5730,47 @@ function purchaseOutstanding(inv){
   const paid = (inv.payments||[]).reduce((s,x)=>s+x.amount,0);
   const red = DB.supplierReturns.filter(r=>r.invoiceId===inv.id).reduce((s,r)=>s+(r.payableReduction||0),0);
   return Math.max(0, Math.round((inv.total - paid - red)*100)/100);
+}
+/* ============ م80: كشف الفلوس اللي ضاعت من سدادات قديمة ============
+   قبل الإصلاح، أي جزء من الدفعة أكبر من إجمالي الفواتير كان بيتهدر:
+   الفلوس تخرج من الخزنة (مصروف «سداد مورد») والمورد مايتحسبلوش.
+   الدالة دي بتقارن المدفوع فعلاً من الخزنة بالمحسوب على المورد.
+   المقارنة دقيقة: المصروف مربوط بالمورد بالـid (الجديد) أو باسمه بالمطابقة
+   الكاملة (القديم) — مش بجزء من الاسم، عشان «محمد» مايتلغبطش بـ«محمد-VW».
+   الدفعات التلقائية (شراء كاش) مالهاش مصروف أصلاً فمستثناة من الطرفين. */
+function supPaymentGap(supplierId){
+  const sup = DB.suppliers.find(s=>s.id===supplierId);
+  if(!sup) return { cashPaid:0, credited:0, gap:0 };
+  const cashPaid = DB.expenses
+    .filter(e=>e.category==='سداد مورد' && (e.supplierId ? e.supplierId===supplierId : e.note===sup.name))
+    .reduce((s,e)=>s+(e.amount||0),0);
+  const manualInvoicePaid = DB.purchases.filter(p=>p.supplierId===supplierId)
+    .reduce((s,p)=>s+(p.payments||[]).filter(x=>!x.auto).reduce((a,x)=>a+x.amount,0),0);
+  const ledgerPaid = supLedger(sup).filter(e=>e.kind==='payment').reduce((s,e)=>s+(e.amount||0),0);
+  const credited = manualInvoicePaid + ledgerPaid;
+  return { cashPaid, credited, gap: Math.round((cashPaid - credited)*100)/100 };
+}
+/* تسجيل الفرق ده كسداد على الرصيد الافتتاحي — صاحب المركز فقط */
+async function repairSupplierPaymentGap(supplierId){
+  if(!isOwnerSession()){ toast('التصحيح ده صلاحية صاحب المركز فقط', true); return; }
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  const g = supPaymentGap(supplierId);
+  if(g.gap <= 0.005){ toast('مفيش فرق يتصحّح عند المورد ده', true); return; }
+  askConfirm('تصحيح حساب «'+sup.name+'»؟<br><br>'
+    +'المدفوع فعلاً من الخزنة: <b>'+money(g.cashPaid)+'</b><br>'
+    +'المحسوب على المورد: <b>'+money(g.credited)+'</b><br>'
+    +'الفرق: <b style="color:var(--danger)">'+money(g.gap)+'</b><br><br>'
+    +'<span class="muted" style="font-size:12px">هيتسجّل كسداد على الرصيد الافتتاحي. مفيش أي حركة قديمة هتتمسح أو تتعدّل، ومفيش فلوس هتخرج من الخزنة تاني — دي بس بتسجّل فلوس مدفوعة فعلاً.</span>', async ()=>{
+    sup.ledger = sup.ledger || [];
+    sup.ledger.push({ id:uid('sled'), kind:'payment', amount:g.gap,
+      reason:'تصحيح: سداد قديم اتخصم من الخزنة وماتحسبش على المورد (الرصيد الافتتاحي)',
+      date:new Date().toISOString(), by:actorName() });
+    await saveKey('suppliers', DB.suppliers);
+    await logAction('🔧 تصحيح حساب المورد '+sup.name+' — تسجيل سداد ناقص '+money(g.gap)+' على الرصيد الافتتاحي');
+    notify('supplier_gap_fix', 'تصحيح حساب المورد '+sup.name+' — سداد ناقص '+money(g.gap)+' اتسجّل على الرصيد الافتتاحي',
+      { category:'financial', refType:'supplier', refId:sup.id, amount:g.gap });
+    closeModal(); toast('اتصحّح حساب المورد'); refreshContent();
+  });
 }
 /* عليه أي حركة مالية؟ (لو أيوة → الرصيد الافتتاحي بيتقفل للحفاظ على سلامة الحسابات) */
 function supplierHasTransactions(supplierId){
@@ -5738,10 +5804,13 @@ function supplierStatement(supplierId){
     rows.push({ date:r.date, type:'مرتجع للمورد', desc:r.name||'—', amount:-(r.total||0) });
   });
   supLedger(sup).forEach(e=>{
-    const t = e.kind==='discount' ? 'خصم من المورد' : (e.kind==='refund' ? 'استرداد رصيد' : 'تسوية رصيد');
+    // م80: السداد على الرصيد الافتتاحي بيظهر كسداد عادي وبيقلّل الرصيد
+    const t = e.kind==='discount' ? 'خصم من المورد'
+      : (e.kind==='refund' ? 'استرداد رصيد'
+      : (e.kind==='payment' ? 'سداد' : 'تسوية رصيد'));
     rows.push({ date:e.date, type: t,
       desc:(e.reason||'')+(e.notes?' — '+e.notes:'')+' · بواسطة '+(e.by||'—'),
-      amount: (e.kind==='discount') ? -(e.amount||0) : (e.amount||0) });   // الاسترداد والتسوية بيزوّدوا الرصيد نحو الصفر
+      amount: (e.kind==='discount'||e.kind==='payment') ? -(e.amount||0) : (e.amount||0) });   // الاسترداد والتسوية بيزوّدوا الرصيد نحو الصفر
   });
   rows.sort((a,b)=>new Date(a.date)-new Date(b.date));
   let run = 0;
@@ -5945,6 +6014,17 @@ function supplierDetailHTML(supplierId){
     </div>
   </div>
   ${sup.creditLimit && b.liability > sup.creditLimit ? `<div class="card" style="border:1px solid var(--danger);margin-bottom:8px;padding:6px 10px;font-size:12px;color:var(--danger);font-weight:700">⚠️ المديونية علينا (${money(b.liability)}) تعدّت حد الائتمان (${money(sup.creditLimit)})</div>` : ''}
+  ${(()=>{ /* م80: سداد قديم خرج من الخزنة وماتحسبش على المورد */
+    const g = supPaymentGap(supplierId);
+    if(g.gap <= 0.005) return '';
+    return `<div class="card" style="border:1px solid var(--danger);margin-bottom:8px;padding:8px 11px">
+      <div style="font-size:12.5px;color:var(--danger);font-weight:800;margin-bottom:4px">⚠️ فرق في السداد محتاج مراجعة</div>
+      <div style="font-size:12px;line-height:1.9">مدفوع فعلاً من الخزنة: <b>${money(g.cashPaid)}</b> · محسوب على المورد: <b>${money(g.credited)}</b> · الفرق: <b style="color:var(--danger)">${money(g.gap)}</b>
+      <br><span class="muted">سببه سداد قديم كان أكبر من إجمالي الفواتير، والزيادة ماكانتش بتتخصم من الرصيد الافتتاحي (اتصلحت في م80).</span></div>
+      ${isOwnerSession()?`<button class="btn btn-sm btn-accent" style="margin-top:7px" onclick="repairSupplierPaymentGap('${supplierId}')">🔧 سجّل الفرق على الرصيد الافتتاحي</button>`
+        :`<div class="muted" style="font-size:11.5px;margin-top:6px">التصحيح صلاحية صاحب المركز.</div>`}
+    </div>`;
+  })()}
 
   <!-- الأرصدة: خانات واضحة الحدود، كلها ظاهرة بدون لف -->
   <div class="dsec" style="margin-top:0">💰 الأرصدة والملخص المالي</div>
@@ -6024,7 +6104,7 @@ function supplierDetailHTML(supplierId){
         <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
           ${purStatus(p)==='pending' && (can('pur.review')||can('pur.fin_approve')||can('pur.approve')||can('pur.pay_method'))?`<button class="btn btn-sm btn-accent" onclick="openPurApprove('${p.id}')">🧾 مراجعة واعتماد</button>`:''}
           ${canEditPurchase(p).ok?`<button class="btn btn-sm" onclick="openEditPurchase('${p.id}')">✏️ الكميات/الأسعار</button>`:''}
-          ${purStatus(p)==='approved' && can('pur.edit')?`<button class="btn btn-sm" onclick="reopenPurchase('${p.id}')">🔄 إعادة فتح</button>`:''}
+          ${purStatus(p)==='approved' && can('pur.reopen')?`<button class="btn btn-sm" onclick="reopenPurchase('${p.id}')">🔄 إعادة فتح</button>`:''}
           <button class="btn btn-sm" onclick="openPurchaseHistory('${p.id}')">🕘 السجل</button>
         </div>
       </div>
@@ -6324,6 +6404,17 @@ async function saveSupplierPayment(supplierId){
     amount -= toPay;
     paidInvoices.push('#'+p.purchaseNo+' ('+money(toPay)+')');
   }
+  /* ⚠️ م80: الباقي بعد الفواتير = سداد على الرصيد الافتتاحي — ممنوع يضيع.
+     قبل كده الجزء ده كان بيتهدر: الفلوس تخرج من الخزنة والمورد مايتحسبلوش. */
+  const openingPaid = Math.round(amount*100)/100;
+  if(openingPaid > 0.005){
+    const supOB = DB.suppliers.find(s=>s.id===supplierId);
+    supOB.ledger = supOB.ledger || [];
+    supOB.ledger.push({ id:uid('sled'), kind:'payment', amount: openingPaid,
+      reason:'سداد على الرصيد الافتتاحي' + (paidInvoices.length?' (الباقي بعد سداد الفواتير)':''),
+      date:new Date().toISOString(), by:actorName() });
+    await saveKey('suppliers', DB.suppliers);
+  }
   await saveKey('purchases', DB.purchases);
   const paidTotal = parseFloat(document.getElementById('supPayAmt').value)||0;
   const supNm = (DB.suppliers.find(s=>s.id===supplierId)||{}).name;
@@ -6332,9 +6423,13 @@ async function saveSupplierPayment(supplierId){
   const acc = DB.finAccounts.find(a=>a.id===accId);
   if(acc) addFinMove(acc.id, 'out', paidTotal, 'supplier', 'سداد مورد: '+supNm);
   // also log as an expense so it reflects in accounts/reports
-  DB.expenses.push({id:uid('exp'), category:'سداد مورد', amount: paidTotal, note: supNm, accountId:acc?acc.id:null, payAccount:acc?acc.name:null, date:new Date().toISOString()});
+  // م80: supplierId متسجّل على المصروف — عشان أي مراجعة تقدر تطابق المدفوع من الخزنة بالمحسوب على المورد
+  DB.expenses.push({id:uid('exp'), category:'سداد مورد', amount: paidTotal, note: supNm, supplierId,
+    accountId:acc?acc.id:null, payAccount:acc?acc.name:null, date:new Date().toISOString()});
   await Promise.all([saveKey('expenses', DB.expenses), saveKey('finMoves', DB.finMoves)]);
-  await logAction('سداد '+money(paidTotal)+' للمورد '+supNm+(acc?' من '+acc.name:'')+(paidInvoices.length?' — فواتير: '+paidInvoices.join(' · '):''));
+  await logAction('سداد '+money(paidTotal)+' للمورد '+supNm+(acc?' من '+acc.name:'')
+    +(paidInvoices.length?' — فواتير: '+paidInvoices.join(' · '):'')
+    +(openingPaid>0.005?' — على الرصيد الافتتاحي: '+money(openingPaid):''));
   notify(selIds.length?'supplier_pay_specific':'supplier_pay', 'سداد '+money(paidTotal)+' للمورد '+supNm+(selIds.length?' (فواتير محددة: '+paidInvoices.join(' · ')+')':''),
     { category:'financial', refType:'supplier', refId:supplierId, amount:paidTotal });
   closeModal(); toast('تم تسجيل الدفعة للمورد'+(acc?' وخصمها من '+acc.name:'')); refreshContent();
@@ -8524,6 +8619,20 @@ function openCustodyDetail(custodyId){
 
 /* ======================= REPORTS ======================= */
 function renderReports(){
+  /* م82 (مراجعة شاملة): صلاحية «التقارير المالية» كانت موجودة في شاشة الصلاحيات
+     بس **مفيش سطر واحد في الكود بيفحصها** — يعني الشيك بوكس ماكانش بيعمل حاجة،
+     وأي حد يشوف شاشة التقارير كان يشوف المبيعات والمحصّل والمصروفات وصافي الربح.
+     دلوقتي الأرقام المالية متحجوبة فعلاً، والتقارير التشغيلية (أداء الفنيين
+     وتحليل الإلغاء) فاضلة ظاهرة لأنها مش أرقام مالية. */
+  if(!can('rep.financial')) return `
+    <div class="card" style="padding:22px;text-align:center;margin-bottom:22px">
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px">🔒 الأرقام المالية متاحة لأصحاب الصلاحية فقط</div>
+      <div class="muted" style="font-size:12.5px">المبيعات والمحصّل والمصروفات وصافي الربح محتاجين صلاحية «التقارير المالية».</div>
+    </div>
+    <div class="section-head"><h3>أداء الفنيين</h3></div>
+    ${renderTechnicianPerformance()}
+    <div class="section-head" style="margin-top:26px"><h3>تحليل أوامر الشغل الملغاة</h3></div>
+    ${renderCancellationAnalytics()}`;
   const totalSales = DB.invoices.filter(i=>!i.cancelled).reduce((s,i)=>s+i.total,0);
   const totalCollected = DB.invoices.filter(i=>!i.cancelled).reduce((s,i)=>s+(i.payments||[]).reduce((a,p)=>a+p.amount,0),0);
   const outstanding = totalSales - totalCollected;
