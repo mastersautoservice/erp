@@ -464,7 +464,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v105';
+const APP_VERSION = 'v107';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -2025,18 +2025,42 @@ async function saveEditCustomer(customerId){
   const next = { name:v('ecName'), custType:v('ecType'), phone:v('ecPhone'),
     phone2:v('ecPhone2'), nationalId:v('ecNid'), email:v('ecEmail') };
   if(!next.name || !next.phone){ toast('الاسم والموبايل مايتسابوش فاضيين', true); return; }
-  // نفس منع التكرار بتاع الإضافة — بس من غير ما يحسب العميل نفسه
-  const dup = findCustomerDup(next.phone, next.nationalId, next.email, c.id);
-  if(dup){
+  /* ⚠️ م93: منع التكرار لازم يشتغل على **اللي المستخدم غيّره بس**.
+     المشكلة اللي رصدها سيف: عنده عميلين بنفس رقم الموبايل من قبل التعديل
+     (تكرار قديم في البيانات). لما حب يغيّر **نوع العميل بس** — من غير ما
+     يلمس الرقم — الفحص كان بيلاقي التكرار القديم ويرفض الحفظ. يعني التكرار
+     القديم كان بيقفل عليه أي تعديل تاني ومايقدرش يصلّح حاجة.
+     الصح: نمنع بس لو هو **بيدخل تعارض جديد**. والتعارض القديم بيتقال له
+     كتنبيه (مش منع) مع اقتراح الدمج. */
+  const identChanged = {
+    phone: next.phone !== (c.phone||''),
+    nationalId: next.nationalId !== (c.nationalId||''),
+    email: next.email !== (c.email||'')
+  };
+  const dupNew = findCustomerDup(
+    identChanged.phone ? next.phone : '',
+    identChanged.nationalId ? next.nationalId : '',
+    identChanged.email ? next.email : '', c.id);
+  if(dupNew){
     const warn = document.getElementById('ecWarn');
     if(warn) warn.innerHTML = `<div class="card" style="border:1px solid var(--danger);padding:10px;margin-bottom:10px;font-size:12.5px">
-      <div style="color:var(--danger);font-weight:800;margin-bottom:4px">🚫 البيانات دي بتاعت عميل تاني</div>
-      <div><b>${dup.name}</b> · ${dup.phone}${dup.nationalId?' · قومي: '+dup.nationalId:''}</div>
+      <div style="color:var(--danger);font-weight:800;margin-bottom:4px">🚫 البيانات الجديدة دي بتاعت عميل تاني</div>
+      <div><b>${dupNew.name}</b> · ${dupNew.phone}${dupNew.nationalId?' · قومي: '+dupNew.nationalId:''}</div>
       <div class="muted" style="margin-top:5px">لو ده نفس العميل مكرر، استخدم <b>دمج العملاء</b> بدل التعديل.</div>
-      <div style="margin-top:8px"><button class="btn btn-sm btn-accent" onclick="openExistingCustomer('${dup.id}')">فتح العميل التاني</button></div>
+      <div style="margin-top:8px"><button class="btn btn-sm btn-accent" onclick="openExistingCustomer('${dupNew.id}')">فتح العميل التاني</button></div>
     </div>`;
     return;
   }
+  // تعارض قديم موجود من قبل التعديل ⇒ تنبيه بس، مش منع
+  const dupOld = findCustomerDup(next.phone, next.nationalId, next.email, c.id);
+  const warnBox = document.getElementById('ecWarn');
+  if(warnBox) warnBox.innerHTML = dupOld ? `<div class="card" style="border:1px solid var(--accent-2);padding:10px;margin-bottom:10px;font-size:12.5px">
+    <div style="color:var(--accent-2);font-weight:800;margin-bottom:4px">⚠️ فيه عميل تاني بنفس البيانات دي من الأصل</div>
+    <div><b>${dupOld.name}</b> · ${dupOld.phone}${dupOld.nationalId?' · قومي: '+dupOld.nationalId:''}</div>
+    <div class="muted" style="margin-top:5px">التكرار ده موجود <b>قبل</b> تعديلك — التعديل هيتحفظ عادي.
+      ولو دول نفس العميل، الأفضل تعمل <b>دمج العملاء</b> بعدين.</div>
+    <div style="margin-top:8px"><button class="btn btn-sm" onclick="openExistingCustomer('${dupOld.id}')">فتح العميل التاني</button></div>
+  </div>` : '';
   // إيه اللي اتغيّر بالظبط؟
   const changes = Object.keys(next).filter(k=>{
     const before = k==='custType' ? (c[k]||'فرد') : (c[k]||'');
@@ -3264,6 +3288,15 @@ function setInvWhFilter(v){ invWhFilter = v; refreshContent(); }
    المؤرشف بيختفي من الشغل اليومي وقوائم الاختيار، ويفضل موجود في كل التقارير والتاريخ. */
 function activeInventory(){ return DB.inventory.filter(p=>!p.archived); }
 function activeSuppliers(){ return DB.suppliers.filter(s=>!s.archived); }
+/* ⚠️ م92: نفس قاعدة الحسابات — قائمة مورّدين **لسجل موجود** لازم تفضل عارضة
+   المورد المؤرشف طالما هو المربوط بالسجل. من غير كده المتصفح بيختار أول
+   خيار تلقائياً، فالحفظ يغيّر المورد أو يشيله من غير ما حد يقصد. */
+function supplierOptions(selectedId){
+  const list = activeSuppliers();
+  const sel = selectedId && DB.suppliers.find(s=>s.id===selectedId);
+  if(sel && sel.archived) list.unshift(sel);
+  return list.map(s=>`<option value="${s.id}" ${s.id===selectedId?'selected':''}>${s.name}${s.archived?' (مؤرشف)':''}</option>`).join('');
+}
 let invShowArchived = false;
 function toggleInvArchived(){ invShowArchived = !invShowArchived; refreshContent(); }
 function archiveInventoryItem(partId){
@@ -6882,7 +6915,7 @@ function renderNewPurchaseInvoice(){
       <div class="form-row"><label class="f-label">المورد</label>
         <select class="f" onchange="purchaseDraft.supplierId=this.value">
           <option value="">— اختار المورد —</option>
-          ${activeSuppliers().map(s=>`<option value="${s.id}" ${purchaseDraft.supplierId===s.id?'selected':''}>${s.name}</option>`).join('')}
+          ${supplierOptions(purchaseDraft.supplierId)}
         </select>
       </div>
       <div class="form-row"><label class="f-label">رقم فاتورة المورد (اختياري)</label><input class="f" value="${purchaseDraft.invoiceNo}" oninput="purchaseDraft.invoiceNo=this.value"></div>
@@ -7531,7 +7564,7 @@ function openEditInvoice(invId){
     ${pays.map((p,idx)=>`
       <div class="grid g2" style="align-items:end;margin-bottom:6px">
         <div class="form-row" style="margin:0"><label class="f-label">دفعة ${money(p.amount)} — ${fmtDate(p.date)}</label>
-          <select class="f" id="eiPay_${idx}">${liveAccounts().map(a=>`<option value="${a.id}" ${p.accountId===a.id?'selected':''}>${a.name}</option>`).join('')}</select></div>
+          <select class="f" id="eiPay_${idx}">${accountOptions(p.accountId)}</select></div>
         <div class="muted" style="font-size:11.5px;padding-bottom:10px">الحالي: ${p.method||'—'}</div>
       </div>`).join('')}
     `:`<div class="muted" style="font-size:12px;margin-bottom:10px">مفيش دفعات محصلة على الفاتورة دي — وسيلة السداد بتتحدد وقت التحصيل.</div>`}
@@ -8511,6 +8544,16 @@ async function saveAccBalanceAdjust(accId){
 }
 /* الحسابات المتاحة للاستخدام (المؤرشف مايظهرش في أي قائمة اختيار) */
 function liveAccounts(){ return DB.finAccounts.filter(a=>!a.archived); }
+/* ⚠️ م92: قائمة اختيار **لسجل موجود** (زي دفعة اتسجّلت على حساب اتأرشف بعدها).
+   لو شلنا الحساب المؤرشف من القائمة، المتصفح بيختار أول حساب تاني تلقائياً —
+   والحفظ بعدها **بينقل الفلوس لحساب تاني من غير ما حد يقصد** ويعمل قيدين
+   تصحيح وهميين. فلازم الحساب المؤرشف يفضل ظاهر (ومعلّم) طالما هو المختار. */
+function accountOptions(selectedId){
+  const list = liveAccounts();
+  const sel = selectedId && DB.finAccounts.find(a=>a.id===selectedId);
+  if(sel && sel.archived) list.unshift(sel);
+  return list.map(a=>`<option value="${a.id}" ${a.id===selectedId?'selected':''}>${a.name}${a.archived?' (مؤرشف)':''}</option>`).join('');
+}
 async function archiveFinAccount(accId){
   if(!(can('fin.archive'))){ toast('مالكش صلاحية أرشفة الحسابات المالية', true); return; }
   const acc = DB.finAccounts.find(a=>a.id===accId);
@@ -8957,7 +9000,7 @@ function renderCustodies(){
       <div class="form-row" style="margin:0"><label class="f-label">الحالة</label>
         <select class="f" onchange="setCustodyFilter('status',this.value)"><option value="">الكل</option><option value="open" ${custodyFilter.status==='open'?'selected':''}>مفتوحة</option><option value="closed" ${custodyFilter.status==='closed'?'selected':''}>مقفولة</option></select></div>
       <div class="form-row" style="margin:0"><label class="f-label">مصدر الصرف</label>
-        <select class="f" onchange="setCustodyFilter('source',this.value)"><option value="">الكل</option>${liveAccounts().map(a=>`<option value="${a.id}" ${custodyFilter.source===a.id?'selected':''}>${a.name}</option>`).join('')}</select></div>
+        <select class="f" onchange="setCustodyFilter('source',this.value)"><option value="">الكل</option>${accountOptions(custodyFilter.source)}</select></div>
       <div class="form-row" style="margin:0"><label class="f-label">من — إلى</label>
         <div style="display:flex;gap:4px"><input class="f" type="date" value="${custodyFilter.from}" onchange="setCustodyFilter('from',this.value)"><input class="f" type="date" value="${custodyFilter.to}" onchange="setCustodyFilter('to',this.value)"></div></div>
     </div>
@@ -11198,7 +11241,7 @@ function toolFormHTML(x){
     </div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">المورد (اختياري)</label>
-        <select class="f" id="tlSupplier"><option value="">— بدون —</option>${activeSuppliers().map(s=>`<option value="${s.id}" ${x.supplierId===s.id?'selected':''}>${s.name}</option>`).join('')}</select></div>
+        <select class="f" id="tlSupplier"><option value="">— بدون —</option>${supplierOptions(x.supplierId)}</select></div>
       <div class="form-row"><label class="f-label">الحالة</label>
         <select class="f" id="tlStatus">${TOOL_STATUS.map(s=>`<option value="${s}" ${(x.status||'متاحة')===s?'selected':''}>${s}</option>`).join('')}</select></div>
     </div>
