@@ -464,7 +464,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v107';
+const APP_VERSION = 'v109';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -919,7 +919,38 @@ function moveActor(m){
   if(!m) return '—';
   if(m.actor && String(m.actor).trim()) return String(m.actor).trim();
   const x = /بواسطة\s*:\s*([^—\-–|]+)/.exec(String(m.note||''));
-  return x ? x[1].trim() : '—';
+  if(x) return x[1].trim();
+  const r = moveActorFromLog(m);
+  return r ? r.actor : '—';
+}
+/* ============ م95: استرجاع المنفّذ من سجل العمليات للحركات القديمة ============
+   قبل م86 كان فيه طريقين لتسجيل قطعة/أعمال خارجية: واحد من شاشة حركة المخزن
+   (بيسجّل المنفّذ) وواحد من شاشة أمر الشغل (**مكانش بيسجّله**). فالحركات
+   القديمة الجاية من شاشة أمر الشغل مالهاش منفّذ — وعشان كده سيف كان بيشوف
+   بعض القطع الخارجية باسم الموظف وبعضها لأ.
+   لكن كل عملية من دول اتسجّلت في **سجل العمليات** بالمنفّذ والوقت. فبنلاقي
+   السجل المطابق (نفس الوقت تقريباً + نفس اسم البند أو رقم أمر الشغل)
+   ونعرض منه المنفّذ — وبنوضّح إنه مستخرج من السجل مش متسجّل على الحركة. */
+function moveActorFromLog(m){
+  if(!m || !m.date || !Array.isArray(DB.activityLog)) return null;
+  const t = new Date(m.date).getTime();
+  if(!isFinite(t)) return null;
+  const name = String(m.extName || '').trim();
+  const jobNo = m.jobId ? (DB.jobs.find(j=>j.id===m.jobId)||{}).jobNo : null;
+  let best = null, bestGap = Infinity;
+  for(const l of DB.activityLog){
+    if(!l || !l.actor || !l.date) continue;
+    const gap = Math.abs(new Date(l.date).getTime() - t);
+    if(!isFinite(gap) || gap > 120000) continue;      // دقيقتين حوالين وقت الحركة
+    const txt = String(l.text||'');
+    const nameHit = name && txt.includes(name);
+    const jobHit  = jobNo && txt.includes('#'+jobNo);
+    if(!nameHit && !jobHit) continue;
+    // الأدق: اللي مطابق في الاسم ورقم الأمر مع بعض وأقرب في الوقت
+    const score = gap - (nameHit && jobHit ? 60000 : 0);
+    if(score < bestGap){ bestGap = score; best = l; }
+  }
+  return best ? { actor: best.actor, fromLog: true, at: best.date } : null;
 }
 async function repairMissingStockMoves(){
   let created = 0;
@@ -4186,7 +4217,13 @@ function openMoveDetails(moveId){
     <!-- م86: الموظف المنفّذ أول حاجة تبان — عشان سيف مايخشش سجل العمليات كل مرة -->
     <div class="dsec">👤 المنفّذ</div>
     <div class="dgrid">
-      ${cell('الموظف اللي عمل الحركة', `<b>${moveActor(m)}</b>`)}
+      ${cell('الموظف اللي عمل الحركة', (()=>{
+        const direct = (m.actor && String(m.actor).trim()) || (/بواسطة\s*:\s*([^—\-–|]+)/.exec(String(m.note||''))||[])[1];
+        if(direct) return `<b>${String(direct).trim()}</b>`;
+        const fl = moveActorFromLog(m);
+        return fl ? `<b>${fl.actor}</b> <span class="muted" style="font-size:10.5px">(من سجل العمليات)</span>`
+                  : `— <span class="muted" style="font-size:10.5px">حركة قديمة مااتسجّلش معاها المنفّذ</span>`;
+      })())}
       ${cell('التاريخ والوقت', m.date?fmtDateTime(m.date):'—')}
       ${m.reqByName?cell('طالب الصنف', m.reqByName):''}
       ${m.technician?cell('الفني', (m.technician.name||m.technician)):''}
