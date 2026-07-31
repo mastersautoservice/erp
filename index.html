@@ -362,6 +362,7 @@ let _pendingSaves = 0;
 const _queuedKeys = {};
 window._lastSaveAt = 0;
 
+const _dirtyAfterSave = {};   // م85: مفاتيح اتغيّرت أثناء الرفع ومحتاجة حفظة تانية
 function saveKey(key){
   // حفظ بالفروقات: بيقارن الحالة الحالية بآخر حالة محفوظة ويرسل المتغير فقط
   // + دمج: لو نفس الجدول في الطابور، الحفظة المنتظرة هتشمل التعديل الحالي
@@ -373,7 +374,15 @@ function saveKey(key){
   });
   _queuedKeys[key] = run;
   _saveQueue = run.catch(()=>{});
-  return run.finally(()=>{ _pendingSaves--; window._lastSaveAt = Date.now(); });
+  return run.finally(()=>{
+    _pendingSaves--; window._lastSaveAt = Date.now();
+    /* م85: أي تعديل حصل أثناء الرفع بيتحفظ في حفظة تابعة فوراً — مايستناش
+       عملية تانية من المستخدم. وبيقف لوحده لما مايبقاش فيه فرق. */
+    if(_dirtyAfterSave[key]){
+      delete _dirtyAfterSave[key];
+      setTimeout(()=>{ saveKey(key).catch(()=>{}); }, 0);
+    }
+  });
 }
 async function _persistKey(key){
   if(KV_KEYS.includes(key)){
@@ -387,10 +396,20 @@ async function _persistKey(key){
   const shadow = _shadow[key] || new Map();
   const ups = [];
   const curIds = new Set();
+  /* ⚠️ م85: الظل لازم يمثّل **اللي اترفع فعلاً**، مش حالة الذاكرة بعد ما الرفع خلص.
+     العيب اللي كان: بعد الرفع كان بيتعمل `_shadow[key] = _snapshot(key)` — بيصوّر
+     الذاكرة **دلوقتي**. وأي سجل اتضاف أثناء الرفع (والرفع بياخد وقت على النت
+     البطيء) كان بيتصوّر كأنه «محفوظ» وهو **عمره ما اتبعت للقاعدة**. وبما إن
+     الحفظ بالفروقات، الحفظة اللي بعدها ماكانتش بتشوف فرق — فالسجل **بيضيع
+     للأبد**: موجود في الذاكرة، ومش موجود في القاعدة، وبيختفي أول ما تعمل تحديث.
+     ده اللي خلّى صنف يبقى فيه صرف من غير توريد ومن غير رصيد افتتاحي.
+     الحل: نبني الظل من نفس اللقطة اللي اتحسبت منها الفروقات. */
+  const nextShadow = new Map();
   cur.forEach(r=>{
     if(!r || !r.id) return;
     curIds.add(r.id);
     const s = JSON.stringify(r);
+    nextShadow.set(r.id, s);
     if(shadow.get(r.id) !== s) ups.push({ id:r.id, data:r, updated_by:_actor() });
   });
   const dels = [];
@@ -403,7 +422,13 @@ async function _persistKey(key){
     const { error } = await sb.from(t).delete().in('id', dels);
     if(error) throw error;
   }
-  _shadow[key] = _snapshot(key);
+  _shadow[key] = nextShadow;   // م85: الظل = اللي اترفع فعلاً، مش حالة الذاكرة دلوقتي
+  /* لو حصل تغيير في الذاكرة أثناء الرفع، بنعلّم إن فيه حفظة تانية مطلوبة —
+     عشان السجل مايستناش لحد ما حد يعمل عملية تانية. */
+  const live = DB[key] || [];
+  let dirty = live.filter(r=>r && r.id).length !== nextShadow.size;
+  if(!dirty) dirty = live.some(r=>r && r.id && nextShadow.get(r.id) !== JSON.stringify(r));
+  if(dirty) _dirtyAfterSave[key] = true;
   return true;
 }
 async function _withRetry(fn, label){
@@ -439,7 +464,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v95';
+const APP_VERSION = 'v105';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -484,6 +509,7 @@ const ACTION_GROUPS = [
   ]],
   ['العملاء', [
     ['customers.create','إضافة عميل وسيارة'],
+    ['customers.edit','تعديل بيانات العميل'],
     ['customers.archive','أرشفة عميل'],
     ['customers.delete','حذف عميل نهائياً'],
     ['cars.archive','أرشفة سيارة عميل'],
@@ -528,6 +554,8 @@ const ACTION_GROUPS = [
   ['المالية', [
     ['fin.expenses','تسجيل مصروفات'],
     ['fin.manage','إدارة الخزنة والحسابات والتحويلات'],
+    ['fin.adjust','تسوية رصيد حساب مالي'],
+    ['fin.archive','أرشفة/استرجاع حساب مالي'],
     ['sup.pay','سداد الموردين'],
     ['fin.custody_create','إصدار عهدة لموظف'],
     ['fin.custody_settle','تسوية العهد'],
@@ -562,7 +590,8 @@ const PERM_INFO = {
   'jobs.print':'طباعة أمر الشغل وتحميله كملف. عرض فقط — مفيش أي تعديل.',
   'jobs.cancel':'إلغاء أمر شغل بسبب موثق. الأوامر اللي عليها معاملات مالية/مخزنية إلغاؤها لصاحب المركز فقط.',
   'jobs.reopen':'إعادة فتح أمر شغل متفوتر عشان تعدّل بنوده — بيلغي الفاتورة الحالية ويرجّع الأمر للشغل، وبعدها تصدر فاتورة جديدة.',
-  'customers.create':'إضافة عملاء جدد وسياراتهم وتعديل بياناتهم.',
+  'customers.create':'إضافة عملاء جدد وسياراتهم. <b>مابتديش</b> حق تعديل بيانات عميل موجود — دي صلاحية منفصلة.',
+  'customers.edit':'تعديل بيانات عميل موجود: الاسم · نوع العميل (فرد/شركة) · الموبايل · التليفون الإضافي · الرقم القومي · الإيميل. كل تعديل بيتسجّل بقبل/بعد وبسبب في سجل العمليات والإشعارات.',
   'customers.archive':'أرشفة عميل (إخفاؤه من القوائم مع الاحتفاظ بسجله).',
   'customers.delete':'حذف عميل نهائياً بكل سجلاته. خطيرة — يفضل تفضل لصاحب المركز.',
   'cars.archive':'أرشفة سيارة عميل — بتختفي من القوائم النشطة وسجلها كامل بيفضل محفوظ، وتقدر ترجّعها في أي وقت.',
@@ -586,7 +615,9 @@ const PERM_INFO = {
   'bill.history':'عرض سجل الفاتورة الكامل (كل تعديل: مين وإمتى والقيمة قبل وبعد). عرض فقط.',
   'bill.print':'طباعة الفاتورة وتحميلها كملف. عرض فقط.',
   'fin.expenses':'تسجيل مصروفات المركز. بتتخصم من الحساب المختار.',
-  'fin.manage':'إدارة الخزنة والحسابات: أرصدة افتتاحية وتحويلات وإيداعات.',
+  'fin.manage':'إنشاء الحسابات والخزن والتحويلات والإيداعات بينها. <b>مابتديش</b> حق تسوية الأرصدة ولا أرشفة الحسابات — دول صلاحيتين منفصلتين.',
+  'fin.adjust':'تسوية رصيد حساب مالي: تكتب الرصيد الصحيح بعد الجرد والسيستم يسجّل حركة موثقة بالفرق. بتشمل كمان تعديل الرصيد الافتتاحي. <b>بتغيّر أرقام مالية مباشرة — إدّيها لمين تثق فيه بس.</b>',
+  'fin.archive':'أرشفة حساب مالي مش هيتستخدم تاني (بيختفي من كل قوائم الاختيار وحركاته القديمة تفضل زي ما هي)، واسترجاعه من الأرشيف.',
   'sup.pay':'سداد مستحقات الموردين من حسابات المركز.',
   'pur.edit':'تعديل أسعار وكميات بنود فاتورة شراء المورد + رقم وتاريخ فاتورة المورد والملاحظات — <b>قبل الاعتماد بس</b>. الفاتورة المعتمدة مقفولة تماماً، ومحدش يعدّلها إلا بعد إعادة فتحها.',
   'pur.approve':'اعتماد فاتورة شراء المورد بعد وصول فاتورته الرسمية — بتتقفل الأسعار والكميات وتبقى نهائية. <b>الاعتماد لوحده مابيديش حق إعادة الفتح.</b>',
@@ -872,6 +903,24 @@ function durationText(from, to){
 
 /* إصلاح ذاتي للتكامل: أي قطعة مصروفة على أمر شغل (موجودة في بنوده) ولا يوجد لها
    حركة صرف مسجلة في سجل المخزن، يتم إعادة بناء الحركة تلقائياً وربطها بالأمر */
+/* ============ م86: كل حركة مخزن بتتختم باسم الموظف المنفّذ ============
+   طلب سيف: «عايز في تفاصيل حركة المخزن يبقى مكتوب مين الموظف اللي عمل
+   الحركة — مين اللي ورّد ومين اللي صرف ومين صرف القطعة الخارجية».
+   قبل كده 3 حركات بس من 15 كانوا بيسجّلوا المنفّذ. دلوقتي **كل** حركة
+   بتعدّي من الدالة دي فبتتختم تلقائياً — ومستحيل تتنسي في حركة جديدة
+   (فيه فحص دائم بيمنع الإضافة المباشرة على المصفوفة). */
+function pushStockMove(mv){
+  if(mv && !mv.actor) mv.actor = actorName();
+  DB.stockMoves.push(mv);
+  return mv;
+}
+/* اسم المنفّذ للعرض — بيشتغل على الحركات القديمة كمان (كانت بتكتبه جوه الوصف) */
+function moveActor(m){
+  if(!m) return '—';
+  if(m.actor && String(m.actor).trim()) return String(m.actor).trim();
+  const x = /بواسطة\s*:\s*([^—\-–|]+)/.exec(String(m.note||''));
+  return x ? x[1].trim() : '—';
+}
 async function repairMissingStockMoves(){
   let created = 0;
   DB.jobs.forEach(job=>{
@@ -886,9 +935,11 @@ async function repairMissingStockMoves(){
       for(let i=have; i<items.length; i++){
         const it = items[i];
         const car = DB.cars.find(c=>c.id===job.carId);
-        DB.stockMoves.push({
+        pushStockMove({
           id:uid('mv'), partId:pid, type:'out', qty:it.qty, unitCost:it.costPrice, unitPrice:it.unitPrice,
           date: job.receivedAt, jobId: job.id, customerId: job.customerId,
+          // م86: دي استعادة من النظام — ممنوع تتنسب للموظف اللي فاتح السيستم دلوقتي
+          actor: 'النظام (استعادة تلقائية)',
           note:'صرف لأمر شغل #'+job.jobNo+(car?' — السيارة: '+car.plate+(carLabel(car)?' / '+carLabel(car):''):'')+' (استعادة تلقائية لحركة لم تُحفظ وقتها)'
         });
         created++;
@@ -919,7 +970,7 @@ function showStorageDeadBanner(){
 }
 const DATA_DEFAULTS = {
   users: {reception:'1111',accounts:'2222',warehouse:'3333',owner:'9999'},
-  settings: {centerName:'Masters Auto Service', vatRate:0, whatsappTemplate:'سيارتك {plate} جاهزة للاستلام من {center}. شكراً لثقتك بينا 🚗', address:'العبور - الشباب - ميدان الصورة - منطقة حرفيين العبور', phone:'01146604611', warrantyText:'ضمان قطع الغيار الجديدة المبدلة في المركز 3 شهور أو 5 آلاف كم أيهما أقرب\nضمان قطع الغيار الاستيراد المبدلة في المركز شهر واحد أو 5 آلاف كم أيهما أقرب\nشروط الضمان: عدم المساس بقطعة الغيار أو محاولة فكها خارج المركز', largeExpenseThreshold:20000, largeDiscountPct:15, highAdvancePct:50, highAbsenceDays:3, stagnantDays:90, backupReminderDays:7, lastBackupAt:null}
+  settings: {centerName:'Masters Auto Service', vatRate:0, whatsappTemplate:'سيارتك {plate} جاهزة للاستلام من {center}. شكراً لثقتك بينا 🚗', address:'العبور - الشباب - ميدان الصورة - منطقة حرفيين العبور', phone:'01146604611', warrantyText:'ضمان قطع الغيار الجديدة المبدلة في المركز 3 شهور أو 5 آلاف كم أيهما أقرب\nضمان قطع الغيار الاستيراد المبدلة في المركز شهر واحد أو 5 آلاف كم أيهما أقرب\nشروط الضمان: عدم المساس بقطعة الغيار أو محاولة فكها خارج المركز', largeExpenseThreshold:20000, largeDiscountPct:15, highAdvancePct:50, highAbsenceDays:3, stagnantDays:90, backupReminderDays:7, lastBackupAt:null, debtDaysInd:10, debtDaysComp:30}
 };
 function keyDefault(k){
   if(k==='users') return {...DATA_DEFAULTS.users};
@@ -1928,6 +1979,91 @@ function openArchivedCarsReport(){
   `, true);
 }
 function openCustomerHistory(customerId){ openModal(customerHistoryHTML(customerId)); }
+/* ============ م89: تعديل بيانات العميل ============
+   طلب سيف: زرار تعديل للعميل — الاسم ونوعه (فرد/شركة) والتليفون وأي حاجة.
+   نفس حماية الإضافة بالظبط: منع التكرار (موبايل/قومي/إيميل) بس مع استثناء
+   العميل نفسه، وسبب إلزامي، وتسجيل قبل/بعد لكل حقل اتغيّر. */
+const CUST_FIELD_LABEL = { name:'الاسم', custType:'نوع العميل', phone:'رقم الموبايل',
+  phone2:'تليفون إضافي', nationalId:'الرقم القومي', email:'الإيميل' };
+function openEditCustomer(customerId){
+  if(!can('customers.edit')){ toast('مالكش صلاحية تعديل بيانات العملاء', true); return; }
+  const c = DB.customers.find(x=>x.id===customerId);
+  if(!c){ toast('العميل مش موجود', true); return; }
+  if(c.merged){ toast('العميل ده مدموج في عميل تاني — عدّل الأصلي', true); return; }
+  openModal(`
+    <h3>✏️ تعديل بيانات العميل</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px">
+      أي تعديل هنا بيتسجّل بالتفصيل (قبل/بعد) في سجل العمليات ومركز الإشعارات.
+      السيارات وأوامر الشغل والفواتير <b>مابتتأثرش</b> — البيانات الشخصية بس.
+    </div>
+    <div class="form-row"><label class="f-label">نوع العميل</label>
+      <select class="f" id="ecType">
+        <option value="فرد" ${(c.custType||'فرد')==='فرد'?'selected':''}>فرد</option>
+        <option value="شركة" ${c.custType==='شركة'?'selected':''}>شركة</option>
+      </select></div>
+    <div class="form-row"><label class="f-label">الاسم / اسم الشركة *</label>
+      <input class="f" id="ecName" autocomplete="off" value="${(c.name||'').replace(/"/g,'&quot;')}"></div>
+    <div class="form-row"><label class="f-label">رقم الموبايل *</label>
+      <input class="f" id="ecPhone" inputmode="tel" value="${c.phone||''}"></div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">تليفون إضافي</label>
+        <input class="f" id="ecPhone2" inputmode="tel" value="${c.phone2||''}"></div>
+      <div class="form-row"><label class="f-label">الرقم القومي</label>
+        <input class="f" id="ecNid" inputmode="numeric" value="${c.nationalId||''}"></div>
+    </div>
+    <div class="form-row"><label class="f-label">الإيميل</label>
+      <input class="f" id="ecEmail" inputmode="email" value="${c.email||''}"></div>
+    <div id="ecWarn"></div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveEditCustomer('${c.id}')">حفظ التعديلات</button>
+  `);
+}
+async function saveEditCustomer(customerId){
+  if(!can('customers.edit')){ toast('مالكش صلاحية تعديل بيانات العملاء', true); return; }
+  const c = DB.customers.find(x=>x.id===customerId);
+  if(!c){ toast('العميل مش موجود', true); return; }
+  const v = id => ((document.getElementById(id)||{}).value||'').trim();
+  const next = { name:v('ecName'), custType:v('ecType'), phone:v('ecPhone'),
+    phone2:v('ecPhone2'), nationalId:v('ecNid'), email:v('ecEmail') };
+  if(!next.name || !next.phone){ toast('الاسم والموبايل مايتسابوش فاضيين', true); return; }
+  // نفس منع التكرار بتاع الإضافة — بس من غير ما يحسب العميل نفسه
+  const dup = findCustomerDup(next.phone, next.nationalId, next.email, c.id);
+  if(dup){
+    const warn = document.getElementById('ecWarn');
+    if(warn) warn.innerHTML = `<div class="card" style="border:1px solid var(--danger);padding:10px;margin-bottom:10px;font-size:12.5px">
+      <div style="color:var(--danger);font-weight:800;margin-bottom:4px">🚫 البيانات دي بتاعت عميل تاني</div>
+      <div><b>${dup.name}</b> · ${dup.phone}${dup.nationalId?' · قومي: '+dup.nationalId:''}</div>
+      <div class="muted" style="margin-top:5px">لو ده نفس العميل مكرر، استخدم <b>دمج العملاء</b> بدل التعديل.</div>
+      <div style="margin-top:8px"><button class="btn btn-sm btn-accent" onclick="openExistingCustomer('${dup.id}')">فتح العميل التاني</button></div>
+    </div>`;
+    return;
+  }
+  // إيه اللي اتغيّر بالظبط؟
+  const changes = Object.keys(next).filter(k=>{
+    const before = k==='custType' ? (c[k]||'فرد') : (c[k]||'');
+    return String(before) !== String(next[k]);
+  }).map(k=>({ field: CUST_FIELD_LABEL[k]||k,
+    before: (k==='custType' ? (c[k]||'فرد') : (c[k]||'')) || '—', after: next[k] || '—' }));
+  if(!changes.length){ toast('مفيش أي تعديل', true); return; }
+  askConfirmReason('حفظ تعديل بيانات «'+c.name+'»؟<br>'
+    +'<div style="text-align:right;margin-top:7px;font-size:12.5px">'
+    + changes.map(ch=>'• <b>'+ch.field+'</b>: '+ch.before+' ← '+ch.after).join('<br>') + '</div>',
+    async (reason)=>{
+      const oldName = c.name;
+      c.name = next.name; c.custType = next.custType; c.phone = next.phone;
+      c.phone2 = next.phone2 || undefined; c.nationalId = next.nationalId || undefined;
+      c.email = next.email || undefined;
+      c.editedAt = new Date().toISOString(); c.editedBy = actorName();
+      c.editHistory = Array.isArray(c.editHistory) ? c.editHistory : [];
+      c.editHistory.push({ id:uid('ce'), at:c.editedAt, actor:c.editedBy, changes, reason:reason||'' });
+      await saveKey('customers', DB.customers);
+      await logAction('✏️ تعديل بيانات العميل «'+oldName+'»'+auditDetails(
+        changes.map(ch=>[ch.field, ch.before+' ← '+ch.after]).concat([['السبب', reason||'—']])));
+      notify('customer_edit', 'تعديل بيانات العميل «'+oldName+'» — '
+        + changes.map(ch=>ch.field+': '+ch.before+' ← '+ch.after).join(' · '),
+        { category:'system', refType:'customer', refId:c.id, reason });
+      closeModal(); toast('اتحفظت بيانات العميل'); refreshContent();
+    });
+}
 function customerHistoryHTML(customerId){
   const cust = DB.customers.find(c=>c.id===customerId);
   const cars = DB.cars.filter(c=>c.customerId===customerId);
@@ -1937,8 +2073,18 @@ function customerHistoryHTML(customerId){
   const firstVisit = jobs.length? jobs[0].receivedAt : null;
   const lastVisit = jobs.length? jobs[jobs.length-1].receivedAt : null;
   return `
-  <h3>سجل العميل — ${cust.name}</h3>
-  <div class="muted" style="margin-bottom:14px">${cust.phone}</div>
+  <div class="flex-between" style="gap:10px;flex-wrap:wrap">
+    <h3 style="margin:0">سجل العميل — ${cust.name}</h3>
+    ${can('customers.edit') && !cust.merged
+      ? `<button class="btn btn-sm btn-accent" onclick="openEditCustomer('${cust.id}')">✏️ تعديل بيانات العميل</button>` : ''}
+  </div>
+  <!-- م89: البيانات الشخصية كاملة ظاهرة، مش الموبايل بس -->
+  <div class="muted" style="font-size:12.5px;margin:6px 0 14px;line-height:1.8">
+    <span class="tag tag-inspect">${cust.custType||'فرد'}</span>
+    ${cust.phone||'—'}${cust.phone2?' · إضافي: '+cust.phone2:''}
+    ${cust.nationalId?' · قومي: '+cust.nationalId:''}${cust.email?' · '+cust.email:''}
+    ${cust.editedAt?`<br><span style="font-size:11.5px">آخر تعديل للبيانات: ${fmtDateTime(cust.editedAt)} — ${cust.editedBy||'—'}</span>`:''}
+  </div>
   <div class="grid g3" style="margin-bottom:16px">
     ${stat(String(jobs.length),'إجمالي أوامر الشغل')}
     ${stat(money(totalPaid),'إجمالي المدفوع')}
@@ -2838,13 +2984,18 @@ function deleteJobItem(jobId, itemId){
   if(!itemPre){ toast('البند مش موجود', true); return; }
   // الملاحظة 52: بنعرض تفاصيل البند في التأكيد نفسه، وبنسجلها كاملة في سجل التدقيق
   const desc = describeJobItem(itemPre, jobPre);
-  askConfirm('حذف البند ده من أمر الشغل #'+jobPre.jobNo+'؟<br><span class="muted" style="font-size:12px">'+desc.replace(/^ — /,'')+'</span>', async ()=>{
+  /* م83: حذف قطعة غيار أو مصنعية بقى **بسبب إلزامي**.
+     قبل كده كان تأكيد عادي (إلغاء/تأكيد) والبند بيتشال على طول من غير ما
+     حد يعرف ليه. دلوقتي فيه حقل سبب إلزامي، والسبب بيتسجّل كامل في سجل
+     العمليات وبيظهر كامل في مركز الإشعارات. */
+  askConfirmReason('حذف البند ده من أمر الشغل #'+jobPre.jobNo+'؟<br><span class="muted" style="font-size:12px">'+desc.replace(/^ — /,'')+'</span>', async (reason)=>{
     const job = DB.jobs.find(j=>j.id===jobId);
     job.items = job.items.filter(i=>i.id!==itemId);
     await saveKey('jobs', DB.jobs);
-    await logAction('🗑️ حذف بند من أمر الشغل #'+job.jobNo+' — '+desc.replace(/^ — /,''));
+    await logAction('🗑️ حذف بند من أمر الشغل #'+job.jobNo+' — '+desc.replace(/^ — /,'')+' — السبب: '+reason);
     notify('job_item_delete', 'حذف بند من أمر الشغل #'+job.jobNo+' — '+desc.replace(/^ — /,''),
-      { category:'jobs', refType:'job', refId:job.id, refNo:job.jobNo, amount:(itemPre.qty||0)*(itemPre.unitPrice||0) });
+      { category:'jobs', refType:'job', refId:job.id, refNo:job.jobNo,
+        amount:(itemPre.qty||0)*(itemPre.unitPrice||0), reason });
     trackBulkDeletes('بند أمر شغل');
     toast('تم الحذف'); openJobDetail(jobId); refreshContent();
   });
@@ -3175,7 +3326,33 @@ function inventoryValueHTML(){
     ${stat(String(avail)+' من '+live.length,'✅ أصناف متاحة — '+scope)}
     ${stat(String(low),'⚠️ تحت الحد الأدنى (لسه فيه كمية)', low>0)}
     ${stat(String(zero),'⛔ أصناف متصفرة', zero>0)}
-  </div>`;
+  </div>
+  ${(()=>{   /* م84: تنبيه ظاهر لو فيه أصناف مكررة — الكميات بتتفرّق عليها والصرف بيغلط */
+    const dups = findAllDuplicateParts();
+    if(!dups.length) return '';
+    return `<div class="card" style="border:1px solid var(--danger);padding:11px 13px;margin-top:12px">
+      <div style="font-weight:800;color:var(--danger);margin-bottom:4px">⚠️ فيه ${dups.length} صنف مكرر في المخزون</div>
+      <div class="muted" style="font-size:12.5px;line-height:1.7;margin-bottom:8px">
+        نفس الصنف متسجّل أكتر من مرة في نفس المخزن — الكميات بتتفرّق عليهم والصرف ممكن يطلع من البند الغلط.
+        ${dups.slice(0,3).map(g=>'«'+g[0].name+'»').join(' · ')}${dups.length>3?' وغيرهم':''}
+      </div>
+      ${isOwnerSession()
+        ? `<button class="btn btn-sm btn-danger" onclick="openMergePartsModal()">🔀 راجع وادمج المكرر</button>`
+        : `<div class="muted" style="font-size:12px">الدمج صلاحية صاحب المركز — بلّغه عشان يظبطها.</div>`}
+    </div>`;
+  })()}
+  ${(()=>{   /* م85: أصناف رصيدها مش مطابق لحركاتها (حركة ناقصة من السجل) */
+    const mm = findStockMismatches();
+    if(!mm.length) return '';
+    return `<div class="card" style="border:1px solid var(--danger);padding:11px 13px;margin-top:12px">
+      <div style="font-weight:800;color:var(--danger);margin-bottom:4px">🔍 فيه ${mm.length} صنف رصيده مش مطابق لحركاته</div>
+      <div class="muted" style="font-size:12.5px;line-height:1.7;margin-bottom:8px">
+        يعني فيه حركة ناقصة من السجل (زي صنف عليه صرف من غير توريد).
+        ${mm.slice(0,3).map(x=>'«'+x.part.name+'» ('+(x.diff>0?'+':'')+x.diff+')').join(' · ')}${mm.length>3?' وغيرهم':''}
+      </div>
+      <button class="btn btn-sm btn-danger" onclick="openStockMismatchModal()">🔍 اعرض التفاصيل</button>
+    </div>`;
+  })()}`;
 }
 function inventoryRowsHTML(){
   const items = visibleInventory();
@@ -3300,8 +3477,8 @@ async function saveTransfer(){
   dest.qty += qty;
   const who = actorName();
   const noteTxt = 'تحويل مخزني: '+whName(srcWhId)+' ← '+whName(destWhId)+' — بواسطة: '+who+(note?' — '+note:'');
-  DB.stockMoves.push({id:uid('mv'), partId:src.id, type:'transfer_out', qty, unitCost:src.costPrice, fromWhId:srcWhId, toWhId:destWhId, date:new Date().toISOString(), note:noteTxt});
-  DB.stockMoves.push({id:uid('mv'), partId:dest.id, type:'transfer_in', qty, unitCost:src.costPrice, fromWhId:srcWhId, toWhId:destWhId, date:new Date().toISOString(), note:noteTxt});
+  pushStockMove({id:uid('mv'), partId:src.id, type:'transfer_out', qty, unitCost:src.costPrice, fromWhId:srcWhId, toWhId:destWhId, date:new Date().toISOString(), note:noteTxt});
+  pushStockMove({id:uid('mv'), partId:dest.id, type:'transfer_in', qty, unitCost:src.costPrice, fromWhId:srcWhId, toWhId:destWhId, date:new Date().toISOString(), note:noteTxt});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
   await logAction('تحويل '+qty+' من '+src.name+' — '+whName(srcWhId)+' ← '+whName(destWhId));
   closeModal(); toast('تم التحويل بين المخازن'); refreshContent();
@@ -3327,10 +3504,194 @@ function openNewPartModal(){
     <button class="btn btn-accent" style="width:100%" onclick="saveNewPart()">حفظ الصنف</button>
   `);
 }
+/* ============ م84: منع تكرار الأصناف — السبب الجذري لمشكلة «السيستم عمل قطعة تانية» ============
+   المشكلة اللي رصدها سيف: صنف «سير باور N16-DONGL/3PK855» اتكرر مرتين في نفس
+   المخزن. السبب: فيه 3 أماكن بتضيف أصناف للمخزون، **اتنين منهم ماكانش فيهم أي
+   فحص تكرار خالص**: (1) إضافة صنف يدوي (2) كتابة صنف جديد في فاتورة الشراء.
+   فأي حد يكتب اسم صنف موجود بدل ما يختاره من القائمة = صنف تاني بنفس الاسم،
+   والصرف بعد كده يطلع من البند الغلط والكميات تتفرّق على بندين.
+   الحل: مطابقة ذكية بتتجاهل فروق المسافات وشكل الحروف العربية والحالة. */
+function normPartKey(s){
+  return String(s||'').trim().toLowerCase()
+    .replace(/\s+/g,' ')                    // مسافات متكررة
+    .replace(/[أإآٱ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه')   // توحيد الحروف العربية
+    .replace(/[ً-ْـ]/g,'');  // تشكيل وتطويل
+}
+/* بيرجّع الصنف المكرر لو موجود في نفس المخزن (مطابقة بالاسم أو بالكود) */
+function findDuplicatePart(name, sku, warehouseId, excludeId){
+  const nk = normPartKey(name), sk = normPartKey(sku);
+  const wh = warehouseId || defaultWhId();
+  return DB.inventory.find(p=>{
+    if(p.id===excludeId || p.archived || p.merged) return false;
+    if(partWhId(p)!==wh) return false;
+    if(sk && normPartKey(p.sku)===sk) return true;      // نفس الكود = نفس الصنف
+    return !!nk && normPartKey(p.name)===nk;            // أو نفس الاسم
+  }) || null;
+}
+/* ============ م85: كشف الأصناف اللي رصيدها مش مطابق لحركاتها ============
+   بعد إصلاح سباق الحفظ، الحركات مابقتش تضيع — بس الحركات اللي ضاعت قبل
+   الإصلاح لسه ناقصة. الكشف ده بيقارن رصيد كل صنف بمجموع حركاته، وبيوريك
+   الأصناف اللي فيها فرق (زي صنف عليه صرف من غير توريد). */
+const STOCK_IN_TYPES = new Set(['in','transfer_in']);
+const STOCK_OUT_TYPES = new Set(['out','transfer_out','scrap','paint_out','return']);
+function partMovementBalance(partId){
+  let bal = 0, ins = 0, outs = 0, adj = 0;
+  DB.stockMoves.forEach(m=>{
+    if(m.partId !== partId) return;
+    const q = Number(m.qty||0);
+    if(STOCK_IN_TYPES.has(m.type)){ bal += q; ins += q; }
+    else if(STOCK_OUT_TYPES.has(m.type)){ bal -= q; outs += q; }
+    else if(m.type==='adjustment'){ const d = Number(m.delta||0); bal += d; adj += d; }
+  });
+  return { balance: Math.round(bal*100)/100, ins, outs, adj };
+}
+function findStockMismatches(){
+  return DB.inventory.filter(p=>!p.archived && !p.merged).map(p=>{
+    const mv = partMovementBalance(p.id);
+    const diff = Math.round(((p.qty||0) - mv.balance)*100)/100;
+    return { part:p, ...mv, diff };
+  }).filter(x=>Math.abs(x.diff) > 0.001);
+}
+function openStockMismatchModal(){
+  const list = findStockMismatches();
+  if(!list.length){ toast('كل الأصناف رصيدها مطابق لحركاتها 👏'); return; }
+  openModal(`
+    <h3>🔍 أصناف رصيدها مش مطابق لحركاتها (${list.length})</h3>
+    <div class="muted" style="font-size:12.5px;line-height:1.8;margin-bottom:12px">
+      الرصيد المفروض = مجموع التوريدات − المصروفات ± التسويات. الفرق معناه إن فيه
+      <b>حركة ناقصة من السجل</b> (زي صنف عليه صرف من غير توريد).<br>
+      دي شاشة <b>عرض وتشخيص فقط</b> — مفيش أي رصيد بيتغيّر لوحده. لتصحيح الرصيد استخدم
+      <b>الجرد</b> (بيتسجّل بحركة تسوية موثقة وباعتماد).
+    </div>
+    <table><thead><tr><th>الصنف</th><th>المخزن</th><th>الرصيد الحالي</th><th>حسب الحركات</th><th>الفرق</th><th>توريد</th><th>صرف</th><th></th></tr></thead>
+    <tbody>${list.map(x=>`<tr>
+      <td>${x.part.name}${x.part.sku?' <span class="muted" style="font-size:11px">('+x.part.sku+')</span>':''}</td>
+      <td><span class="tag tag-inspect">${whName(partWhId(x.part))}</span></td>
+      <td><b>${x.part.qty}</b></td>
+      <td>${x.balance}</td>
+      <td style="color:var(--danger);font-weight:800">${x.diff>0?'+':''}${x.diff}</td>
+      <td class="muted">${x.ins}</td><td class="muted">${x.outs}</td>
+      <td><button class="btn btn-sm" onclick="openItemCard('${x.part.id}')">📇 كارت الصنف</button></td>
+    </tr>`).join('')}</tbody></table>
+  `, 'xwide');
+}
+/* بيرجّع مجموعات الأصناف المكررة الموجودة فعلاً في المخزون (للتنضيف) */
+function findAllDuplicateParts(){
+  /* لازم نجمّع بالاسم **وبالكود** مع بعض: صنف مكتوب بكود وصنف بنفس الاسم
+     من غير كود لازم يتعتبروا مجموعة واحدة. (لو جمّعنا بمفتاح واحد بس،
+     الاتنين دول بيقعوا في مجموعتين مختلفتين والتكرار مايتكشفش.) */
+  const live = DB.inventory.filter(p=>!p.archived && !p.merged);
+  const parent = {};
+  const find = x => parent[x]===x ? x : (parent[x] = find(parent[x]));
+  const union = (a,b) => { const ra=find(a), rb=find(b); if(ra!==rb) parent[ra]=rb; };
+  live.forEach(p=>{ parent[p.id] = p.id; });
+  const byName = new Map(), bySku = new Map();
+  live.forEach(p=>{
+    const wh = partWhId(p);
+    const nk = wh+'||n:'+normPartKey(p.name);
+    if(byName.has(nk)) union(p.id, byName.get(nk)); else byName.set(nk, p.id);
+    const sk = normPartKey(p.sku);
+    if(sk){
+      const kk = wh+'||s:'+sk;
+      if(bySku.has(kk)) union(p.id, bySku.get(kk)); else bySku.set(kk, p.id);
+    }
+  });
+  const groups = new Map();
+  live.forEach(p=>{ const r = find(p.id); if(!groups.has(r)) groups.set(r, []); groups.get(r).push(p); });
+  return [...groups.values()].filter(g=>g.length>1).sort((a,b)=>b.length-a.length);
+}
+/* دمج صنف مكرر في الصنف الأصلي — بينقل الكميات وكل المراجع */
+async function doMergeParts(srcId, dstId, reason){
+  if(!isOwnerSession()){ toast('دمج الأصناف صلاحية صاحب المركز فقط', true); return; }
+  if(srcId===dstId) return;
+  const src = DB.inventory.find(p=>p.id===srcId), dst = DB.inventory.find(p=>p.id===dstId);
+  if(!src || !dst){ toast('الصنف مش موجود', true); return; }
+  if(partWhId(src)!==partWhId(dst)){ toast('مينفعش تدمج صنفين في مخازن مختلفة — استخدم التحويل المخزني', true); return; }
+  const moved = { moves:0, jobItems:0, purItems:0, countLines:0, returns:0, qty:src.qty||0 };
+  // 1) حركات المخزن
+  DB.stockMoves.forEach(m=>{ if(m.partId===srcId){ m.partId=dstId; moved.moves++; } });
+  // 2) بنود أوامر الشغل
+  DB.jobs.forEach(j=>(j.items||[]).forEach(it=>{ if(it.partId===srcId){ it.partId=dstId; moved.jobItems++; } }));
+  // 3) بنود فواتير الشراء
+  DB.purchases.forEach(p=>(p.items||[]).forEach(it=>{ if(it.partId===srcId){ it.partId=dstId; moved.purItems++; } }));
+  // 4) سطور الجرد
+  DB.inventoryCounts.forEach(ic=>(ic.lines||[]).forEach(l=>{ if(l.partId===srcId){ l.partId=dstId; moved.countLines++; } }));
+  // 5) مرتجعات الموردين
+  DB.supplierReturns.forEach(r=>{ if(r.partId===srcId){ r.partId=dstId; moved.returns++; } });
+  // الكمية بتتجمع على الصنف الأصلي
+  dst.qty = (dst.qty||0) + (src.qty||0);
+  if(!dst.sku && src.sku) dst.sku = src.sku;
+  if(!dst.category && src.category) dst.category = src.category;
+  src.qty = 0; src.merged = true; src.mergedInto = dstId;
+  src.mergedAt = new Date().toISOString(); src.archived = true;
+  await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves),
+    saveKey('jobs', DB.jobs), saveKey('purchases', DB.purchases),
+    saveKey('inventoryCounts', DB.inventoryCounts), saveKey('supplierReturns', DB.supplierReturns)]);
+  await logAction('🔀 دمج صنف مكرر «'+src.name+'» في «'+dst.name+'»'+auditDetails([
+    ['المخزن', whName(partWhId(dst))], ['الكمية المنقولة', moved.qty],
+    ['حركات مخزن', moved.moves], ['بنود أوامر شغل', moved.jobItems],
+    ['بنود فواتير شراء', moved.purItems], ['سطور جرد', moved.countLines],
+    ['مرتجعات', moved.returns], ['الرصيد بعد الدمج', dst.qty], ['السبب', reason||'—']
+  ]));
+  notify('part_merge', 'دمج صنف مكرر «'+src.name+'» في «'+dst.name+'» — الرصيد بعد الدمج: '+dst.qty,
+    { category:'inventory', refType:'inventory', refId:dst.id, reason });
+  closeModal();
+  toast('تم الدمج — الرصيد بقى '+dst.qty+' '+(dst.unit||'قطعة'));
+  refreshContent();
+}
+function openMergePartsModal(){
+  if(!isOwnerSession()){ toast('دمج الأصناف صلاحية صاحب المركز فقط', true); return; }
+  const groups = findAllDuplicateParts();
+  if(!groups.length){ toast('مفيش أصناف مكررة — المخزون نضيف 👏'); return; }
+  openModal(`
+    <h3>🔀 أصناف مكررة في المخزون (${groups.length})</h3>
+    <div class="muted" style="font-size:12.5px;line-height:1.8;margin-bottom:12px">
+      دول أصناف بنفس الاسم أو الكود في نفس المخزن — الكميات بتتفرّق عليهم والصرف بيطلع من البند الغلط.<br>
+      <b>اختار البند اللي هيفضل (الأصلي) ودوس دمج</b> — الكميات وكل الحركات والفواتير هتتنقل عليه، والبند التاني هيتأرشف.
+    </div>
+    ${groups.map((g,gi)=>`
+      <div class="card" style="padding:11px;margin-bottom:11px">
+        <div style="font-weight:800;margin-bottom:7px">${g[0].name} <span class="muted" style="font-weight:400;font-size:12px">— ${whName(partWhId(g[0]))}</span></div>
+        <table style="margin-bottom:8px"><thead><tr><th>الصنف</th><th>الكود</th><th>الكمية</th><th>التكلفة</th><th>أُضيف</th><th></th></tr></thead>
+        <tbody>${g.map(p=>`<tr>
+          <td>${p.name}</td><td>${p.sku||'—'}</td><td><b>${p.qty}</b> ${p.unit||'قطعة'}</td>
+          <td>${money(p.costPrice||0)}</td><td class="muted" style="font-size:11.5px">${p.createdAt?fmtDate(p.createdAt):'—'}</td>
+          <td><button class="btn btn-sm btn-accent" onclick="mergeOthersInto('${p.id}',${gi})">✅ خلّي ده الأصلي وادمج الباقي</button></td>
+        </tr>`).join('')}</tbody></table>
+        <div class="muted" style="font-size:11.5px">الإجمالي بعد الدمج هيبقى: <b>${g.reduce((s,p)=>s+(p.qty||0),0)} ${g[0].unit||'قطعة'}</b></div>
+      </div>`).join('')}
+  `, 'xwide');
+}
+function mergeOthersInto(keepId, groupIndex){
+  const groups = findAllDuplicateParts();
+  const g = groups[groupIndex];
+  if(!g){ toast('القائمة اتغيرت — افتح الشاشة تاني', true); return; }
+  const keep = g.find(p=>p.id===keepId);
+  const others = g.filter(p=>p.id!==keepId);
+  if(!keep || !others.length) return;
+  askConfirmReason('دمج '+others.length+' بند مكرر في «'+keep.name+'»؟<br>'
+    +'<span class="muted" style="font-size:12px">الرصيد بعد الدمج: <b>'+g.reduce((s,p)=>s+(p.qty||0),0)+'</b> '+(keep.unit||'قطعة')
+    +' — كل الحركات والفواتير هتتنقل على البند ده، والباقي هيتأرشف (مش هيتمسح).</span>',
+    async (reason)=>{
+      for(const o of others) await doMergeParts(o.id, keepId, reason);
+      openMergePartsModal();
+    });
+}
+function dupPartMsg(dup){
+  return 'الصنف ده موجود بالفعل في «'+whName(partWhId(dup))+'»: «'+dup.name+'»'
+    + (dup.sku?' (كود: '+dup.sku+')':'') + ' — الكمية الحالية: '+dup.qty+' '+(dup.unit||'قطعة')
+    + '. اختاره من القائمة بدل ما تكتبه من جديد، عشان الكميات ماتتفرّقش على بندين.';
+}
 async function saveNewPart(){
   if(!can('inv.item_create')){ toast('مالكش صلاحية إضافة أصناف', true); return; }
   const name = document.getElementById('pName').value.trim();
   if(!name){ toast('اكتب اسم القطعة', true); return; }
+  // م84: ممنوع صنف مكرر في نفس المخزن
+  {
+    const wh = document.getElementById('pWh').value || defaultWhId();
+    const dup = findDuplicatePart(name, document.getElementById('pSku').value.trim(), wh);
+    if(dup){ toast(dupPartMsg(dup), true); return; }
+  }
   const part = {
     id:uid('p'), name, sku:document.getElementById('pSku').value.trim(),
     warehouseId: document.getElementById('pWh').value || defaultWhId(),
@@ -3345,7 +3706,7 @@ async function saveNewPart(){
   DB.inventory.push(part);
   await saveKey('inventory', DB.inventory);
   if(part.qty>0){
-    DB.stockMoves.push({id:uid('mv'), partId:part.id, type:'in', qty:part.qty, date:new Date().toISOString(), note:'رصيد افتتاحي'});
+    pushStockMove({id:uid('mv'), partId:part.id, type:'in', qty:part.qty, date:new Date().toISOString(), note:'رصيد افتتاحي'});
     await saveKey('stockMoves', DB.stockMoves);
   }
   closeModal(); toast('تم إضافة الصنف'); refreshContent();
@@ -3388,7 +3749,7 @@ async function saveStockIn(partId){
   if(supplierId){
     purchaseId = uid('pur');
   }
-  DB.stockMoves.push({id:uid('mv'), partId, type:'in', qty, unitCost:cost, date:new Date().toISOString(), note, supplierId: supplierId||null, purchaseId});
+  pushStockMove({id:uid('mv'), partId, type:'in', qty, unitCost:cost, date:new Date().toISOString(), note, supplierId: supplierId||null, purchaseId});
   await saveKey('inventory', DB.inventory);
   await saveKey('stockMoves', DB.stockMoves);
 
@@ -3788,6 +4149,15 @@ function openMoveDetails(moveId){
   openModal(`
     <div class="flex-between" style="margin-bottom:6px"><h3 style="margin:0">تفاصيل الحركة</h3>
       <span class="tag tag-inspect">${MOVE_TYPE_LABEL[m.type]||m.type}</span></div>
+
+    <!-- م86: الموظف المنفّذ أول حاجة تبان — عشان سيف مايخشش سجل العمليات كل مرة -->
+    <div class="dsec">👤 المنفّذ</div>
+    <div class="dgrid">
+      ${cell('الموظف اللي عمل الحركة', `<b>${moveActor(m)}</b>`)}
+      ${cell('التاريخ والوقت', m.date?fmtDateTime(m.date):'—')}
+      ${m.reqByName?cell('طالب الصنف', m.reqByName):''}
+      ${m.technician?cell('الفني', (m.technician.name||m.technician)):''}
+    </div>
 
     <div class="dsec">📦 بيانات الصنف</div>
     <div class="dgrid">
@@ -4283,7 +4653,7 @@ async function saveStockAdjustment(){
   if(diff===0){ toast('الكمية زي الموجودة بالظبط، مفيش تغيير', true); return; }
   p.qty = newQty;
   // الملاحظة 54: نخزّن اتجاه التسوية وقيمها الفعلية عشان الرصيد الجاري يتحسب صح
-  DB.stockMoves.push({id:uid('mv'), partId, type:'adjustment', qty:Math.abs(diff), delta:diff,
+  pushStockMove({id:uid('mv'), partId, type:'adjustment', qty:Math.abs(diff), delta:diff,
     qtyBefore:newQty-diff, qtyAfter:newQty, date:new Date().toISOString(), actor:actorName(),
     note:(diff>0?'زيادة':'نقص')+' بالتسوية '+Math.abs(diff)+(reason?' — '+reason:'')+(notes?' — '+notes:'')});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
@@ -4465,7 +4835,7 @@ async function saveCustomerReturn(){
   p.qty += qty;
   const cust = DB.customers.find(c=>c.id===job.customerId);
   // 3) حركة موثقة: الأمر، العميل، الكمية، المخزن، المنفذ، الوقت
-  DB.stockMoves.push({id:uid('mv'), partId, type:'customer_return', qty, unitCost:p.costPrice, warehouseId: partWhId(p),
+  pushStockMove({id:uid('mv'), partId, type:'customer_return', qty, unitCost:p.costPrice, warehouseId: partWhId(p),
     reason: reason||'غير محدد', date:new Date().toISOString(), actor:actorName(),
     note:'مرتجع عميل — أمر شغل #'+job.jobNo+(cust?' — '+cust.name:'')+' — رجعت لمخزن: '+whName(partWhId(p))+(reason?' — '+reason:''),
     jobId: job.id, customerId: job.customerId});
@@ -4741,7 +5111,7 @@ async function saveExtOutFromStock(){
     DB.purchases.push(purchase);
   }
   // 3) حركة مخزنية مستقلة بدون تأثير على أي رصيد
-  DB.stockMoves.push({
+  pushStockMove({
     id:uid('mv'), partId:null, extName:name, type:'ext_part', qty, unitCost:costPrice, unitPrice:sellPrice,
     supplierId, purchaseId, payMethod, jobId:job.id, customerId:job.customerId,
     date:new Date().toISOString(), actor:actorName(),
@@ -4772,7 +5142,7 @@ async function savePaintOut(){
   // تكلفة مباشرة على أمر الشغل — بدون تكويد، بدون خصم مخزون، ولا تظهر أبداً في فاتورة العميل
   job.internalCosts = job.internalCosts || [];
   job.internalCosts.push({id:uid('ic'), kind:'paint', name, qty, unit, unitCost, total:qty*unitCost, note, date:new Date().toISOString(), by:actorName()});
-  DB.stockMoves.push({id:uid('mv'), partId:null, extName:name, type:'paint_out', qty, unit, unitCost, date:new Date().toISOString(), actor:actorName(),
+  pushStockMove({id:uid('mv'), partId:null, extName:name, type:'paint_out', qty, unit, unitCost, date:new Date().toISOString(), actor:actorName(),
     note:'صرف خامات دهان — أمر شغل #'+job.jobNo+(car?' — '+car.plate:'')+' — بواسطة: '+actorName()+(note?' — '+note:''),
     jobId:job.id, customerId:job.customerId});
   await Promise.all([saveKey('jobs', DB.jobs), saveKey('stockMoves', DB.stockMoves)]);
@@ -4795,7 +5165,7 @@ async function saveStockOut(){
   p.qty -= qty;
   job.items.push({id:uid('it'), kind:'part', name:p.name, qty, unitPrice:p.sellPrice, costPrice:p.costPrice, partId:p.id});
   const carDesc = car ? ` — السيارة: ${car.plate}${carLabel(car)?' / '+carLabel(car):''}` : '';
-  DB.stockMoves.push({id:uid('mv'), partId, type:'out', qty, unitCost:p.costPrice, unitPrice:p.sellPrice, date:new Date().toISOString(), note:'صرف لأمر شغل #'+job.jobNo+carDesc, jobId:job.id, customerId:job.customerId, actor:actorName()});
+  pushStockMove({id:uid('mv'), partId, type:'out', qty, unitCost:p.costPrice, unitPrice:p.sellPrice, date:new Date().toISOString(), note:'صرف لأمر شغل #'+job.jobNo+carDesc, jobId:job.id, customerId:job.customerId, actor:actorName()});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('jobs', DB.jobs), saveKey('stockMoves', DB.stockMoves)]);
   toast('تم صرف القطعة لأمر الشغل #'+job.jobNo); refreshContent();
   await logAction('صرف '+qty+' من '+p.name+' لأمر الشغل #'+job.jobNo);
@@ -5093,7 +5463,7 @@ async function saveExtItem(jobId, kind){
     await saveKey('purchases', DB.purchases);
   }
   // 3) حركة مخزنية مستقلة (دخول 1 → خروج 1: لا تؤثر على أي رصيد)
-  DB.stockMoves.push({
+  pushStockMove({
     id:uid('mv'), partId:null, extName:name, type:kind, qty, unitCost:costPrice, unitPrice:sellPrice,
     supplierId, purchaseId, payMethod, jobId:job.id, customerId:job.customerId,
     date:new Date().toISOString(),
@@ -5257,7 +5627,7 @@ function approveCount(icId){
       const after = l.physicalQty;
       const diff = after - before;
       p.qty = after;
-      DB.stockMoves.push({
+      pushStockMove({
         id: uid('mv'), partId: p.id, type:'adjustment', qty: Math.abs(diff), delta: diff,
         qtyBefore: before, qtyAfter: after, unitCost: p.costPrice, countId: ic.id,
         date: new Date().toISOString(),
@@ -5458,7 +5828,7 @@ async function saveScrap(){
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
   if(qty>p.qty){ toast('الكمية أكبر من المتاح في المخزون ('+p.qty+')', true); return; }
   p.qty -= qty;
-  DB.stockMoves.push({id:uid('mv'), partId, type:'scrap', scrapKind:kind, qty, unitCost:p.costPrice, reason, technicianId:techId, technician:tech||null, supplierId, warehouseId:partWhId(p), actor:actorName(), date:new Date().toISOString(),
+  pushStockMove({id:uid('mv'), partId, type:'scrap', scrapKind:kind, qty, unitCost:p.costPrice, reason, technicianId:techId, technician:tech||null, supplierId, warehouseId:partWhId(p), actor:actorName(), date:new Date().toISOString(),
     note:[kind, reason, tech?('الفني: '+tech):null, note].filter(Boolean).join(' — ')});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
   await logAction('تسجيل '+kind+': '+qty+' من '+p.name+' — '+reason+' (خسارة '+money(qty*p.costPrice)+')');
@@ -6192,7 +6562,7 @@ async function saveSupplierReturn(supplierId){
   const ret = {id:uid('ret'), supplierId, partId, name:p.name, qty, unitCost:cost, total, date:new Date().toISOString(), note,
     invoiceId: cls.invoiceId, payableReduction: cls.payableReduction, creditAmount: cls.creditAmount};
   DB.supplierReturns.push(ret);
-  DB.stockMoves.push({id:uid('mv'), partId, type:'return', qty, unitCost:cost, date:new Date().toISOString(), note:'مرتجع لمورد'+(note?' — '+note:''), supplierId, retId: ret.id});
+  pushStockMove({id:uid('mv'), partId, type:'return', qty, unitCost:cost, date:new Date().toISOString(), note:'مرتجع لمورد'+(note?' — '+note:''), supplierId, retId: ret.id});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('supplierReturns', DB.supplierReturns), saveKey('stockMoves', DB.stockMoves)]);
   const linkedInv = cls.invoiceId ? DB.purchases.find(x=>x.id===cls.invoiceId) : null;
   await logAction('مرتجع لمورد '+supName(supplierId)+' بقيمة '+money(total)+(linkedInv?' على فاتورة #'+linkedInv.purchaseNo:'')+
@@ -6235,7 +6605,7 @@ function openPurApprove(purchaseId){
        <input type="hidden" name="paMethod" value="${p.paymentMethod}">`}
     <div id="paSrcBox" style="display:${isCredit?'none':'block'}">
       <div class="form-row"><label class="f-label">مصدر الدفع (الحساب اللي هيتخصم منه)</label>
-        <select class="f" id="paSrcAcc">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+        <select class="f" id="paSrcAcc">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
       <div class="muted" style="font-size:11px;margin-bottom:6px">${purAutoPayment(p)&&purAutoPayment(p).finMoveId?'الفاتورة متخصومة بالفعل — الاعتماد هيسجّل المصدر.':'هيتخصم '+money(Math.max(0,p.total-purManualPaid(p)))+' من الحساب المختار.'}</div>
     </div>
     <div class="card" style="border-right:3px solid var(--accent-2);padding:8px 10px;margin-bottom:10px;font-size:11.5px">
@@ -6290,7 +6660,7 @@ function openSupplierRefundModal(supplierId){
     <div class="card" style="margin-bottom:12px"><div class="flex-between"><span>الرصيد الدائن لنا عند المورد</span><span style="font-weight:800;color:var(--accent)">${money(b.creditBalance)}</span></div></div>
     <div class="form-row"><label class="f-label">المبلغ المسترد</label><input class="f" id="refAmt" type="number" min="0" max="${b.creditBalance}" step="any" value="${b.creditBalance}"></div>
     <div class="form-row"><label class="f-label">استلام في حساب</label>
-      <select class="f" id="refAcc">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select></div>
+      <select class="f" id="refAcc">${liveAccounts().map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select></div>
     <div class="form-row"><label class="f-label">ملاحظة (اختياري)</label><input class="f" id="refNote" placeholder="مثال: استرداد نقدي، تحويل بنكي"></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveSupplierRefund('${supplierId}')">تأكيد الاسترداد</button>
   `);
@@ -6339,7 +6709,7 @@ function openSupplierPaymentModal(supplierId){
       <input class="f" id="supPayAmt" type="number" min="0" step="any" value="${b.liability}" oninput="supPayRecalc(${b.liability})"></div>
     <div class="card" id="supPayPreview" style="margin-bottom:12px"></div>
     <div class="form-row"><label class="f-label">الدفع من حساب</label>
-      <select class="f" id="supPayAcc">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+      <select class="f" id="supPayAcc">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveSupplierPayment('${supplierId}')">تأكيد الدفع</button>
   `);
   supPayRecalc(b.liability);
@@ -6818,6 +7188,19 @@ function addNewItemLine(){
   if(!name){ toast('اكتب اسم الصنف', true); return; }
   const qty = parseFloat(document.getElementById('plNewQty').value)||0;
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
+  /* م84: أهم نقطة — هنا كان بيتخلق الصنف المكرر. لو الصنف موجود بالفعل
+     في نفس المخزن، بنمنع كتابته من جديد ونوجّه المستخدم يختاره من القائمة. */
+  {
+    const sku = document.getElementById('plNewSku').value.trim();
+    const wh = (document.getElementById('plNewWh')||{}).value || defaultWhId();
+    const dup = findDuplicatePart(name, sku, wh);
+    if(dup){ toast(dupPartMsg(dup), true); return; }
+    // ولو مكرر جوه نفس الفاتورة (سطرين بنفس الاسم) — ده كمان بيعمل بندين
+    const dupLine = purchaseDraft.lines.find(l=>!l.partId
+      && normPartKey(l.name)===normPartKey(name)
+      && ((l.warehouseId||defaultWhId())===wh));
+    if(dupLine){ toast('الصنف «'+name+'» مكتوب في الفاتورة دي مرتين — عدّل كمية السطر الموجود بدل ما تضيفه تاني', true); return; }
+  }
   purchaseDraft.lines.push({
     partId:null, name,
     sku:document.getElementById('plNewSku').value.trim(),
@@ -6847,6 +7230,7 @@ async function savePurchaseInvoice(){
   if(supplier && supplier.archived){ toast('المورد «'+supplier.name+'» مؤرشف — استرجعه من الأرشيف الأول', true); return; }
   const purchaseId = uid('pur');
   const invoiceItems = [];
+  const dupMergedOnSave = [];   // م84: أصناف اتضافت على بند موجود بدل ما تتعمل من جديد
   for(const line of purchaseDraft.lines){
     let part;
     if(line.partId){
@@ -6855,10 +7239,22 @@ async function savePurchaseInvoice(){
       part.costPrice = line.costPrice;
       if(line.sellPrice) part.sellPrice = line.sellPrice;
     } else {
-      part = {id:uid('p'), name:line.name, sku:line.sku||'', brand:line.brand||'', oemNo:line.oemNo||'', category:line.category||'', unit:line.unit||'قطعة', qty:line.qty, minQty:2, costPrice:line.costPrice, sellPrice:line.sellPrice, warehouseId:line.warehouseId||defaultWhId(), createdAt:new Date().toISOString()};
-      DB.inventory.push(part);
+      /* م84: حارس أخير قبل إنشاء أي صنف. لو الصنف اتعمل في الوقت ده من جهاز
+         تاني (المزامنة اللحظية) أو السطر عدّى بأي طريقة، بنضيف على الصنف
+         الموجود بدل ما نعمل بند تاني بنفس الاسم — ومستحيل تتفرّق الكميات. */
+      const dup = findDuplicatePart(line.name, line.sku, line.warehouseId||defaultWhId());
+      if(dup){
+        part = dup;
+        part.qty += line.qty;
+        part.costPrice = line.costPrice;
+        if(line.sellPrice) part.sellPrice = line.sellPrice;
+        dupMergedOnSave.push(part.name);
+      } else {
+        part = {id:uid('p'), name:line.name, sku:line.sku||'', brand:line.brand||'', oemNo:line.oemNo||'', category:line.category||'', unit:line.unit||'قطعة', qty:line.qty, minQty:2, costPrice:line.costPrice, sellPrice:line.sellPrice, warehouseId:line.warehouseId||defaultWhId(), createdAt:new Date().toISOString()};
+        DB.inventory.push(part);
+      }
     }
-    DB.stockMoves.push({id:uid('mv'), partId:part.id, type:'in', qty:line.qty, unitCost:line.costPrice, warehouseId:partWhId(part), date:new Date().toISOString(), note:'فاتورة شراء #'+(purchaseDraft.invoiceNo||'—')+' — '+purchaseDraft.paymentMethod+' — مخزن: '+whName(partWhId(part)), supplierId:purchaseDraft.supplierId, purchaseId,
+    pushStockMove({id:uid('mv'), partId:part.id, type:'in', qty:line.qty, unitCost:line.costPrice, warehouseId:partWhId(part), date:new Date().toISOString(), note:'فاتورة شراء #'+(purchaseDraft.invoiceNo||'—')+' — '+purchaseDraft.paymentMethod+' — مخزن: '+whName(partWhId(part)), supplierId:purchaseDraft.supplierId, purchaseId,
       notes:line.notes||'', reqById:line.reqById||'', reqByName:line.reqByName||'', forJobId:line.forJobId||'', forJobNo:line.forJobNo||'', forCarId:line.forCarId||'', forCarLbl:line.forCarLbl||''});
     invoiceItems.push({partId:part.id, name:part.name, qty:line.qty, unitCost:line.costPrice});
   }
@@ -7135,7 +7531,7 @@ function openEditInvoice(invId){
     ${pays.map((p,idx)=>`
       <div class="grid g2" style="align-items:end;margin-bottom:6px">
         <div class="form-row" style="margin:0"><label class="f-label">دفعة ${money(p.amount)} — ${fmtDate(p.date)}</label>
-          <select class="f" id="eiPay_${idx}">${DB.finAccounts.map(a=>`<option value="${a.id}" ${p.accountId===a.id?'selected':''}>${a.name}</option>`).join('')}</select></div>
+          <select class="f" id="eiPay_${idx}">${liveAccounts().map(a=>`<option value="${a.id}" ${p.accountId===a.id?'selected':''}>${a.name}</option>`).join('')}</select></div>
         <div class="muted" style="font-size:11.5px;padding-bottom:10px">الحالي: ${p.method||'—'}</div>
       </div>`).join('')}
     `:`<div class="muted" style="font-size:12px;margin-bottom:10px">مفيش دفعات محصلة على الفاتورة دي — وسيلة السداد بتتحدد وقت التحصيل.</div>`}
@@ -7365,7 +7761,7 @@ function addPayRow(invId, presetAmount){
   div.setAttribute('style','align-items:end;gap:8px;margin-bottom:6px');
   div.innerHTML = `
     <div class="form-row" style="margin:0"><label class="f-label">وسيلة السداد / الحساب المستلم</label>
-      <select class="f" id="payAcc_${idx}">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select></div>
+      <select class="f" id="payAcc_${idx}">${liveAccounts().map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select></div>
     <div class="form-row" style="margin:0"><label class="f-label">المبلغ</label>
       <input class="f" id="payAmt_${idx}" type="number" min="0" step="0.01" value="${presetAmount!=null?Math.max(presetAmount,0):''}" oninput="payRecalc('${invId}')"></div>
     <div style="padding-bottom:10px">${idx>0?`<button class="btn btn-sm btn-danger" onclick="removePayRow(${idx},'${invId}')">حذف</button>`:'<span class="muted" style="font-size:11.5px">الصف الأساسي</span>'}</div>`;
@@ -7912,12 +8308,15 @@ function addFinMove(accountId, type, amount, kind, note, extra){
 }
 function accountForMethod(methodName){
   // مطابقة وسيلة الدفع بالحساب المناسب تلقائياً
-  const byName = DB.finAccounts.find(a=>methodName && methodName.includes(a.name));
+  // م87: المطابقة التلقائية لازم تتجاهل المؤرشف — مينفعش فلوس تروح لحساب متشال
+  const live = liveAccounts();
+  const fb = live[0] || DB.finAccounts[0];   // احتياطي: لو كله مؤرشف (المفروض مستحيل)
+  const byName = live.find(a=>methodName && methodName.includes(a.name));
   if(byName) return byName;
-  if(/كاش/.test(methodName||'') && !/فودافون/.test(methodName||'')) return DB.finAccounts.find(a=>a.kind==='خزنة') || DB.finAccounts[0];
-  if(/بنك|تحويل|فيزا|POS|بطاقة/.test(methodName||'')) return DB.finAccounts.find(a=>a.kind==='بنك') || DB.finAccounts[0];
-  if(/فودافون/.test(methodName||'')) return DB.finAccounts.find(a=>a.name.includes('فودافون')) || DB.finAccounts[0];
-  return DB.finAccounts.find(a=>a.kind==='خزنة') || DB.finAccounts[0];
+  if(/كاش/.test(methodName||'') && !/فودافون/.test(methodName||'')) return live.find(a=>a.kind==='خزنة') || fb;
+  if(/بنك|تحويل|فيزا|POS|بطاقة/.test(methodName||'')) return live.find(a=>a.kind==='بنك') || fb;
+  if(/فودافون/.test(methodName||'')) return live.find(a=>a.name.includes('فودافون')) || fb;
+  return live.find(a=>a.kind==='خزنة') || fb;
 }
 let finPeriod = { preset:'today', from:'', to:'' };
 function setFinPreset(p){ finPeriod.preset = p; refreshContent(); }
@@ -7929,7 +8328,7 @@ function renderFinance(){
   const supplierOut = pm.filter(m=>m.kind==='supplier'||m.kind==='purchase').reduce((s,m)=>s+m.amount,0);
   const extDeposits = pm.filter(m=>m.kind==='deposit').reduce((s,m)=>s+m.amount,0);
   const netFlow = pm.filter(m=>m.kind!=='transfer').reduce((s,m)=>s+(m.type==='in'?m.amount:-m.amount),0);
-  const totalAll = DB.finAccounts.reduce((s,a)=>s+accBalance(a.id),0);
+  const totalAll = liveAccounts().reduce((s,a)=>s+accBalance(a.id),0);   // م87: المؤرشف بره السيولة الشغالة
   return `
   <div class="section-head"><h3>الخزن والحسابات المالية</h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -7939,7 +8338,7 @@ function renderFinance(){
     </div>
   </div>
   <div class="grid g4" style="margin-bottom:8px">
-    ${DB.finAccounts.map(a=>{
+    ${liveAccounts().map(a=>{
       const b = accBalance(a.id);
       return `<div class="stat-card" style="cursor:pointer" onclick="openAccountDetail('${a.id}')">
         <div class="stat-value ${b<0?'low-stock':''}">${money(b)}</div>
@@ -7947,7 +8346,21 @@ function renderFinance(){
       </div>`;
     }).join('')}
   </div>
-  <div class="muted" style="font-size:12px;margin-bottom:18px">إجمالي السيولة في كل الحسابات: <b style="color:var(--accent)">${money(totalAll)}</b> · اضغط على أي حساب لكشف حسابه وتعديل رصيده الافتتاحي</div>
+  <div class="muted" style="font-size:12px;margin-bottom:8px">إجمالي السيولة في الحسابات الشغالة: <b style="color:var(--accent)">${money(totalAll)}</b> · اضغط على أي حساب لكشف حسابه وتسوية رصيده أو أرشفته</div>
+  ${(()=>{   /* م87: الحسابات المؤرشفة — ظاهرة بوضوح مع إمكانية الاسترجاع */
+    const arch = DB.finAccounts.filter(a=>a.archived);
+    if(!arch.length) return '<div style="margin-bottom:18px"></div>';
+    const stuck = arch.filter(a=>Math.abs(accBalance(a.id))>=0.005);
+    return `<div class="card" style="padding:10px 12px;margin-bottom:18px${stuck.length?';border:1px solid var(--danger)':''}">
+      <div style="font-weight:700;margin-bottom:5px">🗄️ حسابات مؤرشفة (${arch.length})</div>
+      ${stuck.length?`<div class="muted" style="font-size:12px;color:var(--danger);margin-bottom:6px">
+        ⚠️ فيه ${stuck.length} حساب مؤرشف لسه فيه رصيد — الفلوس دي مش داخلة في إجمالي السيولة فوق.</div>`:''}
+      <div style="display:flex;gap:7px;flex-wrap:wrap">
+        ${arch.map(a=>`<button class="btn btn-sm" onclick="openAccountDetail('${a.id}')">
+          ${a.name} <span class="muted">(${money(accBalance(a.id))})</span></button>`).join('')}
+      </div>
+    </div>`;
+  })()}
 
   <div class="section-head"><h3>📊 التقرير المالي — ${PERIOD_PRESETS.find(x=>x[0]===finPeriod.preset)?.[1]||'فترة مخصصة'}</h3></div>
   <div class="card" style="margin-bottom:16px">
@@ -7988,12 +8401,38 @@ function openAccountDetail(accId){
       ${stat(money(accBalance(accId)),'الرصيد الحالي', accBalance(accId)<0)}
       ${stat(money(acc.openingBalance||0),'الرصيد الافتتاحي')}
     </div>
-    ${can('fin.manage')?`
-    <div class="grid g2" style="margin-bottom:14px">
-      <div class="form-row" style="margin:0"><label class="f-label">تعديل الرصيد الافتتاحي (أول المدة)</label>
-        <input class="f" id="obAmount" type="number" value="${acc.openingBalance||0}"></div>
-      <div style="align-self:flex-end"><button class="btn btn-accent" style="width:100%" onclick="saveOpeningBalance('${accId}')">حفظ الرصيد الافتتاحي</button></div>
+    ${acc.archived?`<div class="card" style="border:1px solid var(--danger);padding:10px 12px;margin-bottom:14px">
+      <b style="color:var(--danger)">🗄️ الحساب ده مؤرشف</b>
+      <div class="muted" style="font-size:12px;line-height:1.7">مش بيظهر في أي قائمة اختيار، وحركاته القديمة زي ما هي.
+        ${acc.archivedReason?'<br>السبب: '+acc.archivedReason:''}</div>
+      ${can('fin.archive')?`<button class="btn btn-sm" style="margin-top:7px" onclick="restoreFinAccount('${accId}')">♻️ رجّع الحساب للاستخدام</button>`:''}
     </div>`:''}
+    ${can('fin.adjust')?`
+    <!-- م87: تعديل الرصيد بقى بحركة تسوية موثقة بدل تعديل صامت للرصيد الافتتاحي -->
+    <div class="card" style="padding:11px 13px;margin-bottom:14px">
+      <label class="f-label" style="display:block;margin-bottom:6px">⚖️ تعديل رصيد الحساب</label>
+      <div class="muted" style="font-size:12px;line-height:1.7;margin-bottom:8px">
+        اكتب <b>الرصيد الصحيح</b> اللي المفروض يكون في الحساب دلوقتي — والسيستم بيسجّل
+        <b>حركة تسوية موثقة بالفرق</b> باسمك وبالسبب، مش تعديل صامت.
+      </div>
+      <div class="grid g2">
+        <div class="form-row" style="margin:0"><label class="f-label">الرصيد الصحيح</label>
+          <input class="f" id="adjTarget" type="number" step="any" value="${accBalance(accId)}"
+            oninput="previewAccAdjust('${accId}')"></div>
+        <div style="align-self:flex-end"><button class="btn btn-accent" style="width:100%" onclick="saveAccBalanceAdjust('${accId}')">تسجيل التسوية</button></div>
+      </div>
+      <div id="adjPreview" class="muted" style="font-size:12.5px;margin-top:7px">الفرق: 0.00 — مفيش تغيير</div>
+    </div>
+    <details style="margin-bottom:14px">
+      <summary class="muted" style="font-size:12px;cursor:pointer">تعديل الرصيد الافتتاحي (أول المدة) — للتصحيح المحاسبي فقط</summary>
+      <div class="grid g2" style="margin-top:8px">
+        <div class="form-row" style="margin:0"><label class="f-label">الرصيد الافتتاحي</label>
+          <input class="f" id="obAmount" type="number" step="any" value="${acc.openingBalance||0}"></div>
+        <div style="align-self:flex-end"><button class="btn" style="width:100%" onclick="saveOpeningBalance('${accId}')">حفظ الرصيد الافتتاحي</button></div>
+      </div>
+    </details>
+    `:''}
+    ${(!acc.archived && can('fin.archive'))?`<button class="btn btn-danger btn-sm" style="width:100%;margin-bottom:14px" onclick="archiveFinAccount('${accId}')">🗄️ أرشفة الحساب (مش هستعمله تاني)</button>`:''}
     ${acc.kind==='عهدة'?`<button class="btn" style="width:100%;margin-bottom:14px" onclick="openCustodySettleModal('${accId}')">📤 تسوية العهدة (ترحيل المتبقي)</button>`:''}
     <label class="f-label">آخر الحركات</label>
     <table style="margin-top:6px"><tbody>${moves.length? moves.map(m=>`<tr>
@@ -8003,14 +8442,116 @@ function openAccountDetail(accId){
   `);
 }
 async function saveOpeningBalance(accId){
-  if(!(can('fin.manage'))){ toast('مالكش صلاحية إدارة الحسابات المالية', true); return; }   /* حارس م65 */
+  // م88: تعديل الأرصدة بقى صلاحية مستقلة — مش تابعة لإدارة الحسابات
+  if(!(can('fin.adjust'))){ toast('مالكش صلاحية تسوية أرصدة الحسابات', true); return; }
   const acc = DB.finAccounts.find(a=>a.id===accId);
   const v = parseFloat(document.getElementById('obAmount').value)||0;
   const old = acc.openingBalance||0;
-  acc.openingBalance = v;
+  if(Math.abs(v-old) < 0.005){ toast('مفيش تغيير في الرصيد الافتتاحي', true); return; }
+  /* م87: تعديل الرصيد الافتتاحي بيغيّر أرقام مالية — بقى بسبب إلزامي وإشعار،
+     زي أي عملية مالية تانية. قبل كده كان بيتم صامت من غير سبب ولا إشعار. */
+  askConfirmReason('تعديل الرصيد الافتتاحي لـ «'+acc.name+'»؟<br>'
+    +'<span class="muted" style="font-size:12px">من <b>'+money(old)+'</b> إلى <b>'+money(v)+'</b>'
+    +' — ده بيغيّر الرصيد الحالي بنفس الفرق ('+(v-old>=0?'+':'')+money(v-old)+').</span>',
+    async (reason)=>{
+      acc.openingBalance = v;
+      await saveKey('finAccounts', DB.finAccounts);
+      await logAction('⚖️ تعديل الرصيد الافتتاحي لـ «'+acc.name+'»'+auditDetails([
+        ['من', money(old)], ['إلى', money(v)], ['الفرق', money(v-old)], ['السبب', reason||'—']]));
+      notify('acc_opening_edit', 'تعديل الرصيد الافتتاحي لحساب «'+acc.name+'» من '+money(old)+' إلى '+money(v),
+        { category:'financial', refType:'account', refId:acc.id, reason });
+      closeModal(); toast('تم حفظ الرصيد الافتتاحي'); refreshContent();
+    });
+}
+/* ============ م87: تسوية رصيد الحساب + أرشفة الحساب ============
+   طلب سيف قبل التشغيل الفعلي: «عايز أعدّل أرصدة الحسابات + أرشف حساب
+   مش هستعمله تاني». التسوية بتتسجّل **كحركة مالية موثقة** بالفرق —
+   عشان الرصيد يتظبط من غير ما نمسح أو نزوّر أي تاريخ. */
+function accAdjustDiff(accId){
+  const el = document.getElementById('adjTarget');
+  const target = parseFloat(el ? el.value : NaN);
+  if(!isFinite(target)) return null;
+  const cur = accBalance(accId);
+  return Math.round((target - cur)*100)/100;
+}
+function previewAccAdjust(accId){
+  const box = document.getElementById('adjPreview');
+  if(!box) return;
+  const d = accAdjustDiff(accId);
+  if(d===null){ box.innerHTML = 'اكتب رقم صحيح'; return; }
+  if(Math.abs(d) < 0.005){ box.innerHTML = 'الفرق: 0.00 — مفيش تغيير'; return; }
+  box.innerHTML = 'الفرق: <b style="color:'+(d>0?'#1a7f37':'var(--danger)')+'">'+(d>0?'+':'')+money(d)+'</b>'
+    + ' — هيتسجّل حركة <b>'+(d>0?'وارد (زيادة)':'منصرف (نقص)')+'</b> بالمبلغ ده';
+}
+async function saveAccBalanceAdjust(accId){
+  if(!(can('fin.adjust'))){ toast('مالكش صلاحية تسوية أرصدة الحسابات', true); return; }
+  const acc = DB.finAccounts.find(a=>a.id===accId);
+  if(!acc){ toast('الحساب مش موجود', true); return; }
+  const diff = accAdjustDiff(accId);
+  if(diff===null){ toast('اكتب الرصيد الصحيح بالأرقام', true); return; }
+  if(Math.abs(diff) < 0.005){ toast('الرصيد زي ما هو — مفيش تسوية مطلوبة', true); return; }
+  const before = accBalance(accId);
+  const target = Math.round((before + diff)*100)/100;
+  askConfirmReason('تسوية رصيد «'+acc.name+'»؟<br>'
+    +'<span class="muted" style="font-size:12px">من <b>'+money(before)+'</b> إلى <b>'+money(target)+'</b>'
+    +' — هيتسجّل حركة '+(diff>0?'وارد':'منصرف')+' بمبلغ <b>'+money(Math.abs(diff))+'</b> باسمك.</span>',
+    async (reason)=>{
+      addFinMove(accId, diff>0?'in':'out', Math.abs(diff), 'adjustment',
+        'تسوية رصيد الحساب — من '+money(before)+' إلى '+money(target)+(reason?' — '+reason:''),
+        { adjustFrom: before, adjustTo: target, reason: reason||'' });
+      await saveKey('finMoves', DB.finMoves);
+      await logAction('⚖️ تسوية رصيد حساب «'+acc.name+'»'+auditDetails([
+        ['الرصيد قبل', money(before)], ['الرصيد بعد', money(target)],
+        ['الفرق', (diff>0?'+':'')+money(diff)], ['السبب', reason||'—']]));
+      notify('acc_balance_adjust', 'تسوية رصيد حساب «'+acc.name+'» من '+money(before)+' إلى '+money(target)
+        +' (فرق '+(diff>0?'+':'')+money(diff)+')',
+        { category:'financial', refType:'account', refId:acc.id, reason });
+      closeModal(); toast('تمت التسوية — الرصيد بقى '+money(target)); refreshContent();
+    });
+}
+/* الحسابات المتاحة للاستخدام (المؤرشف مايظهرش في أي قائمة اختيار) */
+function liveAccounts(){ return DB.finAccounts.filter(a=>!a.archived); }
+async function archiveFinAccount(accId){
+  if(!(can('fin.archive'))){ toast('مالكش صلاحية أرشفة الحسابات المالية', true); return; }
+  const acc = DB.finAccounts.find(a=>a.id===accId);
+  if(!acc){ toast('الحساب مش موجود', true); return; }
+  if(acc.archived){ toast('الحساب مؤرشف بالفعل', true); return; }
+  if(liveAccounts().length <= 1){ toast('مينفعش تأرشف آخر حساب مالي — لازم يفضل حساب واحد شغال', true); return; }
+  const bal = accBalance(accId);
+  const moves = DB.finMoves.filter(m=>m.accountId===accId).length;
+  /* لو لسه فيه فلوس، بنحذّر بوضوح — الأرشفة مابتصفّرش الرصيد ومابتحوّلش حاجة */
+  askConfirmReason('أرشفة حساب «'+acc.name+'»؟<br>'
+    +(Math.abs(bal)>=0.005
+      ? '<span style="color:var(--danger);font-weight:700">⚠️ الحساب لسه فيه رصيد '+money(bal)+'</span>'
+        +'<br><span class="muted" style="font-size:12px">الأرشفة <b>مش</b> بتصفّر الرصيد ولا بتحوّل الفلوس لحساب تاني. '
+        +'لو الفلوس اتنقلت فعلاً، اعمل <b>تحويل</b> أو <b>تسوية رصيد</b> الأول.</span><br><br>'
+      : '<span class="muted" style="font-size:12px">الرصيد صفر ✔</span><br><br>')
+    +'<span class="muted" style="font-size:12px">الحساب هيختفي من كل قوائم الاختيار، و'+moves+' حركة قديمة هتفضل مربوطة بيه '
+    +'فالتقارير القديمة مش هتبوظ. تقدر ترجّعه في أي وقت.</span>',
+    async (reason)=>{
+      acc.archived = true; acc.archivedAt = new Date().toISOString();
+      acc.archivedBy = actorName(); acc.archivedReason = reason||'';
+      acc.archivedBalance = bal;
+      await saveKey('finAccounts', DB.finAccounts);
+      await logAction('🗄️ أرشفة حساب مالي «'+acc.name+'»'+auditDetails([
+        ['النوع', acc.kind], ['الرصيد وقت الأرشفة', money(bal)],
+        ['عدد الحركات', moves], ['السبب', reason||'—']]));
+      notify('acc_archive', 'أرشفة حساب مالي «'+acc.name+'»'+(Math.abs(bal)>=0.005?' — وهو لسه فيه رصيد '+money(bal):''),
+        { category:'financial', refType:'account', refId:acc.id, reason,
+          severity: Math.abs(bal)>=0.005 ? 'high' : undefined });
+      closeModal(); toast('تمت أرشفة الحساب'); refreshContent();
+    });
+}
+async function restoreFinAccount(accId){
+  if(!(can('fin.archive'))){ toast('مالكش صلاحية أرشفة/استرجاع الحسابات المالية', true); return; }
+  const acc = DB.finAccounts.find(a=>a.id===accId);
+  if(!acc || !acc.archived) return;
+  acc.archived = false; acc.restoredAt = new Date().toISOString(); acc.restoredBy = actorName();
   await saveKey('finAccounts', DB.finAccounts);
-  await logAction('تعديل الرصيد الافتتاحي لـ '+acc.name+': من '+money(old)+' إلى '+money(v));
-  closeModal(); toast('تم حفظ الرصيد الافتتاحي'); refreshContent();
+  await logAction('♻️ استرجاع حساب مالي «'+acc.name+'» من الأرشيف');
+  notify('acc_restore', 'استرجاع حساب مالي «'+acc.name+'» من الأرشيف',
+    { category:'financial', refType:'account', refId:acc.id });
+  closeModal(); toast('رجع الحساب للاستخدام'); refreshContent();
 }
 function openAddAccountModal(){
   openModal(`
@@ -8043,9 +8584,9 @@ function openTransferFundsModal(){
     <div class="muted" style="font-size:12px;margin-bottom:12px">مثال: سحب من البنك وإيداعه في خزنة الكاش.</div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">من حساب (المصدر)</label>
-        <select class="f" id="tfFrom">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+        <select class="f" id="tfFrom">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
       <div class="form-row"><label class="f-label">إلى حساب (المستلم)</label>
-        <select class="f" id="tfTo">${DB.finAccounts.map((a,i)=>`<option value="${a.id}" ${i===1?'selected':''}>${a.name}</option>`).join('')}</select></div>
+        <select class="f" id="tfTo">${liveAccounts().map((a,i)=>`<option value="${a.id}" ${i===1?'selected':''}>${a.name}</option>`).join('')}</select></div>
     </div>
     <div class="form-row"><label class="f-label">المبلغ</label><input class="f" id="tfAmount" type="number" min="0"></div>
     <div class="form-row"><label class="f-label">السبب / الملاحظات</label><input class="f" id="tfNote" placeholder="مثال: تغذية الخزنة، صرف عهدة يومية..."></div>
@@ -8075,7 +8616,7 @@ function openExternalDepositModal(){
     <div class="form-row"><label class="f-label">اسم الشريك / المصدر</label><input class="f" id="edName" placeholder="مثال: م. سيف — رأس مال إضافي"></div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">الحساب المستلم</label>
-        <select class="f" id="edAcc">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select></div>
+        <select class="f" id="edAcc">${liveAccounts().map(a=>`<option value="${a.id}">${a.name}</option>`).join('')}</select></div>
       <div class="form-row"><label class="f-label">المبلغ</label><input class="f" id="edAmount" type="number" min="0"></div>
     </div>
     <div class="form-row"><label class="f-label">السبب / الملاحظات</label><input class="f" id="edNote"></div>
@@ -8200,7 +8741,7 @@ function openNewExpenseModal(){
     <div class="grid g2">
       <div class="form-row"><label class="f-label">المبلغ</label><input class="f" id="expAmt" type="number" min="0"></div>
       <div class="form-row"><label class="f-label">وسيلة الدفع / الحساب</label>
-        <select class="f" id="expAcc">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+        <select class="f" id="expAcc">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
     </div>
     <div class="form-row"><label class="f-label">صورة الفاتورة (اختياري)</label><input class="f" id="expReceipt" type="file" accept="image/*"></div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="expNotes"></div>
@@ -8416,7 +8957,7 @@ function renderCustodies(){
       <div class="form-row" style="margin:0"><label class="f-label">الحالة</label>
         <select class="f" onchange="setCustodyFilter('status',this.value)"><option value="">الكل</option><option value="open" ${custodyFilter.status==='open'?'selected':''}>مفتوحة</option><option value="closed" ${custodyFilter.status==='closed'?'selected':''}>مقفولة</option></select></div>
       <div class="form-row" style="margin:0"><label class="f-label">مصدر الصرف</label>
-        <select class="f" onchange="setCustodyFilter('source',this.value)"><option value="">الكل</option>${DB.finAccounts.map(a=>`<option value="${a.id}" ${custodyFilter.source===a.id?'selected':''}>${a.name}</option>`).join('')}</select></div>
+        <select class="f" onchange="setCustodyFilter('source',this.value)"><option value="">الكل</option>${liveAccounts().map(a=>`<option value="${a.id}" ${custodyFilter.source===a.id?'selected':''}>${a.name}</option>`).join('')}</select></div>
       <div class="form-row" style="margin:0"><label class="f-label">من — إلى</label>
         <div style="display:flex;gap:4px"><input class="f" type="date" value="${custodyFilter.from}" onchange="setCustodyFilter('from',this.value)"><input class="f" type="date" value="${custodyFilter.to}" onchange="setCustodyFilter('to',this.value)"></div></div>
     </div>
@@ -8455,7 +8996,7 @@ function openNewCustodyModal(){
     </div>
     <div class="form-row"><label class="f-label">الغرض من العهدة</label><input class="f" id="cuPurpose" placeholder="مثال: شراء بنزين، خامات دهان، مصروفات طارئة..."></div>
     <div class="form-row"><label class="f-label">مصدر الصرف</label>
-      <select class="f" id="cuSource">${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+      <select class="f" id="cuSource">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="cuNotes"></div>
     <div class="muted" style="font-size:12px;margin-bottom:10px">القيمة هتتخصم من المصدر فوراً وتبقى عهدة مفتوحة (مش مصروف) لحد التسوية.</div>
     <button class="btn btn-accent" style="width:100%" onclick="saveCustody()">إصدار العهدة</button>
@@ -8525,7 +9066,7 @@ function renderSettleModal(custodyId){
     ${remaining>0.5?`
     <div class="grid g2">
       <div class="form-row"><label class="f-label">المتبقي (${money(remaining)}) هيرجع لحساب <span style="color:var(--danger)">*</span></label>
-        <select class="f" id="clReturnAcc"><option value="">— اختار الحساب —</option>${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+        <select class="f" id="clReturnAcc"><option value="">— اختار الحساب —</option>${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
       <div class="form-row"><label class="f-label">ملاحظات التسوية</label><input class="f" id="clNotes"></div>
     </div>`:`<div class="form-row"><label class="f-label">ملاحظات التسوية</label><input class="f" id="clNotes"></div>`}
     <div class="muted" style="font-size:12px;margin-bottom:10px">البنود هتتحوّل لمصروفات حقيقية في التقارير، والمتبقي هيتضاف للحساب اللي تختاره.</div>
@@ -10223,7 +10764,7 @@ function openAdvanceModal(empId){
       <div class="form-row"><label class="f-label">قيمة السلفة</label><input class="f" id="advAmt" type="number" min="0"></div>
     </div>
     <div class="form-row"><label class="f-label">الحساب اللي اتدفعت منه (اختياري — بيخصم من الخزنة)</label>
-      <select class="f" id="advAcc"><option value="">— من غير خصم من الخزنة —</option>${DB.finAccounts.map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+      <select class="f" id="advAcc"><option value="">— من غير خصم من الخزنة —</option>${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
     <div class="form-row"><label class="f-label">سبب السلفة</label><input class="f" id="advReason"></div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="advNote"></div>
     <div class="muted" style="font-size:12px;margin-bottom:10px">السلفة هتتخصم تلقائياً من راتب شهرها في شاشة الرواتب.</div>
@@ -10920,8 +11461,28 @@ function notify(type, action, opts){
     category: o.category || 'jobs',
     priority: o.priority || NOTIF_SEVERITY[type] || 'medium',
     amount: o.amount || 0,
+    reason: o.reason || '',   // م83: أي عملية ليها سبب، السبب بيتخزّن ويظهر في الإشعار
     refType: o.refType || null, refId: o.refId || null, refNo: o.refNo || null
   });
+}
+/* ============ م83: السبب بيظهر مع أي إشعار — مهما كانت أولويته ============
+   طلب سيف: «طالما في سبب مكتوب في العملية اللي تمت، يظهر لي في مركز
+   الإشعارات مع الإشعار نفسه — أي إشعار، مهم أو مش مهم».
+   الإشعارات الجديدة بتخزّن السبب في حقل مستقل (reason). والإشعارات القديمة
+   السبب فيها مكتوب جوه نص الإجراء («... — السبب: كذا») — فبنستخرجه منها
+   كمان، عشان الميزة تشتغل بأثر رجعي من غير أي ترحيل بيانات. */
+function notifReason(n){
+  if(!n) return '';
+  if(n.reason && String(n.reason).trim()) return String(n.reason).trim();
+  const m = /(?:—\s*)?السبب\s*:\s*([\s\S]+)$/.exec(String(n.action||''));
+  const r = m ? m[1].trim() : '';
+  return (r && r !== '—') ? r : '';
+}
+/* نص الإجراء من غير السبب — عشان السبب مايتكررش مرتين في نفس الصف */
+function notifActionText(n){
+  if(!n) return '';
+  const a = String(n.action||'');
+  return notifReason(n) ? a.replace(/\s*(?:—\s*)?السبب\s*:\s*[\s\S]+$/, '').trim() : a;
 }
 /* فتح السجل المرتبط بالإشعار مباشرة (البند: Direct link to open the related record) */
 /* ============ الملاحظة 74: فتح السجل المرتبط بالإشعار — توجيه ذكي حسب نوع العملية ============
@@ -10963,6 +11524,11 @@ function openNotifRef(notifId){
       if(p) return openItemCard(p.id);
       return goTab('inventory');
     }
+    if(t==='account'){   // م87: حساب مالي (تسوية رصيد · أرشفة · استرجاع)
+      const a = id ? DB.finAccounts.find(x=>x.id===id) : null;
+      if(a && canScreen('finance')) return openAccountDetail(a.id);
+      return goTab(canScreen('finance') ? 'finance' : firstVisibleTab());
+    }
     if(t==='move'){ const m = id?DB.stockMoves.find(x=>x.id===id):null; if(m) return openMoveDetails(m.id); return goTab('stockmoves'); }
     if(t==='customer'){ const c = id?DB.customers.find(x=>x.id===id):null; if(c) return openCustomerHistory(c.id); return goTab('customers'); }
     if(t==='supplier'){ const s = id?DB.suppliers.find(x=>x.id===id):null; if(s && canScreen('suppliers')) return openSupplierDetail(s.id); return goTab('suppliers'); }
@@ -10991,6 +11557,7 @@ function pushNotif(opts){
       dept: session ? (ROLE_LABEL[session.role]||session.role) : '—',
       position: currentPosition(),
       action: opts.action||'', amount: opts.amount||0,
+      reason: opts.reason||'',   // م83: السبب كامل — بيظهر في الإشعار مهما كانت أولويته
       refType: opts.refType||null, refId: opts.refId||null, refNo: opts.refNo||null,
       status: 'completed',   // الإجراء اتنفّذ فعلاً (المفوَّض معاه صلاحية) — للمتابعة فقط
       comments: [], seen: false, date: new Date().toISOString()
@@ -10999,6 +11566,16 @@ function pushNotif(opts){
     if(DB.notifications.length>1000) DB.notifications = DB.notifications.slice(-1000);
     saveKey('notifications').catch(()=>{});
   }catch(e){ /* المراقبة ماتوقفش التشغيل أبداً */ }
+}
+/* ============ م90: مهلة سداد المديونية بقت متحكّم فيها من الإعدادات ============
+   طلب سيف: «عايز مهلة سداد المديونية سواء أفراد أو شركات تظهر في عتبات مركز
+   الإشعارات عشان أتحكم فيها براحتي». قبل كده كانت أرقام ثابتة في الكود
+   (أفراد 10 · شركات 30) ومفيش طريقة تغيّرها غير تعديل الكود. */
+function debtDaysFor(custType){
+  const s = DB.settings || {};
+  const v = (custType==='شركة') ? s.debtDaysComp : s.debtDaysInd;
+  const n = parseFloat(v);
+  return (isFinite(n) && n >= 0) ? n : (custType==='شركة' ? 30 : 10);
 }
 /* التنبيهات الحيّة (محسوبة لحظياً — مش متخزنة): مديونيات، طلبات منتظرة، هالك مستني */
 function debtReminders(){
@@ -11011,7 +11588,8 @@ function debtReminders(){
     const cust = DB.customers.find(c=>c.id===inv.customerId);
     const isCompany = cust && cust.custType==='شركة';
     const days = Math.floor((now - new Date(inv.date))/86400000);
-    const interval = isCompany ? 30 : 10;
+    // م90: المهلة بقت من الإعدادات (عتبات مركز الإشعارات) بدل أرقام ثابتة في الكود
+    const interval = isCompany ? debtDaysFor('شركة') : debtDaysFor('فرد');
     if(days < interval) return;
     out.push({ inv, cust, due, days, isCompany, interval });
   });
@@ -11069,6 +11647,12 @@ function pendingNotifCount(){
 }
 let notifFilter = { category:'', priority:'', status:'' };
 let notifShowArchived = false;
+/* م91: القسم المفتوح دلوقتي في مركز الإشعارات (null = مفيش، المؤشرات بس) */
+let notifPanel = null;
+function setNotifPanel(id){
+  notifPanel = (!id || notifPanel===id) ? null : id;   // نفس المؤشر تاني = قفل
+  refreshContent();
+}
 function setNotifFilter(k,v){ notifFilter[k]=v; refreshContent(); }
 function toggleNotifArchive(){ notifShowArchived = !notifShowArchived; refreshContent(); }
 function priorityTag(p){
@@ -11101,49 +11685,138 @@ function renderNotifications(){
   if(notifFilter.category) list = list.filter(n=>n.category===notifFilter.category);
   if(notifFilter.priority) list = list.filter(n=>n.priority===notifFilter.priority);
   list.sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const widget = (label, count, danger)=>stat(String(count), label, danger && count>0);
+  /* ============ م91: المؤشرات بقت قابلة للضغط والأقسام بتفتح واحد واحد ============
+     المشكلة اللي رصدها سيف: كل الأقسام كانت مفتوحة مع بعض (78 قطعة راكدة +
+     271 إشعار...) فكان لازم ينزل مئات السطور عشان يوصل للحاجة اللي عايز
+     يراجعها. دلوقتي: أول ما تفتح الشاشة تشوف **المؤشرات بس**، وتدوس على أي
+     مؤشر فيفتح قسمه هو لوحده تحته مباشرة — من غير ما تخرج من الشاشة. */
+  const widget = (label, count, danger, panel)=>{
+    const active = notifPanel===panel;
+    const clickable = !!panel && count>0;
+    return `<div class="stat-card" ${clickable?`onclick="setNotifPanel('${panel}')" style="cursor:pointer;${active?'outline:2px solid var(--accent);outline-offset:-2px':''}"`:'style="opacity:.6"'}>
+      <div class="stat-value ${danger&&count>0?'low-stock':''}">${count}</div>
+      <div class="stat-label">${label}${clickable?` <span class="muted" style="font-size:10px">${active?'▲ اقفل':'▼ افتح'}</span>`:''}</div>
+    </div>`;
+  };
+  const moneyWidget = (label, val, danger, panel, count)=>{
+    const active = notifPanel===panel;
+    const clickable = !!panel && count>0;
+    return `<div class="stat-card" ${clickable?`onclick="setNotifPanel('${panel}')" style="cursor:pointer;${active?'outline:2px solid var(--accent);outline-offset:-2px':''}"`:'style="opacity:.6"'}>
+      <div class="stat-value ${danger?'low-stock':''}">${val}</div>
+      <div class="stat-label">${label}${clickable?` <span class="muted" style="font-size:10px">${active?'▲ اقفل':'▼ افتح'}</span>`:''}</div>
+    </div>`;
+  };
+  const P = notifPanel;   // القسم المفتوح دلوقتي (null = مفيش)
   return `
   <div class="muted" style="font-size:12.5px;margin-bottom:16px">🛡️ طبقة مراقبة وحوكمة — كل إجراء حساس نفّذه المدراء بيظهر هنا للمتابعة. الصلاحيات زي ما هي، والعمليات ماتوقفش أبداً.</div>
-  <div class="section-head"><h3>📊 مؤشرات تحتاج متابعة</h3></div>
+  <div class="section-head"><h3>📊 مؤشرات تحتاج متابعة</h3>
+    ${P?`<button class="btn btn-sm" onclick="setNotifPanel('')">✕ اقفل القسم المفتوح</button>`:''}</div>
+  <div class="muted" style="font-size:12px;margin-bottom:10px">دوس على أي مؤشر عشان تفتح تفاصيله تحت — والمؤشر اللي رقمه صفر مفيهوش حاجة تتراجع.</div>
   <div class="grid g4" style="margin-bottom:14px">
-    ${widget('إشعارات غير مقروءة', unseenNotifCount(), true)}
-    ${widget('مديونيات متأخرة', debts.length, true)}
-    ${widget('طلبات إجازة منتظرة', leaves.length, true)}
-    ${widget('أذونات انصراف منتظرة', early.length, true)}
+    ${widget('إشعارات غير مقروءة', unseenNotifCount(), true, 'unseen')}
+    ${widget('مديونيات متأخرة', debts.length, true, 'debts')}
+    ${widget('طلبات إجازة منتظرة', leaves.length, true, 'leaves')}
+    ${widget('أذونات انصراف منتظرة', early.length, true, 'early')}
   </div>
   <div class="grid g4" style="margin-bottom:14px">
-    ${widget('مأموريات منتظرة', errands.length)}
-    ${widget('عدد تالفة/صيانة', damaged.length, true)}
-    ${widget('فواتير بخصم عالي', largeDiscInv.length, true)}
-    ${stat(money(debts.reduce((a,d)=>a+d.due,0)), 'إجمالي المديونية المتأخرة', debts.length>0)}
+    ${widget('مأموريات منتظرة', errands.length, false, 'errands')}
+    ${widget('عدد تالفة/صيانة', damaged.length, true, 'damaged')}
+    ${widget('فواتير بخصم عالي', largeDiscInv.length, true, 'largeDisc')}
+    ${moneyWidget('إجمالي المديونية المتأخرة', money(debts.reduce((a,d)=>a+d.due,0)), debts.length>0, 'debts', debts.length)}
   </div>
   <div class="grid g4" style="margin-bottom:14px">
-    ${widget('موظفين بسلف عالية', highAdv.length, true)}
-    ${widget('موظفين بغياب عالي', highAbs.length, true)}
-    ${widget('قطع راكدة', stagnant.length, true)}
-    ${widget('قطع تحت حد الأمان', lowStk.length, true)}
+    ${widget('موظفين بسلف عالية', highAdv.length, true, 'highAdv')}
+    ${widget('موظفين بغياب عالي', highAbs.length, true, 'highAbs')}
+    ${widget('قطع راكدة', stagnant.length, true, 'stagnant')}
+    ${widget('قطع تحت حد الأمان', lowStk.length, true, 'lowStk')}
   </div>
   <div class="grid g4" style="margin-bottom:20px">
-    ${widget('عهد متأخرة (+48 ساعة)', overCust.length, true)}
+    ${widget('عهد متأخرة (+48 ساعة)', overCust.length, true, 'overCust')}
+    ${widget('سجل الإشعارات كامل', DB.notifications.length, false, 'log')}
   </div>
-  ${overCust.length?`
+  ${!P?`<div class="card" style="padding:26px;text-align:center">
+    <div style="font-size:15px;font-weight:700;margin-bottom:5px">👆 اختار مؤشر من فوق</div>
+    <div class="muted" style="font-size:12.5px;line-height:1.8">كل مؤشر بيفتح قسمه لوحده هنا — عشان تراجع اللي انت عايزه بس،
+    من غير ما تنزل في مئات السطور. والاعتماد والرفض بيتم من هنا على طول.</div>
+  </div>`:''}
+  ${(P==='leaves' && leaves.length)?`
+  <div class="section-head"><h3>🌴 طلبات إجازة منتظرة (${leaves.length})</h3></div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الطلب</th><th>الموظف</th><th>النوع</th><th>المدة</th><th>السبب</th><th></th></tr></thead>
+  <tbody>${leaves.map(r=>{ const emp = DB.employees.find(e=>e.id===r.employeeId);
+    return `<tr><td>#${r.reqNo||'—'}</td><td style="font-weight:700">${emp?emp.name:'—'}</td><td>${r.type}</td>
+    <td style="white-space:nowrap;font-size:12.5px">${fmtDate(r.from)} → ${fmtDate(r.to)} (${r.days} يوم)</td>
+    <td class="muted" style="font-size:12px">${r.reason||'—'}</td>
+    <td style="white-space:nowrap">${can('hr.approve')?`
+      <button class="btn btn-sm btn-accent" onclick="approveLeave('${r.id}')">✔ قبول</button>
+      <button class="btn btn-sm btn-danger" onclick="rejectLeave('${r.id}')">✕ رفض</button>`
+      :'<span class="muted" style="font-size:11.5px">مالكش صلاحية القرار</span>'}</td></tr>`;
+  }).join('')}</tbody></table></div>`:''}
+  ${(P==='early' && early.length)?`
+  <div class="section-head"><h3>🚪 أذونات انصراف منتظرة (${early.length})</h3></div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الإذن</th><th>الموظف</th><th>التاريخ</th><th>وقت الانصراف</th><th>السبب</th><th></th></tr></thead>
+  <tbody>${early.map(p=>{ const emp = DB.employees.find(e=>e.id===p.employeeId);
+    return `<tr><td>#${p.permitNo||'—'}</td><td style="font-weight:700">${emp?emp.name:'—'}</td>
+    <td style="white-space:nowrap">${fmtDate(p.date)}</td><td>${p.leaveTime||'—'}</td>
+    <td class="muted" style="font-size:12px">${p.reason||p.desc||'—'}</td>
+    <td style="white-space:nowrap">${can('hr.approve')?`
+      <button class="btn btn-sm btn-accent" onclick="approvePermit('${p.id}')">✔ اعتماد</button>
+      <button class="btn btn-sm btn-danger" onclick="rejectPermit('${p.id}')">✕ رفض</button>`
+      :'<span class="muted" style="font-size:11.5px">مالكش صلاحية القرار</span>'}</td></tr>`;
+  }).join('')}</tbody></table></div>`:''}
+  ${(P==='errands' && errands.length)?`
+  <div class="section-head"><h3>🏃 مأموريات منتظرة (${errands.length})</h3></div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>المأمورية</th><th>الموظف</th><th>التاريخ</th><th>النوع</th><th>الجهة</th><th>السبب</th><th></th></tr></thead>
+  <tbody>${errands.map(p=>{ const emp = DB.employees.find(e=>e.id===p.employeeId);
+    return `<tr><td>#${p.permitNo||'—'}</td><td style="font-weight:700">${emp?emp.name:'—'}</td>
+    <td style="white-space:nowrap">${fmtDate(p.date)}</td>
+    <td>${p.errandType||'—'}${p.errandType==='ساعات محددة'&&p.hours?' ('+p.hours+' س)':''}</td>
+    <td>${p.destination||'—'}</td><td class="muted" style="font-size:12px">${p.reason||p.desc||'—'}</td>
+    <td style="white-space:nowrap">${can('hr.approve')?`
+      <button class="btn btn-sm btn-accent" onclick="approvePermit('${p.id}')">✔ اعتماد</button>
+      <button class="btn btn-sm btn-danger" onclick="rejectPermit('${p.id}')">✕ رفض</button>`
+      :'<span class="muted" style="font-size:11.5px">مالكش صلاحية القرار</span>'}</td></tr>`;
+  }).join('')}</tbody></table></div>`:''}
+  ${(P==='damaged' && damaged.length)?`
+  <div class="section-head"><h3>🧰 عدد تالفة / تحت الصيانة (${damaged.length})</h3></div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>العدة</th><th>الكود</th><th>الحالة</th><th></th></tr></thead>
+  <tbody>${damaged.map(t=>`<tr><td style="font-weight:700">${t.name}</td><td class="muted">${t.code||'—'}</td>
+    <td><span class="tag tag-unpaid">${t.status}</span></td>
+    <td><button class="btn btn-sm" onclick="goTab('tools')">↗ شاشة العدد</button></td></tr>`).join('')}</tbody></table></div>`:''}
+  ${(P==='largeDisc' && largeDiscInv.length)?`
+  <div class="section-head"><h3>🏷️ فواتير بخصم عالي (≥ ${s.largeDiscountPct||15}%)</h3></div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الفاتورة</th><th>العميل</th><th>التاريخ</th><th>الإجمالي</th><th>الخصم</th><th>النسبة</th><th></th></tr></thead>
+  <tbody>${largeDiscInv.slice(0,60).map(i=>{ const cu = DB.customers.find(c=>c.id===i.customerId);
+    const pct = i.subtotal>0 ? (i.discount/i.subtotal*100) : 0;
+    return `<tr><td>#${i.invNo}</td><td>${cu?cu.name:'—'}</td><td style="white-space:nowrap">${fmtDate(i.date)}</td>
+    <td>${money(i.total)}</td><td style="color:var(--danger);font-weight:800">${money(i.discount)}</td>
+    <td style="color:var(--danger);font-weight:800">${pct.toFixed(0)}%</td>
+    <td><button class="btn btn-sm btn-accent" onclick="openInvoiceHistory('${i.id}')">🕘 سجل الفاتورة</button></td></tr>`;
+  }).join('')}</tbody></table></div>`:''}
+  ${(P==='lowStk' && lowStk.length)?`
+  <div class="section-head"><h3>⚠️ قطع تحت حد الأمان (${lowStk.length})</h3></div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الصنف</th><th>المخزن</th><th>الرصيد</th><th>الحد الأدنى</th><th></th></tr></thead>
+  <tbody>${lowStk.slice(0,80).map(p=>`<tr><td style="font-weight:700">${p.name}</td>
+    <td><span class="tag tag-inspect">${whName(partWhId(p))}</span></td>
+    <td style="color:var(--danger);font-weight:800">${p.qty} ${p.unit||''}</td><td>${p.minQty||0}</td>
+    <td><button class="btn btn-sm" onclick="openItemCard('${p.id}')">📇 كارت الصنف</button></td></tr>`).join('')}</tbody></table></div>`:''}
+  ${(P==='overCust' && overCust.length)?`
   <div class="section-head"><h3>👛 عهد مفتوحة متأخرة (+${CUSTODY_OVERDUE_HOURS} ساعة)</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>العهدة</th><th>الموظف</th><th>المبلغ</th><th>مفتوحة من</th></tr></thead>
   <tbody>${overCust.map(c=>`<tr onclick="goTab('expenses')" style="cursor:pointer"><td>#${c.custodyNo}</td><td style="font-weight:700">${custodyEmpName(c)}</td><td style="font-weight:800">${money(c.amount)}</td><td style="color:var(--danger);font-weight:800">${durationText(c.createdAt)}</td></tr>`).join('')}</tbody></table></div>`:''}
-  ${highAdv.length?`
+  ${(P==='highAdv' && highAdv.length)?`
   <div class="section-head"><h3>💸 موظفين سلفهم عالية (≥ ${s.highAdvancePct||50}% من الراتب هذه الدورة)</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الموظف</th><th>الراتب</th><th>إجمالي السلف</th><th>النسبة</th></tr></thead>
   <tbody>${highAdv.map(x=>`<tr onclick="goTab('hr')" style="cursor:pointer"><td style="font-weight:700">${x.e.name}</td><td>${money(x.e.salary)}</td><td style="color:var(--danger);font-weight:800">${money(x.adv)}</td><td style="color:var(--danger);font-weight:800">${x.ratio.toFixed(0)}%</td></tr>`).join('')}</tbody></table></div>`:''}
-  ${highAbs.length?`
+  ${(P==='highAbs' && highAbs.length)?`
   <div class="section-head"><h3>🚫 موظفين غيابهم عالي (≥ ${s.highAbsenceDays||3} أيام هذه الدورة)</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الموظف</th><th>أيام الغياب</th></tr></thead>
   <tbody>${highAbs.map(x=>`<tr onclick="goTab('hr')" style="cursor:pointer"><td style="font-weight:700">${x.e.name}</td><td style="color:var(--danger);font-weight:800">${x.days} يوم</td></tr>`).join('')}</tbody></table></div>`:''}
-  ${stagnant.length?`
+  ${(P==='stagnant' && stagnant.length)?`
   <div class="section-head"><h3>📦 قطع راكدة (مفيش صرف من +${s.stagnantDays||90} يوم)</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الصنف</th><th>الرصيد</th><th>قيمة المخزون</th><th>آخر صرف</th></tr></thead>
   <tbody>${stagnant.slice(0,30).map(x=>`<tr onclick="goTab('inventory')" style="cursor:pointer"><td>${x.p.name}</td><td>${x.p.qty} ${x.p.unit||''}</td><td style="font-weight:700">${money(x.value)}</td><td class="muted">${x.lastOut?fmtDate(x.lastOut):'مااتصرفش خالص'}</td></tr>`).join('')}</tbody></table></div>`:''}
-  ${debts.length?`
-  <div class="section-head"><h3>💰 مديونيات متأخرة (أفراد +${10} يوم · شركات +${30} يوم)</h3></div>
+  ${(P==='debts' && debts.length)?`
+  <div class="section-head"><h3>💰 مديونيات متأخرة (أفراد +${debtDaysFor('فرد')} يوم · شركات +${debtDaysFor('شركة')} يوم)</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>العميل</th><th>النوع</th><th>المبلغ المتأخر</th><th>متأخر من</th><th>فاتورة</th></tr></thead>
   <tbody>${debts.slice(0,40).map(d=>`<tr onclick="goTab('receivables')" style="cursor:pointer">
     <td style="font-weight:700">${d.cust?d.cust.name:'—'}</td>
@@ -11151,7 +11824,8 @@ function renderNotifications(){
     <td style="font-weight:800;color:var(--danger)">${money(d.due)}</td>
     <td style="color:var(--danger)">${d.days} يوم</td>
     <td class="muted">#${d.inv.invNo}</td></tr>`).join('')}</tbody></table></div>`:''}
-  <div class="section-head"><h3>🔔 ${notifShowArchived?'أرشيف الإشعارات المُراجَعة':'سجل الإشعارات'} (${list.length})</h3>
+  ${(P==='unseen' || P==='log')?`
+  <div class="section-head"><h3>🔔 ${notifShowArchived?'أرشيف الإشعارات المُراجَعة':(P==='unseen'?'الإشعارات غير المقروءة':'سجل الإشعارات')} (${(P==='unseen'?list.filter(n=>!n.seen):list).length})</h3>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <select class="f btn-sm" style="width:auto;padding:6px 10px" onchange="setNotifFilter('category',this.value)">
         <option value="">كل الأقسام</option>${Object.entries(NOTIF_CAT_LABEL).map(([k,v])=>`<option value="${k}" ${notifFilter.category===k?'selected':''}>${v}</option>`).join('')}</select>
@@ -11162,7 +11836,8 @@ function renderNotifications(){
     </div></div>
   <div class="card">
     <table><thead><tr><th>الأولوية</th><th>القسم</th><th>الإجراء</th><th>المستخدم</th><th>الوقت</th><th>الحالة</th><th></th></tr></thead>
-    <tbody>${list.length? list.slice(0,120).map(n=>{
+    <tbody>${(()=>{ const shown = (P==='unseen' ? list.filter(n=>!n.seen) : list);
+      return shown.length? shown.slice(0,120).map(n=>{
       /* ============ الملاحظة 75: الإجراءات تحت كل إشعار مباشرة (واجهة فقط) ============
          اتشال زرار «تفاصيل» — و«تعليق / تمت المراجعة / متابعة» اتنقلوا من نافذة
          التفاصيل لتحت الإشعار نفسه. الوظائف والصلاحيات والسجل كلهم زي ما هم. */
@@ -11172,13 +11847,14 @@ function renderNotifications(){
       return `<tr style="${rowBg}">
       <td>${priorityTag(n.priority)}</td>
       <td class="muted">${NOTIF_CAT_LABEL[n.category]||n.category}</td>
-      <td>${n.action}${n.amount?` <b>${money(n.amount)}</b>`:''}${n.refNo?` <span class="muted" style="font-size:11px">#${n.refNo}</span>`:''}</td>
+      <td>${notifActionText(n)}${n.amount?` <b>${money(n.amount)}</b>`:''}${n.refNo?` <span class="muted" style="font-size:11px">#${n.refNo}</span>`:''}</td>
       <td>${n.userName}<div class="muted" style="font-size:10.5px">${n.position||''}</div></td>
       <td style="white-space:nowrap;font-size:12px">${fmtDateTime(n.date)}</td>
       <td>${notifStatusTag(n.status)}</td>
       <td style="white-space:nowrap">${(n.refType&&(n.refId||n.refNo))?`<button class="btn btn-sm btn-accent" onclick="openNotifRef('${n.id}')" title="افتح السجل المرتبط">↗ فتح السجل</button>`:''}</td>
     </tr>
     <tr style="${rowBg}"><td colspan="7" style="padding-top:0;border-bottom:2px solid var(--border)">
+      ${notifReason(n)?`<div style="background:rgba(242,212,16,.10);border-right:3px solid var(--accent);padding:7px 11px;border-radius:7px;margin-bottom:8px;font-size:12.5px;line-height:1.7"><b>📝 السبب:</b> ${notifReason(n)}</div>`:''}
       ${cmts.length?`<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:7px">
         ${cmts.map(c=>`<div style="background:var(--surface-2);padding:5px 9px;border-radius:7px;font-size:12px">💬 ${c.text}
           <span class="muted" style="font-size:10.5px">— ${c.by} · ${fmtDateTime(c.at)}</span></div>`).join('')}
@@ -11193,9 +11869,9 @@ function renderNotifications(){
         <button class="btn btn-sm btn-danger" onclick="setNotifStatus('${n.id}','rejected')">⚠ متابعة</button>
       </div>`:''}
     </td></tr>`;
-    }).join('') : `<tr><td colspan="7" class="empty">مفيش إشعارات — كله تمام 👏</td></tr>`}
+    }).join('') : `<tr><td colspan="7" class="empty">مفيش إشعارات — كله تمام 👏</td></tr>`; })()}
     </tbody></table>
-  </div>`;
+  </div>`:''}`;
 }
 function openNotifDetail(id){
   const n = DB.notifications.find(x=>x.id===id);
@@ -11359,6 +12035,18 @@ function renderSettings(){
       <div class="form-row"><label class="f-label">حد السلف العالية (% من الراتب)</label><input class="f" id="setHighAdv" type="number" min="0" max="100" value="${DB.settings.highAdvancePct||50}"></div>
       <div class="form-row"><label class="f-label">حد الغياب العالي (أيام/دورة)</label><input class="f" id="setHighAbs" type="number" min="1" value="${DB.settings.highAbsenceDays||3}"></div>
       <div class="form-row"><label class="f-label">حد ركود القطعة (أيام بدون صرف)</label><input class="f" id="setStagnant" type="number" min="1" value="${DB.settings.stagnantDays||90}"></div>
+    </div>
+    <!-- م90: مهلة سداد المديونية بقت متحكّم فيها من هنا -->
+    <div class="muted" style="font-size:12px;margin:12px 0 6px;font-weight:700">💰 مهلة سداد المديونية</div>
+    <div class="muted" style="font-size:11.5px;line-height:1.7;margin-bottom:8px">
+      بعد كام يوم من تاريخ الفاتورة تعتبر المديونية <b>متأخرة</b> وتظهر في تنبيه «مديونيات متأخرة».
+      العميل بياخد المهلة حسب نوعه (فرد/شركة) تلقائياً.
+    </div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">مهلة الأفراد (يوم)</label>
+        <input class="f" id="setDebtInd" type="number" min="0" value="${debtDaysFor('فرد')}"></div>
+      <div class="form-row"><label class="f-label">مهلة الشركات (يوم)</label>
+        <input class="f" id="setDebtComp" type="number" min="0" value="${debtDaysFor('شركة')}"></div>
     </div>
     <button class="btn btn-accent" onclick="saveNotifThresholds()">حفظ العتبات</button>
   </div>`}
@@ -11709,7 +12397,22 @@ async function saveNotifThresholds(){
   DB.settings.highAdvancePct = parseFloat((document.getElementById('setHighAdv')||{}).value)||50;
   DB.settings.highAbsenceDays = parseFloat((document.getElementById('setHighAbs')||{}).value)||3;
   DB.settings.stagnantDays = parseFloat((document.getElementById('setStagnant')||{}).value)||90;
+  /* م90: مهلة السداد — بنقبل الصفر (يعني تعتبر متأخرة من أول يوم) فمنفعش نستخدم ||
+     لأنها هتحوّل الصفر لـ10/30. وبنتجاهل أي إدخال فاضي أو سالب. */
+  const oldInd = debtDaysFor('فرد'), oldComp = debtDaysFor('شركة');
+  const rd = (id, fb)=>{ const n = parseFloat((document.getElementById(id)||{}).value);
+    return (isFinite(n) && n >= 0) ? n : fb; };
+  DB.settings.debtDaysInd  = rd('setDebtInd',  oldInd);
+  DB.settings.debtDaysComp = rd('setDebtComp', oldComp);
+  const newInd = DB.settings.debtDaysInd, newComp = DB.settings.debtDaysComp;
   await saveKey('settings');
+  if(newInd !== oldInd || newComp !== oldComp){
+    await logAction('⏳ تعديل مهلة سداد المديونية'+auditDetails([
+      ['الأفراد', oldInd+' يوم ← '+newInd+' يوم'],
+      ['الشركات', oldComp+' يوم ← '+newComp+' يوم']]));
+    notify('debt_terms_change', 'تعديل مهلة سداد المديونية — أفراد: '+oldInd+' ← '+newInd
+      +' يوم · شركات: '+oldComp+' ← '+newComp+' يوم', { category:'financial', refType:'settings' });
+  }
   await logAction('تعديل عتبات الإشعارات — مصروف كبير: '+money(exp)+' · خصم عالي: '+disc+'%');
   toast('تم حفظ العتبات');
 }
