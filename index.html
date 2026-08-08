@@ -536,7 +536,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v136';
+const APP_VERSION = 'v149';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -575,6 +575,9 @@ const ACTION_GROUPS = [
     ['jobs.print','طباعة وتحميل أمر الشغل'],
     ['jobs.cancel','إلغاء أمر شغل'],
     ['jobs.reopen','إعادة فتح أمر شغل متفوتر'],
+    /* م127: العربون — التسجيل والاسترداد صلاحيتين منفصلتين (الاسترداد فلوس خارجة) */
+    ['jobs.deposit','تسجيل عربون من العميل'],
+    ['jobs.deposit_refund','استرداد عربون للعميل'],
     /* م82: «حذف أمر شغل نهائياً» اتشال من هنا — كان شيك بوكس مالوش أي تأثير.
        الحذف النهائي مقفول على صاحب المركز في الكود نفسه (isOwnerSession)،
        فوجوده في القائمة كان بيوهّم إنك تقدر تديه لموظف وهو مش بيتدي. */
@@ -670,6 +673,8 @@ const PERM_INFO = {
   'jobs.print':'طباعة أمر الشغل وتحميله كملف. عرض فقط — مفيش أي تعديل.',
   'jobs.cancel':'إلغاء أمر شغل بسبب موثق. الأوامر اللي عليها معاملات مالية/مخزنية إلغاؤها لصاحب المركز فقط.',
   'jobs.reopen':'إعادة فتح أمر شغل متفوتر عشان تعدّل بنوده — بيلغي الفاتورة الحالية ويرجّع الأمر للشغل، وبعدها تصدر فاتورة جديدة.',
+  'jobs.deposit':'تسجيل عربون (دفعة مقدمة) من العميل على أمر الشغل — الفلوس بتدخل الحساب المختار فوراً وبيتطبع إيصال رسمي. العربون بيتخصم تلقائياً من الفاتورة النهائية.',
+  'jobs.deposit_refund':'استرداد عربون مدفوع للعميل — فلوس بتخرج من الخزنة بإذن صرف رسمي وسبب إلزامي. حساسة.',
   'wip.create':'إنشاء نسخة ثابتة (Snapshot) من حالة الورشة وقت إقفال الشهر أو أي فترة مالية — بتتحفظ باسم وتاريخ ومنفّذ، ومابتتأثرش بأي تعديل يحصل بعد كده على أوامر الشغل. عرض وحفظ بس — <b>مابتغيّرش</b> أي بيانات تشغيلية.',
   'wip.view':'عرض سجل الـ Snapshots المحفوظة وفتح أي تقرير منها. قراءة فقط.',
   'wip.export':'طباعة الـ Snapshot (وتقدر تحفظها PDF من نافذة الطباعة) وتصديرها Excel. قراءة فقط.',
@@ -946,7 +951,11 @@ function describeJobItem(it, job){
 async function logAction(text){
   DB.activityLog.push({id:uid('log'), text, actor:actorName(), role:session?ROLE_LABEL[session.role]:'—',
     staffId:(session&&session.staffId)||null, device:deviceInfo(), date:new Date().toISOString()});
-  if(DB.activityLog.length>500) DB.activityLog = DB.activityLog.slice(-500);
+  /* ⚠️ م124: سقف الـ500 سجل **اتشال نهائياً** — كان بيمسح أي سجل أقدم من كام
+     يوم من القاعدة بلا رجعة (سيف اكتشف إن شهر 7 كله اختفى). القاعدة بتحتفظ
+     بالسجل كله للأبد، والجهاز بيحمّل آخر 30 يوم بس (نافذة load_all)،
+     والأقدم بيتجاب عند الطلب من شاشة سجل العمليات. مفيش حذف إلا لو سيف
+     حدد مدة احتفاظ بنفسه من الإعدادات (cleanupOldActivityLog). */
   // حفظ في الخلفية بدون تعطيل العملية الأساسية (لتسريع الاستجابة)
   saveKey('activityLog', DB.activityLog).catch(()=>{});
 }
@@ -1278,6 +1287,8 @@ async function initApp(){
   try{ await repairMissingStockMoves(); }catch(e){ console.error('repair failed', e); }
   // م121: تنظيف الأرشيف القديم (لو سيف فعّل مدة) — صامت ومايوقفش التشغيل
   try{ await cleanupArchivedNotifs(); }catch(e){ console.error('archive cleanup failed', e); }
+  // م124: مدة الاحتفاظ بسجل العمليات (لو سيف حددها) — صامت ومايوقفش التشغيل
+  try{ await cleanupOldActivityLog(); }catch(e){ console.error('audit cleanup failed', e); }
   // فحص ذاتي للتخزين — مؤجل 8 ثواني بعيداً عن ذروة طلبات الفتح
   setTimeout(()=>{ storageSelfTest(); }, 8000);
   startSilentSync();
@@ -1802,8 +1813,8 @@ function renderDashboard(){
   if(['accounts','owner'].includes(session.role)) cards += stat(money(outstanding),'مستحقات غير محصلة');
   if(can('rep.profit')){
     const monthProfit = computeProfitStats(periodRange({preset:'this_month'}));
-    cards += stat(money(monthProfit.netProfit),'💰 صافي ربح هذا الشهر', monthProfit.netProfit<0);
-    cards += stat(monthProfit.netMargin.toFixed(1)+'%','نسبة الربحية هذا الشهر', monthProfit.netMargin<15 && monthProfit.sales>0);
+    cards += stat(money(monthProfit.netProfit),'💰 صافي ربح هذا الشهر (بعد الخصومات)', monthProfit.netProfit<0);
+    cards += stat(monthProfit.netMargin.toFixed(1)+'%','نسبة الربحية هذا الشهر', monthProfit.netMargin<15 && monthProfit.netSales>0);
   }
   if(['reception','owner'].includes(session.role)) cards += stat(String(DB.customers.length),'إجمالي العملاء');
 
@@ -1951,9 +1962,19 @@ function renderCustomers(){
       ${can('customers.create')?`<button class="btn btn-accent" onclick="openNewCustomerSearch()">${ICONS.plus} عميل جديد</button>`:''}
     </div></div>
   ${archivedInResults?`<div class="muted" style="font-size:12px;margin-bottom:10px">🗄️ من نتايج البحث دي ${archivedInResults} عميل مؤرشف — بيظهروا بعلامة الأرشيف وتقدر ترجّعهم من زرار ↩️.</div>`:''}
-  <div class="grid g3">
+  ${(()=>{   /* م130: المؤرشف في قسم منفصل أول الصفحة — مش مدموج وسط النشطين */
+    if(custShowArchived && !custSearchTerm){
+      const arch = list.filter(c=>c.archived), act = list.filter(c=>!c.archived);
+      return `
+      <div class="section-head" style="margin-top:4px"><h3>🗄️ عملاء مؤرشفون (${arch.length})</h3></div>
+      <div class="grid g3" style="margin-bottom:18px">${arch.length? arch.map(customerCard).join('') : emptyState('مفيش عملاء مؤرشفين')}</div>
+      <div class="section-head"><h3>العملاء النشطون (${act.length})</h3></div>
+      <div class="grid g3">${act.length? act.map(customerCard).join('') : emptyState('لسه مفيش عملاء نشطين')}</div>`;
+    }
+    return `<div class="grid g3">
     ${list.length? list.map(customerCard).join('') : emptyState(custSearchTerm?'مفيش نتائج مطابقة':'لسه مفيش عملاء مسجلين')}
   </div>`;
+  })()}`;
 }
 function customerCard(c){
   const cars = DB.cars.filter(x=>x.customerId===c.id && !x.archived);   // المؤرشفة مستبعدة من القائمة النشطة
@@ -2270,8 +2291,9 @@ function customerHistoryHTML(customerId){
   const cust = DB.customers.find(c=>c.id===customerId);
   const cars = DB.cars.filter(c=>c.customerId===customerId);
   const jobs = [...DB.jobs.filter(j=>j.customerId===customerId)].sort((a,b)=>new Date(a.receivedAt)-new Date(b.receivedAt));
-  const invoices = DB.invoices.filter(i=>i.customerId===customerId && !i.cancelled);
-  const totalPaid = invoices.reduce((s,i)=>s+(i.payments||[]).reduce((a,p)=>a+p.amount,0),0);
+  /* م131: الملغية بتظهر في القائمة بعلامة 🚫 — لكن الإجماليات من السارية بس زي ما كانت */
+  const invoices = DB.invoices.filter(i=>i.customerId===customerId);
+  const totalPaid = invoices.filter(i=>!i.cancelled).reduce((s,i)=>s+(i.payments||[]).reduce((a,p)=>a+p.amount,0),0);
   const firstVisit = jobs.length? jobs[0].receivedAt : null;
   const lastVisit = jobs.length? jobs[jobs.length-1].receivedAt : null;
   return `
@@ -2307,11 +2329,17 @@ function customerHistoryHTML(customerId){
     return `<tr><td>#${j.jobNo}</td><td>${car?car.plate:'—'}</td><td>${fmtDate(j.receivedAt)}</td><td><span class="tag ${STATUS_TAGCLASS[j.status]}">${j.status}</span></td><td class="muted" style="max-width:180px">${itemsSummary}</td><td>${money(total)}</td></tr>`;
   }).join('') || `<tr><td colspan="6" class="empty">لا يوجد سجل صيانة بعد</td></tr>`}</tbody></table>
   ${invoices.length? `
-  <label class="f-label" style="margin-top:16px;display:block">الفواتير السابقة</label>
-  <table style="margin-top:6px"><thead><tr><th>رقم</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th></tr></thead>
+  <label class="f-label" style="margin-top:16px;display:block">الفواتير السابقة <span class="muted" style="font-size:11px">— دوس على الفاتورة يفتحلك تقرير أمر الشغل بتاعها</span></label>
+  <table style="margin-top:6px"><thead><tr><th>رقم</th><th>أمر الشغل</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th></tr></thead>
   <tbody>${invoices.map(inv=>{
+    /* م131: رقم أمر الشغل جنب الفاتورة + الضغط بيفتح تقريره — عشان سيف يعرف
+       العميل عمل كام فاتورة وكل فاتورة اتعمل فيها إيه بالظبط */
     const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
-    return `<tr><td>#${inv.invNo}</td><td>${fmtDate(inv.date)}</td><td>${money(inv.total)}</td><td>${money(paid)}</td></tr>`;
+    const jb = inv.jobId ? DB.jobs.find(j=>j.id===inv.jobId) : null;
+    return `<tr ${jb?`onclick="openWorkOrderReportFromCust('${jb.id}','${customerId}')" style="cursor:pointer" title="دوس لتقرير أمر الشغل #${jb.jobNo}"`:''}>
+      <td>#${inv.invNo}${inv.cancelled?' <span class="tag tag-cancel" style="font-size:10px">🚫 ملغاة</span>':''}</td>
+      <td style="font-weight:700">${jb?'#'+jb.jobNo:'—'}</td>
+      <td>${fmtDate(inv.date)}</td><td>${money(inv.total)}</td><td>${money(paid)}</td></tr>`;
   }).join('')}</tbody></table>` : ''}
   `;
 }
@@ -2633,9 +2661,10 @@ function ticketCard(job){
     <div class="ticket-hole"></div>
     <div class="ticket-top">
       <div>
-        <div class="ticket-jobno">#${job.jobNo}</div>
+        <div class="ticket-jobno">#${job.jobNo}${jobOpenDeposit(job)?' <span title="عليه عربون مفتوح" style="font-size:13px">💰</span>':''}</div>
         <div class="ticket-plate">${car.plate||'—'}</div>
         <div class="ticket-car">${carLabel(car)} · ${cust.name||''}</div>
+        ${jobOpenDeposit(job)?`<div class="ticket-car" style="color:var(--accent);font-weight:700">💰 عربون: ${money(jobOpenDeposit(job).amount)}</div>`:''}
         <div class="ticket-car" style="margin-top:4px;color:var(--accent-2)">
           فُتح: ${fmtDateTime(job.receivedAt)}
           ${job.status==='تم التسليم' && job.deliveredAt
@@ -2891,7 +2920,11 @@ function jobDetailHTML(jobId){
       <tr><td>إجمالي تكلفة المصنعيات الخارجية</td><td style="font-weight:700">${money(b.extWork)}</td></tr>
       <tr><td>🎨 إجمالي تكلفة خامات الدهان</td><td style="font-weight:700">${money(b.paint)}</td></tr>
       <tr><td style="font-weight:800">إجمالي التكلفة</td><td style="font-weight:800">${money(b.total)}</td></tr>
-      <tr><td style="font-weight:800">الربحية (بيع − تكلفة)</td><td style="font-weight:800;${b.profit<0?'color:var(--danger)':'color:var(--accent)'}">${money(b.profit)}</td></tr>
+      ${b.discount>0?`
+      <tr><td>إجمالي البيع (قبل الخصم)</td><td>${money(b.revenue)}</td></tr>
+      <tr><td>خصم الفاتورة</td><td style="color:var(--danger)">− ${money(b.discount)}</td></tr>
+      <tr><td style="font-weight:700">صافي المبيعات (بعد الخصم)</td><td style="font-weight:700">${money(b.netSales)}</td></tr>`:''}
+      <tr><td style="font-weight:800">صافي الربح (${b.discount>0?'صافي مبيعات':'بيع'} − تكلفة)</td><td style="font-weight:800;${b.profit<0?'color:var(--danger)':'color:var(--accent)'}">${money(b.profit)} <span class="muted" style="font-size:11px">(${b.margin.toFixed(1)}%)</span></td></tr>
     </tbody></table>
   </div>`;
   })() : ''}
@@ -2905,6 +2938,12 @@ function jobDetailHTML(jobId){
   </div>` : ''}
 
   ${jobInternalNotesHTML(job)}
+
+  ${jobExternalNotesHTML(job)}
+
+  ${jobDepositCardHTML(job)}
+  ${can('jobs.deposit') && !jobOpenDeposit(job) && !hasInvoice && job.status!=='ملغاة' ? `
+    <button class="btn" style="width:100%;margin-top:6px" onclick="openDepositModal('${job.id}')">💰 تسجيل عربون من العميل</button>` : ''}
 
   ${can('bill.create') ? `
     <button class="btn btn-accent" style="width:100%;margin-top:6px" onclick="openCreateInvoiceModal('${job.id}')" ${hasInvoice?'disabled':''}>
@@ -2928,6 +2967,57 @@ function canEditInternalNote(job, note){
   if(note.by !== noteAuthorKey()) return false;
   const live = liveInternalNotes(job);
   return live.length>0 && live[live.length-1].id===note.id;   // آخر ملاحظة حيّة بس
+}
+/* ============================================================
+   م135 — ملاحظات خارجية للعميل (External Notes)
+   حقل منفصل 100% عن ملاحظات الورشة الداخلية (م49) — مخزّن في
+   job.externalNotes (نص). دي الملاحظات اللي **بتظهر للعميل** على
+   الفاتورة: توصيات وأعمال مقترحة ونصايح صيانة.
+   القفل: أول ما فاتورة سارية تتصدر، نسخة بتتصور جوه الفاتورة
+   (inv.externalNotes — لقطة تاريخية) وملاحظات الأمر بتتقفل نهائياً.
+   إعادة الطباعة بتطبع اللقطة المحفوظة — مش النسخة الحالية.
+   الملاحظات الداخلية عمرها ما توصل لأي مستند عميل.
+   ============================================================ */
+function extNotesLocked(job){ return DB.invoices.some(i=>i.jobId===job.id && !i.cancelled); }
+function jobExternalNotesHTML(job){
+  const locked = extNotesLocked(job);
+  const has = !!(job.externalNotes||'').trim();
+  return `
+  <div class="card" style="margin-bottom:10px;border-right:3px solid var(--accent)">
+    <div class="flex-between" style="gap:8px;flex-wrap:wrap">
+      <label class="f-label" style="margin:0;color:var(--accent)">📝 ملاحظات للعميل (بتظهر على الفاتورة)${locked?' <span title="اتصدرت الفاتورة — الملاحظات اتقفلت">🔒</span>':''}</label>
+      ${!locked && can('jobs.edit') ? `<button class="btn btn-sm" onclick="openExternalNotesModal('${job.id}')">${has?'✏️ تعديل':'➕ إضافة'}</button>` : ''}
+    </div>
+    ${has ? `<div style="white-space:pre-wrap;font-size:12.5px;margin-top:6px">${job.externalNotes}</div>`
+          : `<div class="muted" style="font-size:12px;margin-top:6px">مفيش ملاحظات للعميل${locked?'':' — اكتب توصياتك (أعمال مقترحة · نصايح صيانة · معلومات عن العربية) وهتتطبع على الفاتورة'}</div>`}
+    ${locked?`<div class="muted" style="font-size:11px;margin-top:4px">🔒 مقفولة — دي النسخة اللي اتسجلت على الفاتورة ومش بتتعدل (توثيق تاريخي)</div>`:''}
+  </div>`;
+}
+function openExternalNotesModal(jobId){
+  if(!can('jobs.edit')){ toast('مالكش صلاحية تعديل أوامر الشغل', true); return; }
+  const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
+  if(extNotesLocked(job)){ toast('اتصدرت فاتورة للأمر ده — ملاحظات العميل اتقفلت نهائياً', true); return; }
+  openModal(`
+    <h3>📝 ملاحظات للعميل — أمر شغل #${job.jobNo}</h3>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">الملاحظات دي هتظهر للعميل على الفاتورة المطبوعة — توصيات · أعمال إضافية مقترحة · نصايح صيانة. (ملاحظات الورشة الداخلية ليها مكانها المنفصل ومش بتظهر للعميل أبداً.)</div>
+    <div class="form-row"><textarea class="f" id="extNotesText" rows="5" placeholder="مثال: ننصح بتغيير تيل الفرامل الخلفي في الزيارة الجاية...">${job.externalNotes||''}</textarea></div>
+    <div class="card" style="border-right:3px solid var(--accent-2);padding:8px 10px;margin-bottom:10px;font-size:11.5px">
+      أول ما الفاتورة تتصدر، الملاحظات بتتقفل نهائياً وبتتطبع زي ما هي — راجعها كويس قبل الفوترة.</div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveExternalNotes('${job.id}')">حفظ الملاحظات</button>
+  `);
+}
+async function saveExternalNotes(jobId){
+  if(!can('jobs.edit')){ toast('مالكش صلاحية تعديل أوامر الشغل', true); return; }
+  const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
+  /* 🔒 م135: الحفظ نفسه بيرفض بعد الفوترة — مش الزرار بس */
+  if(extNotesLocked(job)){ toast('اتصدرت فاتورة للأمر ده — ملاحظات العميل اتقفلت نهائياً', true); return; }
+  const val = ((document.getElementById('extNotesText')||{}).value||'').trim();
+  const before = (job.externalNotes||'').trim();
+  job.externalNotes = val;
+  await saveKey('jobs', DB.jobs);
+  await logAction('📝 ملاحظات العميل على أمر شغل #'+job.jobNo+auditDetails([
+    ['قبل', before||'—'], ['بعد', val||'—']]));
+  closeModal(); toast('اتحفظت ملاحظات العميل'); openJobDetail(jobId);
 }
 function jobInternalNotesHTML(job){
   const notes = job.internalNotes||[];
@@ -3270,10 +3360,293 @@ function handleStatusChange(jobId, newStatus){
 function jobHasTransactions(job){
   return (job.items && job.items.length>0) || ((job.internalCosts||[]).length>0);
 }
+/* ============================================================
+   م127 — عربون العميل (الدفعة المقدمة) على أمر الشغل
+   عربون واحد نشط (open) لكل أمر. بيتسوّى بطريقتين بس:
+   applied (اتطبق على الفاتورة كدفعة) أو refunded (استرداد بإذن صرف).
+   طول ما فيه عربون مفتوح: الأمر ممنوع يتلغي (قاعدة الحماية المالية).
+   الفلوس بتدخل الحساب لحظة القبض (kind: cust_deposit) — وعند التطبيق
+   على الفاتورة بتتسجل دفعة **من غير** حركة مالية تانية (مفيش ازدواج).
+   ============================================================ */
+function jobOpenDeposit(job){ return job ? (job.deposits||[]).find(d=>d.status==='open') : null; }
+function nextDepositNo(){
+  let mx = 0;
+  DB.jobs.forEach(j=>(j.deposits||[]).forEach(d=>{ if((d.depNo||0)>mx) mx = d.depNo; }));
+  return mx + 1;
+}
+function depStatusLabel(d){
+  return d.status==='open' ? 'مفتوح'
+    : d.status==='applied' ? 'مُسوّى — اتطبق على الفاتورة'
+    : d.status==='refunded' ? 'مسترد للعميل' : d.status;
+}
+/* كارت العربون جوه أمر الشغل — المؤشر الدائم (البند 3) */
+function jobDepositCardHTML(job){
+  const deps = job.deposits||[];
+  if(!deps.length) return '';
+  const dep = jobOpenDeposit(job);
+  if(dep) return `
+  <div class="card" style="border-right:3px solid var(--accent);margin-bottom:10px;padding:10px 12px">
+    <div class="flex-between" style="flex-wrap:wrap;gap:6px">
+      <div><b>💰 عربون العميل: ${money(dep.amount)}</b>
+        <span class="tag tag-partial" style="margin-right:6px">مفتوح</span>
+        <div class="muted" style="font-size:11.5px;margin-top:3px">إيصال #${dep.depNo} · ${dep.accountName||'—'} · ${fmtDateTime(dep.date)} · استلمه: ${dep.by||'—'}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="openDepositView('${job.id}')">👁 عرض</button>
+        <button class="btn btn-sm" onclick="printDepositReceipt('${job.id}','${dep.id}')">🖨 الإيصال</button>
+        ${can('jobs.deposit_refund')?`<button class="btn btn-sm" onclick="openDepositRefundModal('${job.id}')">↩️ استرداد</button>`:''}
+      </div>
+    </div>
+  </div>`;
+  // مفيش مفتوح — نعرض آخر عربون متسوّي كسطر هادي
+  const last = deps[deps.length-1];
+  return `<div class="muted" style="font-size:12px;margin-bottom:8px">💰 عربون ${money(last.amount)} — ${depStatusLabel(last)}${last.status==='refunded'&&last.refund?' ('+fmtDate(last.refund.date)+')':''}
+    <button class="btn btn-sm" onclick="openDepositView('${job.id}')" style="margin-right:6px">التفاصيل</button></div>`;
+}
+function openDepositModal(jobId){
+  if(!can('jobs.deposit')){ toast('مالكش صلاحية تسجيل عربون', true); return; }
+  const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
+  if(jobOpenDeposit(job)){ toast('فيه عربون مفتوح بالفعل على الأمر ده — الأمر بياخد عربون واحد نشط بس', true); return; }
+  if(DB.invoices.some(i=>i.jobId===jobId && !i.cancelled)){ toast('الأمر ده متفوتر — العربون بيتسجل قبل الفاتورة، والتحصيل بيتم من شاشة الفواتير', true); return; }
+  if(job.status==='ملغاة'){ toast('الأمر ملغي', true); return; }
+  const cust = DB.customers.find(c=>c.id===job.customerId)||{};
+  openModal(`
+    <h3>💰 تسجيل عربون — أمر شغل #${job.jobNo}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">العميل: <b>${cust.name||'—'}</b> · إيصال رقم <b>#${nextDepositNo()}</b></div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">مبلغ العربون</label><input class="f" id="depAmt" type="number" min="0" step="any"></div>
+      <div class="form-row"><label class="f-label">وسيلة الدفع (الحساب اللي هيدخل عليه)</label>
+        <select class="f" id="depAcc">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="depNotes"></div>
+    <div class="card" style="border-right:3px solid var(--accent-2);padding:8px 10px;margin-bottom:10px;font-size:11.5px">
+      الفلوس هتدخل الحساب فوراً وهيتسجل في سجل حركات الخزنة كوارد، وهيتخصم تلقائياً من الفاتورة النهائية.
+      طول ما العربون مفتوح، أمر الشغل <b>مش هينفع يتلغي</b> غير بعد التطبيق على الفاتورة أو الاسترداد.</div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveDeposit('${jobId}')">تأكيد وقبض العربون</button>
+  `);
+}
+async function saveDeposit(jobId){
+  if(!can('jobs.deposit')){ toast('مالكش صلاحية تسجيل عربون', true); return; }
+  const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
+  if(jobOpenDeposit(job)){ toast('فيه عربون مفتوح بالفعل على الأمر ده', true); return; }
+  const amount = Math.round((parseFloat((document.getElementById('depAmt')||{}).value)||0)*100)/100;
+  const accId = (document.getElementById('depAcc')||{}).value;
+  const notes = ((document.getElementById('depNotes')||{}).value||'').trim();
+  const acc = DB.finAccounts.find(a=>a.id===accId);
+  if(amount<=0){ toast('اكتب مبلغ العربون', true); return; }
+  if(!acc){ toast('اختار الحساب اللي العربون هيدخل عليه', true); return; }
+  const cust = DB.customers.find(c=>c.id===job.customerId)||{};
+  const stamp = new Date().toISOString();
+  const dep = { id:uid('dep'), depNo:nextDepositNo(), amount, accountId:acc.id, accountName:acc.name,
+    notes, date:stamp, by:actorName(), status:'open' };
+  job.deposits = job.deposits||[];
+  job.deposits.push(dep);
+  addFinMove(acc.id, 'in', amount, 'cust_deposit',
+    'عربون أمر شغل #'+job.jobNo+' — '+(cust.name||'')+' (إيصال #'+dep.depNo+')');
+  try{ await saveKey('jobs', DB.jobs); }
+  catch(e){
+    job.deposits = job.deposits.filter(x=>x.id!==dep.id);
+    DB.finMoves = DB.finMoves.filter(m=>!(m.kind==='cust_deposit' && (m.note||'').includes('إيصال #'+dep.depNo)));
+    toast('الحفظ فشل — العملية اترجعت بالكامل، جرّب تاني', true); return;
+  }
+  await saveKey('finMoves', DB.finMoves);
+  await logAction('💰 قبض عربون '+money(amount)+' — أمر شغل #'+job.jobNo+auditDetails([
+    ['العميل', cust.name||null], ['إيصال', '#'+dep.depNo], ['الوسيلة', acc.name], ['ملاحظات', notes||null]]));
+  notify('cust_deposit', '💰 عربون '+money(amount)+' على أمر شغل #'+job.jobNo+' — '+(cust.name||'')+' ('+acc.name+')',
+    { category:'financial', refType:'job', refId:job.id, refNo:job.jobNo, amount });
+  closeModal(); toast('تم قبض العربون ودخوله '+acc.name);
+  askConfirm('تطبع إيصال العربون للعميل دلوقتي؟', ()=>printDepositReceipt(jobId, dep.id));
+  openJobDetail(jobId); refreshContent();
+}
+/* إيصال العربون الرسمي (البند 2) */
+function depositReceiptHTML(job, dep){
+  const cust = DB.customers.find(c=>c.id===job.customerId)||{};
+  const car = DB.cars.find(c=>c.id===job.carId)||{};
+  const s = DB.settings;
+  return `
+  <div style="max-width:700px;margin:0 auto;border:2px solid #222;border-radius:10px;padding:22px;font-size:14px;direction:rtl;text-align:right">
+    <div style="text-align:center;border-bottom:2px solid #222;padding-bottom:10px;margin-bottom:14px">
+      <div style="font-size:21px;font-weight:900">${s.centerName||'Masters Auto Service'}</div>
+      <div style="font-size:11.5px;color:#444">${s.address||''}${s.phone?' · '+s.phone:''}</div>
+      <div style="font-size:17px;font-weight:800;margin-top:10px">🧾 إيصال استلام عربون (دفعة مقدمة)</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse">
+      <tr><td style="padding:5px;font-weight:700;width:32%">رقم الإيصال</td><td style="padding:5px">#${dep.depNo}</td>
+          <td style="padding:5px;font-weight:700;width:18%">التاريخ</td><td style="padding:5px">${fmtDateTime(dep.date)}</td></tr>
+      <tr><td style="padding:5px;font-weight:700">العميل</td><td style="padding:5px">${cust.name||'—'}</td>
+          <td style="padding:5px;font-weight:700">الموبايل</td><td style="padding:5px">${cust.phone||'—'}</td></tr>
+      <tr><td style="padding:5px;font-weight:700">السيارة</td><td style="padding:5px">${car.plate||'—'}${carLabel(car)?' — '+carLabel(car):''}</td>
+          <td style="padding:5px;font-weight:700">أمر الشغل</td><td style="padding:5px">#${job.jobNo}</td></tr>
+      <tr><td style="padding:5px;font-weight:700">المبلغ</td><td style="padding:5px;font-weight:900;font-size:17px">${money(dep.amount)}</td>
+          <td style="padding:5px;font-weight:700">وسيلة الدفع</td><td style="padding:5px">${dep.accountName||'—'}</td></tr>
+      ${dep.notes?`<tr><td style="padding:5px;font-weight:700">ملاحظات</td><td style="padding:5px" colspan="3">${dep.notes}</td></tr>`:''}
+      <tr><td style="padding:5px;font-weight:700">استلمه</td><td style="padding:5px" colspan="3">${dep.by||'—'}</td></tr>
+    </table>
+    <div style="border:1px solid #999;border-radius:8px;padding:8px;margin-top:12px;font-size:11.5px;color:#333">
+      المبلغ ده دفعة مقدمة تحت حساب أعمال الصيانة لأمر الشغل الموضح أعلاه، وبيتخصم من إجمالي الفاتورة النهائية.
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:34px;padding:0 18px">
+      <div style="text-align:center"><div style="border-top:1.5px solid #222;padding-top:5px;min-width:150px">توقيع العميل</div></div>
+      <div style="text-align:center"><div style="border-top:1.5px solid #222;padding-top:5px;min-width:150px">توقيع المحاسب</div></div>
+    </div>
+  </div>`;
+}
+function printDepositReceipt(jobId, depId){
+  const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
+  const dep = (job.deposits||[]).find(d=>d.id===depId); if(!dep){ toast('العربون غير موجود', true); return; }
+  logAction('🖨 طباعة إيصال عربون #'+dep.depNo+' — أمر شغل #'+job.jobNo+' ('+money(dep.amount)+')');
+  downloadHTML(depositReceiptHTML(job, dep), 'إيصال-عربون-'+dep.depNo);
+}
+function openDepositView(jobId){
+  const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
+  const deps = job.deposits||[];
+  if(!deps.length){ toast('مفيش عرابين على الأمر ده', true); return; }
+  openModal(`
+    <h3>💰 عرابين أمر الشغل #${job.jobNo}</h3>
+    ${deps.map(d=>`
+    <div class="card" style="margin-bottom:8px;padding:10px 12px">
+      <div class="flex-between" style="flex-wrap:wrap;gap:6px">
+        <div>
+          <b>${money(d.amount)}</b> — إيصال #${d.depNo}
+          <span class="tag ${d.status==='open'?'tag-partial':(d.status==='applied'?'tag-paid':'tag-cancel')}" style="margin-right:6px">${depStatusLabel(d)}</span>
+          <div class="muted" style="font-size:11.5px;margin-top:3px">${d.accountName||'—'} · ${fmtDateTime(d.date)} · استلمه: ${d.by||'—'}${d.notes?' · 📝 '+d.notes:''}</div>
+          ${d.status==='applied'&&d.appliedInvoiceNo?`<div class="muted" style="font-size:11.5px">اتطبق على فاتورة #${d.appliedInvoiceNo}</div>`:''}
+          ${d.status==='refunded'&&d.refund?`<div class="muted" style="font-size:11.5px;color:var(--danger)">استُرد ${fmtDateTime(d.refund.date)} من ${d.refund.accountName||'—'} بواسطة ${d.refund.by||'—'} — السبب: ${d.refund.reason||'—'}</div>`:''}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-sm" onclick="printDepositReceipt('${job.id}','${d.id}')">🖨 الإيصال</button>
+          ${d.status==='refunded'?`<button class="btn btn-sm" onclick="printDepositVoucher('${job.id}','${d.id}')">🖨 إذن الصرف</button>`:''}
+        </div>
+      </div>
+    </div>`).join('')}
+    <button class="btn" style="width:100%" onclick="closeModal();openJobDetail('${job.id}')">رجوع للأمر</button>
+  `, true);
+}
+function openDepositRefundModal(jobId){
+  if(!can('jobs.deposit_refund')){ toast('مالكش صلاحية استرداد العربون', true); return; }
+  const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
+  const dep = jobOpenDeposit(job);
+  if(!dep){ toast('مفيش عربون مفتوح على الأمر ده', true); return; }
+  const cust = DB.customers.find(c=>c.id===job.customerId)||{};
+  openModal(`
+    <h3>↩️ استرداد عربون — أمر شغل #${job.jobNo}</h3>
+    <div class="card" style="margin-bottom:10px;padding:10px 12px">
+      <b>${money(dep.amount)}</b> — إيصال #${dep.depNo} · ${cust.name||'—'}
+      <div class="muted" style="font-size:11.5px">اتقبض ${fmtDateTime(dep.date)} على ${dep.accountName||'—'}</div>
+    </div>
+    <div class="form-row"><label class="f-label">حساب الصرف (الفلوس هتخرج منه)</label>
+      <select class="f" id="depRefAcc">${accountOptions(dep.accountId)}</select></div>
+    <div class="form-row"><label class="f-label">سبب الاسترداد (إلزامي — بيتسجل في سجل العمليات باسمك)</label>
+      <input class="f" id="depRefReason" placeholder="مثال: العميل ألغى الصيانة قبل بدء الشغل"></div>
+    <div class="card" style="border-right:3px solid var(--danger);padding:8px 10px;margin-bottom:10px;font-size:11.5px">
+      هيتعمل <b>إذن صرف رسمي</b> وهيتسجل في السجل المالي الموحد (المصروفات) كنوع «استرداد عربون».</div>
+    <button class="btn btn-danger" style="width:100%" onclick="saveDepositRefund('${jobId}')">تأكيد الاسترداد وصرف المبلغ</button>
+  `);
+}
+async function saveDepositRefund(jobId){
+  if(!can('jobs.deposit_refund')){ toast('مالكش صلاحية استرداد العربون', true); return; }
+  const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
+  const dep = jobOpenDeposit(job);
+  if(!dep){ toast('مفيش عربون مفتوح على الأمر ده', true); return; }
+  const accId = (document.getElementById('depRefAcc')||{}).value;
+  const reason = ((document.getElementById('depRefReason')||{}).value||'').trim();
+  const acc = DB.finAccounts.find(a=>a.id===accId);
+  if(!acc){ toast('اختار حساب الصرف', true); return; }
+  if(!reason){ toast('اكتب سبب الاسترداد — إلزامي', true); return; }
+  const cust = DB.customers.find(c=>c.id===job.customerId)||{};
+  const stamp = new Date().toISOString();
+  dep.status = 'refunded';
+  dep.refund = { date:stamp, accountId:acc.id, accountName:acc.name, by:actorName(), reason };
+  const rfm = addFinMove(acc.id, 'out', dep.amount, 'cust_deposit_refund',
+    'استرداد عربون أمر شغل #'+job.jobNo+' — '+(cust.name||'')+' (إيصال #'+dep.depNo+')');
+  /* م125: صف مقفول في السجل المالي الموحد */
+  DB.expenses.push({ id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'deposit_refund',
+    category:'استرداد عربون', description:'استرداد عربون أمر شغل #'+job.jobNo+' — '+(cust.name||'')+' — السبب: '+reason,
+    amount:dep.amount, date:stamp, payAccount:acc.name, accountId:acc.id,
+    customerId:job.customerId, jobId:job.id, jobNo:job.jobNo, depositId:dep.id, finMoveId:rfm.id,
+    recordedBy:actorName(), system:true });
+  try{ await saveKey('jobs', DB.jobs); }
+  catch(e){
+    dep.status = 'open'; delete dep.refund;
+    DB.finMoves = DB.finMoves.filter(m=>m.id!==rfm.id);
+    DB.expenses = DB.expenses.filter(x=>x.depositId!==dep.id || x.txnType!=='deposit_refund');
+    toast('الحفظ فشل — العملية اترجعت بالكامل، جرّب تاني', true); return;
+  }
+  await Promise.all([saveKey('finMoves', DB.finMoves), saveKey('expenses', DB.expenses)]);
+  await logAction('↩️ استرداد عربون '+money(dep.amount)+' — أمر شغل #'+job.jobNo+auditDetails([
+    ['العميل', cust.name||null], ['إيصال', '#'+dep.depNo], ['حساب الصرف', acc.name], ['السبب', reason]]));
+  notify('cust_deposit_refund', '↩️ استرداد عربون '+money(dep.amount)+' — أمر شغل #'+job.jobNo+' ('+(cust.name||'')+') — السبب: '+reason,
+    { category:'financial', refType:'job', refId:job.id, refNo:job.jobNo, amount:dep.amount, reason });
+  closeModal(); toast('تم الاسترداد وصرف المبلغ من '+acc.name);
+  askConfirm('تطبع إذن الصرف دلوقتي؟', ()=>printDepositVoucher(jobId, dep.id));
+  openJobDetail(jobId); refreshContent();
+}
+/* إذن صرف الاسترداد الرسمي (البند 6) */
+function depositVoucherHTML(job, dep){
+  const cust = DB.customers.find(c=>c.id===job.customerId)||{};
+  const s = DB.settings;
+  return `
+  <div style="max-width:700px;margin:0 auto;border:2px solid #a00;border-radius:10px;padding:22px;font-size:14px;direction:rtl;text-align:right">
+    <div style="text-align:center;border-bottom:2px solid #a00;padding-bottom:10px;margin-bottom:14px">
+      <div style="font-size:21px;font-weight:900">${s.centerName||'Masters Auto Service'}</div>
+      <div style="font-size:11.5px;color:#444">${s.address||''}${s.phone?' · '+s.phone:''}</div>
+      <div style="font-size:17px;font-weight:800;margin-top:10px;color:#a00">📤 إذن صرف — استرداد عربون</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse">
+      <tr><td style="padding:5px;font-weight:700;width:32%">إيصال العربون الأصلي</td><td style="padding:5px">#${dep.depNo} (${fmtDate(dep.date)})</td>
+          <td style="padding:5px;font-weight:700;width:18%">تاريخ الصرف</td><td style="padding:5px">${fmtDateTime(dep.refund.date)}</td></tr>
+      <tr><td style="padding:5px;font-weight:700">العميل</td><td style="padding:5px">${cust.name||'—'}</td>
+          <td style="padding:5px;font-weight:700">أمر الشغل</td><td style="padding:5px">#${job.jobNo}</td></tr>
+      <tr><td style="padding:5px;font-weight:700">المبلغ المسترد</td><td style="padding:5px;font-weight:900;font-size:17px">${money(dep.amount)}</td>
+          <td style="padding:5px;font-weight:700">حساب الصرف</td><td style="padding:5px">${dep.refund.accountName||'—'}</td></tr>
+      <tr><td style="padding:5px;font-weight:700">السبب</td><td style="padding:5px" colspan="3">${dep.refund.reason||'—'}</td></tr>
+      <tr><td style="padding:5px;font-weight:700">صرفه</td><td style="padding:5px" colspan="3">${dep.refund.by||'—'}</td></tr>
+    </table>
+    <div style="display:flex;justify-content:space-between;margin-top:34px;padding:0 18px">
+      <div style="text-align:center"><div style="border-top:1.5px solid #222;padding-top:5px;min-width:150px">توقيع العميل (المستلم)</div></div>
+      <div style="text-align:center"><div style="border-top:1.5px solid #222;padding-top:5px;min-width:150px">توقيع المحاسب</div></div>
+    </div>
+  </div>`;
+}
+function printDepositVoucher(jobId, depId){
+  const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
+  const dep = (job.deposits||[]).find(d=>d.id===depId);
+  if(!dep || !dep.refund){ toast('مفيش استرداد متسجل للعربون ده', true); return; }
+  logAction('🖨 طباعة إذن صرف استرداد عربون #'+dep.depNo+' — أمر شغل #'+job.jobNo);
+  downloadHTML(depositVoucherHTML(job, dep), 'إذن-صرف-عربون-'+dep.depNo);
+}
 function openCancelJobModal(jobId){
   if(!can('jobs.cancel')){ toast('مالكش صلاحية إلغاء أوامر الشغل', true); refreshContent(); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   const hasTx = jobHasTransactions(job);
+  /* ============ م127: عربون مفتوح = ممنوع الإلغاء (قاعدة الحماية المالية) ============
+     الأمر مايتلغيش أبداً وعليه أي التزام مالي مش متسوّي — والعربون بيتسوّى
+     بطريقتين بس: يتطبق على الفاتورة النهائية أو يترد للعميل بإذن صرف. */
+  const depOpen = jobOpenDeposit(job);
+  if(depOpen){
+    closeModal();
+    openModal(`
+      <h3>🚫 مينفعش تلغي أمر الشغل #${job.jobNo}</h3>
+      <div class="card" style="border:1px solid var(--danger);margin-bottom:12px">
+        <div style="color:var(--danger);font-weight:800;margin-bottom:6px">الأمر ده عليه معاملات مالية لسه ما اتسوّتش.</div>
+        <div style="font-size:13.5px;line-height:1.9">
+          💰 <b>عربون العميل: ${money(depOpen.amount)}</b> (إيصال #${depOpen.depNo})<br>
+          الحالة: <b>مفتوح</b>${hasTx?'<br>⚠️ وكمان فيه بنود مصروفة على الأمر':''}
+        </div>
+      </div>
+      <div class="card" style="border-right:3px solid var(--accent-2);margin-bottom:12px;font-size:12.5px;line-height:1.9">
+        لازم الأول واحدة من اتنين:<br>
+        ١) <b>تطبّق العربون على الفاتورة النهائية</b> (أصدر الفاتورة وهيتخصم تلقائياً)<br>
+        ٢) أو <b>تسترد العربون للعميل</b> بإذن صرف رسمي<br>
+        وبعدها الإلغاء هيشتغل عادي${hasTx?' (بعد تفضية البنود كمان)':''}.
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" style="flex:1" onclick="openJobDetail('${jobId}')">رجوع للأمر</button>
+        ${can('jobs.deposit_refund')?`<button class="btn btn-danger" style="flex:1" onclick="openDepositRefundModal('${jobId}')">↩️ استرداد العربون</button>`:''}
+      </div>
+    `);
+    return;
+  }
   /* ============ م109: أمر شغل عليه معاملات = ممنوع الإلغاء نهائياً ============
      قرار سيف (2026-08-03): «أصلاً في الطبيعي مينفعش تحت أي حال من الأحوال
      تلغي أمر شغل مصروف عليه قطع غيار أو أي أعمال خارجية أو أي مصنعية».
@@ -3563,22 +3936,25 @@ function invAvailMatch(p){
   if(invAvailFilter==='zero') return (p.qty||0) <= 0;
   return true;
 }
+/* م126: بحث المخزون بقى ذكي — نفس كومة بحث الأصناف (اسم/كود/OEM/باركود/ماركة/فئة) + اسم المخزن */
+function invSmartMatch(p, term){
+  return !String(term||'').trim() || smartMatch(term, partHaystack(p)+' '+whName(partWhId(p)));
+}
 function visibleInventory(){
-  const t = invSearchTerm.trim().toLowerCase();
   return [...DB.inventory]
     .filter(p=> invShowArchived ? true : !p.archived)
     .filter(p=> !invWhFilter || partWhId(p)===invWhFilter)
-    .filter(invAvailMatch)
-    .filter(p=> !t || p.name.toLowerCase().includes(t) || (p.sku&&p.sku.toLowerCase().includes(t)) || (p.category&&p.category.toLowerCase().includes(t)))
+    /* م130: المؤرشف رصيده صفر بطبيعته — فلتر «المتاح» مايخفيهوش لما تكون عارض الأرشيف */
+    .filter(p=> (p.archived && invShowArchived) ? true : invAvailMatch(p))
+    .filter(p=> invSmartMatch(p, invSearchTerm))
     .sort(cmpName);
 }
 /* نطاق المخزن المختار (مخزن + بحث + أرشيف) — من غير فلتر المتاح، عشان الكروت تدي الصورة الكاملة دايماً */
 function inventoryScope(){
-  const t = invSearchTerm.trim().toLowerCase();
   return DB.inventory
     .filter(p=> invShowArchived ? true : !p.archived)
     .filter(p=> !invWhFilter || partWhId(p)===invWhFilter)
-    .filter(p=> !t || p.name.toLowerCase().includes(t) || (p.sku&&p.sku.toLowerCase().includes(t)) || (p.category&&p.category.toLowerCase().includes(t)));
+    .filter(p=> invSmartMatch(p, invSearchTerm));   // م126: نفس البحث الذكي
 }
 function inventoryValueHTML(){
   const items = inventoryScope();
@@ -3614,9 +3990,8 @@ function inventoryValueHTML(){
       الكشف نفسه لسه موجود بس **صامت** — بتستخدمه أدوات المراجعة عندي بس،
       والمستخدم عمره ما يشوف أي رسالة. متـرجّعش أي رسالة من غير سيف. */}`;
 }
-function inventoryRowsHTML(){
-  const items = visibleInventory();
-  return items.length ? items.map(p=>`
+function invRowHTML(p){
+  return `
         <tr onclick="openItemCard('${p.id}')" style="cursor:pointer${p.archived?';opacity:.55':''}">
           <td>${p.name || '<span style="color:var(--danger);font-weight:700">⚠️ صنف من غير اسم — افتحه وصلّحه</span>'}${p.archived?' <span class="muted" style="font-size:11px">🗄️ مؤرشف</span>':''}</td><td class="muted">${p.category||'—'}</td><td class="muted">${p.sku||'—'}</td>
           <td><span class="tag tag-inspect">${whName(partWhId(p))}</span></td>
@@ -3625,7 +4000,24 @@ function inventoryRowsHTML(){
           <td>${p.archived
             ? (isOwnerSession()?`<button class="btn btn-sm btn-accent" onclick="event.stopPropagation(); restoreInventoryItem('${p.id}')">♻️ استرجاع</button>`:'')
             : `<button class="btn btn-sm" onclick="event.stopPropagation(); openStockInModal('${p.id}')">توريد</button>`}</td>
-        </tr>`).join('') : `<tr><td colspan="9" class="empty">لا يوجد أصناف مطابقة</td></tr>`;
+        </tr>`;
+}
+function inventoryRowsHTML(){
+  const items = visibleInventory();
+  /* ============ م130: المؤرشف مايغرقش وسط مئات الصفوف ============
+     سيف فعّل «عرض المؤرشف» ولقى الجدول شكله ثابت — لأن الأصناف المؤرشفة كانت
+     بتندمج أبجدياً جوه القائمة كلها. دلوقتي بيظهروا في قسم منفصل أول الجدول. */
+  if(invShowArchived){
+    const arch = items.filter(p=>p.archived);
+    const act = items.filter(p=>!p.archived);
+    const secRow = t => `<tr><td colspan="9" style="background:var(--surface-2);font-weight:800;font-size:12.5px;padding:8px 12px">${t}</td></tr>`;
+    const archBlock = arch.length
+      ? secRow('🗄️ الأصناف المؤرشفة ('+arch.length+') — دوس على الصنف للتفاصيل أو ♻️ للاسترجاع') + arch.map(invRowHTML).join('')
+      : secRow('🗄️ مفيش أصناف مؤرشفة مطابقة للفلاتر الحالية');
+    const actBlock = act.length ? (arch.length? secRow('📦 الأصناف النشطة ('+act.length+')') : '') + act.map(invRowHTML).join('') : '';
+    return archBlock + actBlock;
+  }
+  return items.length ? items.map(invRowHTML).join('') : `<tr><td colspan="9" class="empty">لا يوجد أصناف مطابقة</td></tr>`;
 }
 function renderInventory(){
   const archivedCount = DB.inventory.filter(p=>p.archived).length;
@@ -3657,7 +4049,7 @@ function renderInventory(){
     </select></div>
   </div>
   <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;margin-bottom:8px">
-    <input type="checkbox" ${invShowArchived?'checked':''} onchange="toggleInvArchived()" style="width:15px;height:15px"> عرض الأصناف المؤرشفة 🗄️
+    <input type="checkbox" ${invShowArchived?'checked':''} onchange="toggleInvArchived()" style="width:15px;height:15px"> عرض الأصناف المؤرشفة (${archivedCount}) 🗄️
   </label>
   <div class="card">
     <table>
@@ -3697,13 +4089,18 @@ function openTransferModal(){
   const trItems = activeInventory();
   if(trItems.length===0){ toast('مفيش أصناف في المخزون', true); return; }
   openModal(`
-    <h3>⇄ تحويل مخزني بين المخازن</h3>
-    <div class="form-row"><label class="f-label">الصنف</label>
-      <select class="f" id="trPart" onchange="trShowInfo(this.value)">
-        ${trItems.map(p=>`<option value="${p.id}">${p.name} — ${whName(partWhId(p))} (متاح: ${p.qty})</option>`).join('')}
-      </select>
+    <div class="flex-between" style="gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <h3 style="margin:0">⇄ تحويل مخزني بين المخازن</h3>
+      <button class="btn btn-sm" onclick="openTransfersReport()">📊 تقرير التحويلات</button>
     </div>
-    <div class="muted" style="font-size:12.5px;margin-bottom:10px" id="trInfo">المصدر: ${whName(partWhId(trItems[0]))} · المتاح: ${trItems[0].qty}</div>
+    <!-- م134: بحث ذكي بالكروت (نفس نظام الصرف م126 + احتواء بلا سقف م132) بدل القايمة المنسدلة -->
+    <div class="form-row"><label class="f-label">الصنف — بحث ذكي (اسم · كود · OEM)</label>
+      <input class="f" id="trPartSearch" placeholder="ابدأ اكتب: فوم · فلتر · SP001..." oninput="trSearchParts(this.value)" autocomplete="off" style="margin-bottom:6px">
+      <input type="hidden" id="trPart" value="">
+      <div id="trPartResults" style="max-height:220px;overflow-y:auto">${trItems.slice(0,6).map(p=>trPartCardHTML(p)).join('')}</div>
+      <div id="trPartPicked"></div>
+    </div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px" id="trInfo">اختار الصنف من نتايج البحث الأول</div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">إلى مخزن</label>
         <select class="f" id="trDest">${DB.warehouses.map(w=>`<option value="${w.id}">${w.name}</option>`).join('')}</select>
@@ -3719,6 +4116,110 @@ function trShowInfo(partId){
   const el = document.getElementById('trInfo');
   if(p && el) el.textContent = 'المصدر: '+whName(partWhId(p))+' · المتاح: '+p.qty;
 }
+/* ============================================================
+   م134 — تقرير التحويلات بين المخازن (قراءة فقط)
+   كل تحويل = حركة transfer_out بكامل بياناتها: التاريخ · الصنف ·
+   الكمية · من مخزن → إلى مخزن · المنفّذ (م86) · الملاحظة.
+   فلتر زمني (نفس محرك م133) + بحث ذكي + طباعة.
+   ============================================================ */
+let trRepFilter = { preset:'all', from:'', to:'', q:'' };
+function trRepPeriodLabel(){
+  const f = trRepFilter;
+  if(f.preset==='custom') return 'من '+(f.from||'البداية')+' إلى '+(f.to||'اليوم');
+  return (SUP_REP_PRESETS.find(x=>x[0]===f.preset)||['','كل التعاملات'])[1];
+}
+function trRepRows(){
+  const r = repRangeOf(trRepFilter);
+  return DB.stockMoves
+    .filter(m=>m.type==='transfer_out')
+    .filter(m=>{ if(!r) return true; const d=new Date(m.date); return d>=r.from && d<=r.to; })
+    .filter(m=>{
+      if(!String(trRepFilter.q||'').trim()) return true;
+      const p = m.partId ? DB.inventory.find(x=>x.id===m.partId) : null;
+      return smartMatch(trRepFilter.q, [p&&p.name, p&&p.sku, whName(m.fromWhId), whName(m.toWhId), moveActor(m), m.note]);
+    })
+    .sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+function trRepTableHTML(){
+  const rows = trRepRows();
+  return `<table class="tcompact"><thead><tr><th>التاريخ والوقت</th><th>الصنف</th><th>الكمية</th><th>من مخزن ← إلى مخزن</th><th>عمل التحويل</th><th>ملاحظة</th></tr></thead>
+  <tbody>${rows.length? rows.map(m=>{
+    const p = m.partId ? DB.inventory.find(x=>x.id===m.partId) : null;
+    return `<tr>
+      <td style="white-space:nowrap">${fmtDateTime(m.date)}</td>
+      <td>${p?p.name:'—'}${p&&p.sku?` <span class="muted" style="font-size:11px">(${p.sku})</span>`:''}</td>
+      <td style="font-weight:700">${m.qty}</td>
+      <td>${whName(m.fromWhId)} ← <b>${whName(m.toWhId)}</b></td>
+      <td class="muted" style="font-size:11.5px">${moveActor(m)}</td>
+      <td class="muted" style="font-size:11.5px">${(m.note||'').replace(/تحويل مخزني:.*?—\s*/,'')||'—'}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="6" class="empty">مفيش تحويلات مطابقة</td></tr>`}</tbody></table>`;
+}
+function trRepSet(k, v){ trRepFilter[k]=v; if(k==='preset'&&v!=='custom'){ trRepFilter.from=''; trRepFilter.to=''; } openTransfersReport(true); }
+function openTransfersReport(keep){
+  if(!keep){ trRepFilter = { preset:'all', from:'', to:'', q:'' }; }
+  const rows = trRepRows();
+  openModal(`
+  <div class="flex-between" style="gap:10px;flex-wrap:wrap;margin-bottom:8px">
+    <h3 style="margin:0">📊 تقرير التحويلات بين المخازن</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="printTransfersReport()">🖨 طباعة التقرير</button>
+      <button class="btn btn-sm" onclick="openTransferModal()">↩️ رجوع للتحويل</button>
+    </div>
+  </div>
+  <div class="card" style="padding:8px 10px;margin-bottom:10px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${SUP_REP_PRESETS.map(([id,lbl])=>`<button class="btn btn-sm ${trRepFilter.preset===id?'btn-accent':''}" onclick="trRepSet('preset','${id}')">${lbl}</button>`).join('')}
+    </div>
+    ${trRepFilter.preset==='custom'?`<div class="grid g2" style="max-width:420px;margin-top:8px">
+      <div class="form-row" style="margin:0"><label class="f-label">من تاريخ</label><input class="f" type="date" value="${trRepFilter.from}" onchange="trRepSet('from',this.value)"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${trRepFilter.to}" onchange="trRepSet('to',this.value)"></div>
+    </div>`:''}
+    <div class="form-row" style="margin:8px 0 0"><input class="f" placeholder="🔍 بحث: صنف · مخزن · اسم الموظف..." value="${trRepFilter.q}" oninput="trRepFilter.q=this.value;const b=document.getElementById('trRepBody');if(b)b.innerHTML=trRepTableHTML()"></div>
+    <div class="muted" style="font-size:11.5px;margin-top:6px">📋 تقرير للمراجعة والطباعة فقط.</div>
+  </div>
+  <div class="muted" style="font-size:12px;margin-bottom:8px">الفترة: <b>${trRepPeriodLabel()}</b> · ${rows.length} تحويل</div>
+  <div id="trRepBody">${trRepTableHTML()}</div>
+  `, 'xwide');
+}
+function printTransfersReport(){
+  const html = `
+  <div style="direction:rtl;text-align:right;font-size:13px">
+    <h2 style="text-align:center;margin:4px 0">${DB.settings.centerName||''} — تقرير التحويلات بين المخازن</h2>
+    <div style="text-align:center;margin-bottom:10px">الفترة: <b>${trRepPeriodLabel()}</b> · ${trRepRows().length} تحويل</div>
+    ${trRepTableHTML()}
+  </div>`;
+  logAction('🖨 طباعة تقرير التحويلات بين المخازن ('+trRepPeriodLabel()+')');
+  downloadHTML(html, 'تقرير-التحويلات');
+}
+/* ============ م134: اختيار صنف التحويل بالكروت — كل صنف في كل مخزن كارت مستقل ============ */
+function trPartCardHTML(p){
+  const lp = lastPurchaseInfo(p.id);
+  return `<div class="card" style="padding:8px 10px;margin-bottom:6px;cursor:pointer" onclick="trPickPart('${p.id}')">
+    <div style="font-weight:700;font-size:12.5px">${p.sku?`<span class="muted" style="font-size:11px">${p.sku}</span> · `:''}${p.name}</div>
+    <div class="muted" style="font-size:11.5px">الرصيد: <b style="${p.qty<=0?'color:var(--danger)':''}">${p.qty}</b> ${p.unit||''} · المخزن: <b>${whName(partWhId(p))}</b> · آخر سعر شراء: ${money(lp.price)}</div>
+  </div>`;
+}
+function trSearchParts(term){
+  const box = document.getElementById('trPartResults'); if(!box) return;
+  const t = String(term||'').trim();
+  /* احتواء بلا سقف (م132) — والقايمة ليها سكرول */
+  const list = t ? purPartSearch(t).map(r=>r.part) : activeInventory().slice(0,6);
+  box.innerHTML = list.length ? list.map(trPartCardHTML).join('')
+    : `<div class="muted" style="font-size:12.5px;padding:6px">مفيش صنف مطابق</div>`;
+}
+function trPickPart(partId){
+  const p = DB.inventory.find(x=>x.id===partId); if(!p) return;
+  const h = document.getElementById('trPart'); if(h) h.value = partId;
+  const s = document.getElementById('trPartSearch'); if(s) s.value = p.name;
+  const box = document.getElementById('trPartResults'); if(box) box.innerHTML = '';
+  const picked = document.getElementById('trPartPicked');
+  if(picked) picked.innerHTML = `<div class="card" style="padding:8px 10px;margin-top:6px;border-right:3px solid var(--accent)">
+    ✅ <b>${p.name}</b>${p.sku?` <span class="muted">(${p.sku})</span>`:''}
+    <div class="muted" style="font-size:11.5px;margin-top:2px">هيتحوّل من: <b>${whName(partWhId(p))}</b> · المتاح: ${p.qty} ${p.unit||''}</div>
+  </div>`;
+  trShowInfo(partId);
+}
 async function saveTransfer(){
   if(!can('inv.transfer')){ toast('مالكش صلاحية التحويل بين المخازن', true); return; }
   const partId = document.getElementById('trPart').value;
@@ -3726,6 +4227,7 @@ async function saveTransfer(){
   const qty = parseFloat(document.getElementById('trQty').value)||0;
   const note = document.getElementById('trNote').value.trim();
   const src = DB.inventory.find(x=>x.id===partId);
+  if(!src){ toast('اختار الصنف الأول من نتايج البحث', true); return; }   /* م134 */
   // الملاحظة 45: حماية خلفية — ممنوع تحويل من/إلى صنف مؤرشف
   if(src && src.archived){ toast('الصنف مؤرشف — استرجعه من الأرشيف الأول قبل التحويل', true); return; }
   const srcWhId = partWhId(src);
@@ -4028,23 +4530,22 @@ async function saveStockIn(partId){
 
 function jobMatchesSearch(job, term){
   if(!term) return true;
-  const t = term.trim().toLowerCase();
+  /* م126: بحث ذكي موحّد */
   const car = DB.cars.find(c=>c.id===job.carId) || {};
   const cust = DB.customers.find(c=>c.id===job.customerId) || {};
-  const haystack = [
-    job.jobNo, job.status, job.notes, job.technician,
+  return smartMatch(term, [
+    job.jobNo, job.status, job.notes, job.technician, job.responsibleName,
     car.plate, car.make, car.model, car.year, car.vin, car.color,
-    cust.name, cust.phone
-  ].filter(Boolean).join(' | ').toLowerCase();
-  return haystack.includes(t);
+    cust.name, cust.phone, cust.phone2, cust.custType
+  ]);
 }
 function customerMatchesSearch(cust, term){
   if(!term) return true;
-  const t = term.trim().toLowerCase();
+  /* م126: بحث ذكي — تطبيع عربي + كلمات متعددة بأي ترتيب + رقم أمر الشغل */
   const cars = DB.cars.filter(c=>c.customerId===cust.id);
-  const haystack = [cust.name, cust.phone, ...cars.flatMap(c=>[c.plate,c.make,c.model,c.year,c.vin,c.color])]
-    .filter(Boolean).join(' | ').toLowerCase();
-  return haystack.includes(t);
+  const jobNos = DB.jobs.filter(j=>j.customerId===cust.id).map(j=>j.jobNo);
+  return smartMatch(term, [cust.name, cust.phone, cust.phone2, cust.email, cust.nationalId, cust.custType,
+    ...jobNos, ...cars.flatMap(c=>[c.plate,c.make,c.model,c.year,c.vin,c.color])]);
 }
 
 let mvFilters = { dateFrom:'', dateTo:'', supplierId:'', type:'', partId:'', jobNo:'', carCust:'', reqById:'', q:'' };
@@ -4061,9 +4562,11 @@ function renderStockMoves(){
       <div class="form-row"><label class="f-label">أمر الشغل (${openJobs.length} نتيجة)</label>
         <select class="f" id="mvJob">${openJobs.map(j=>{const car=DB.cars.find(c=>c.id===j.carId); const cust=DB.customers.find(c=>c.id===j.customerId); return `<option value="${j.id}">#${j.jobNo} — ${car?car.plate:''} — ${carLabel(car)} — ${cust?cust.name:''}</option>`}).join('')}</select>
       </div>
-      <div class="form-row"><label class="f-label">القطعة</label>
-        <input class="f" id="mvPartSearch" placeholder="ابحث بأي جزء من اسم القطعة..." oninput="filterMvPartSelect(this.value)" autocomplete="off" style="margin-bottom:6px">
-        <select class="f" id="mvPart">${activeInventory().map(p=>`<option value="${p.id}">${p.name} (متاح: ${p.qty})</option>`).join('')}</select>
+      <div class="form-row"><label class="f-label">القطعة — بحث ذكي (اسم · كود · OEM · باركود)</label>
+        <input class="f" id="mvPartSearch" placeholder="ابدأ اكتب: فرامل · فلتر · SP001..." oninput="mvSearchParts(this.value)" autocomplete="off" style="margin-bottom:6px">
+        <input type="hidden" id="mvPart" value="">
+        <div id="mvPartResults" style="max-height:240px;overflow-y:auto">${activeInventory().slice(0,6).map(p=>mvPartCardHTML(p)).join('')}</div>
+        <div id="mvPartPicked"></div>
       </div>
       <div class="form-row"><label class="f-label">الكمية</label><input class="f" id="mvQty" type="number" min="1" value="1"></div>
     </div>
@@ -4271,12 +4774,11 @@ function moveMatchesFilters(m){
     if(!matchConsumed && !matchRelated) return false;
   }
   if(f.carCust){
-    const t = f.carCust.trim().toLowerCase();
+    /* م126: بحث ذكي موحّد */
     const job = m.jobId ? DB.jobs.find(j=>j.id===m.jobId) : null;
     const car = job ? DB.cars.find(c=>c.id===job.carId) : null;
     const cust = m.customerId ? DB.customers.find(c=>c.id===m.customerId) : (job ? DB.customers.find(c=>c.id===job.customerId) : null);
-    const haystack = [car&&car.plate, car&&carLabel(car), cust&&cust.name, cust&&cust.phone].filter(Boolean).join(' ').toLowerCase();
-    if(!haystack.includes(t)) return false;
+    if(!smartMatch(f.carCust, [car&&car.plate, car&&carLabel(car), cust&&cust.name, cust&&cust.phone, m.forCarLbl])) return false;
   }
   return true;
 }
@@ -4832,16 +5334,26 @@ function reopenPurchase(purchaseId){
   const p = DB.purchases.find(x=>x.id===purchaseId);
   if(!p || purStatus(p)!=='approved'){ toast('الفاتورة مش معتمدة أصلاً', true); return; }
   if(purIsClosed(p) && !isOwnerSession()){ toast('الفاتورة مقفولة مالياً — إعادة فتحها لصاحب المركز فقط', true); return; }
-  askConfirmReason('إعادة فتح فاتورة الشراء #'+p.purchaseNo+' لتعديل الأسعار؟<br><span class="muted" style="font-size:12px">هترجع «بانتظار فاتورة المورد» وتقدر تعدّل بنودها، وبعدها تعتمدها تاني.</span>',
+  const autoP = purAutoPayment(p);
+  askConfirmReason('إعادة فتح فاتورة الشراء #'+p.purchaseNo+' لتعديل الأسعار؟<br><span class="muted" style="font-size:12px">هترجع «بانتظار فاتورة المورد» وتقدر تعدّل بنودها، وبعدها تعتمدها تاني.'
+    +(autoP&&autoP.finMoveId?'<br><b>الدفعة الكاش ('+money(autoP.amount)+') هترجع للحساب فوراً</b> — ولما تعتمدها تاني هتتخصم بالمبلغ الجديد.':'')+'</span>',
     async (reason)=>{
       p.status = 'pending'; delete p.approvedAt; delete p.approvedBy;
-      purLog(p, 'reopened', [{ field:'حالة الفاتورة', before:'معتمدة', after:'بانتظار فاتورة المورد' }], reason);
-      await saveKey('purchases', DB.purchases);
+      /* م125 (قرار سيف): الفلوس لازم تكون مربوطة بمستند معتمد نهائي — أول ما
+         الفاتورة تتفتح، الدفعة الكاش التلقائية بتتعكس فوراً (الفلوس ترجع للحساب
+         وصف السجل الموحد يتشال). الاعتماد التاني بيخصم من جديد بالمبلغ الصح. */
+      const reversed = purReversePayEffect(p);
+      purLog(p, 'reopened', [{ field:'حالة الفاتورة', before:'معتمدة', after:'بانتظار فاتورة المورد' }]
+        .concat(reversed&&autoP?[{ field:'الدفعة الكاش', before:money(autoP.amount)+' مخصومة', after:'اترجعت للحساب لحين الاعتماد' }]:[]), reason);
+      await Promise.all([saveKey('purchases', DB.purchases)]
+        .concat(reversed?[saveKey('finMoves', DB.finMoves), saveKey('expenses', DB.expenses)]:[]));
       const sup = DB.suppliers.find(s=>s.id===p.supplierId);
-      await logAction('🔄 إعادة فتح فاتورة شراء #'+p.purchaseNo+auditDetails([['المورد', sup?sup.name:null], ['السبب', reason||'—']]));
-      notify('purchase_reopen', 'إعادة فتح فاتورة شراء معتمدة #'+p.purchaseNo+(sup?' — '+sup.name:'')+' — السبب: '+(reason||'—'),
+      await logAction('🔄 إعادة فتح فاتورة شراء #'+p.purchaseNo+auditDetails([['المورد', sup?sup.name:null],
+        ['الدفعة الكاش', reversed&&autoP?money(autoP.amount)+' رجعت للحساب':'—'], ['السبب', reason||'—']]));
+      notify('purchase_reopen', 'إعادة فتح فاتورة شراء معتمدة #'+p.purchaseNo+(sup?' — '+sup.name:'')
+        +(reversed&&autoP?' — الدفعة الكاش '+money(autoP.amount)+' رجعت للحساب':'')+' — السبب: '+(reason||'—'),
         { category:'financial', refType:'purchase', refId:p.id, refNo:p.purchaseNo });
-      closeModal(); toast('اترجعت الفاتورة للتعديل'); refreshContent();
+      closeModal(); toast('اترجعت الفاتورة للتعديل'+(reversed?' والدفعة الكاش رجعت للحساب':'')); refreshContent();
     });
 }
 /* ---------- سجل فاتورة الشراء ---------- */
@@ -4961,11 +5473,35 @@ function openCountReport(countId){
     }).join('')}</tbody></table></div>
   `);
 }
-function filterMvPartSelect(term){
-  const t = term.trim().toLowerCase();
-  const sel = document.getElementById('mvPart');
-  const filtered = activeInventory().filter(p=>!t || p.name.toLowerCase().includes(t) || (p.sku&&p.sku.toLowerCase().includes(t)));
-  sel.innerHTML = filtered.length ? filtered.map(p=>`<option value="${p.id}">${p.name} (متاح: ${p.qty})</option>`).join('') : `<option value="">لا يوجد صنف مطابق</option>`;
+/* ============ م126: اختيار القطعة في الصرف — بحث ذكي بكروت لكل مخزن ============
+   نفس الصنف في مخزنين = كارتين منفصلين، كل كارت بيبيّن رصيد المخزن ده بس
+   واسم المخزن وآخر سعر شراء — أمين المخزن بيشوف ويختار بعينه، ومفيش أي
+   اختيار تلقائي لمخزن. الخصم بيتم من صف المخزن المختار تحديداً (م107). */
+function mvPartCardHTML(p){
+  const lp = lastPurchaseInfo(p.id);
+  return `<div class="card" style="padding:8px 10px;margin-bottom:6px;cursor:pointer" onclick="mvPickPart('${p.id}')">
+    <div style="font-weight:700;font-size:12.5px">${p.sku?`<span class="muted" style="font-size:11px">${p.sku}</span> · `:''}${p.name}</div>
+    <div class="muted" style="font-size:11.5px">الرصيد: <b style="${p.qty<=0?'color:var(--danger)':''}">${p.qty}</b> ${p.unit||''} · المخزن: <b>${whName(partWhId(p))}</b> · آخر سعر شراء: ${money(lp.price)}</div>
+  </div>`;
+}
+function mvSearchParts(term){
+  const box = document.getElementById('mvPartResults'); if(!box) return;
+  const t = String(term||'').trim();
+  const list = t ? smartSearchParts(t, 12).map(r=>r.part) : activeInventory().slice(0,6);
+  box.innerHTML = list.length ? list.map(mvPartCardHTML).join('')
+    : `<div class="muted" style="font-size:12.5px;padding:6px">مفيش صنف مطابق</div>`;
+}
+function mvPickPart(partId){
+  const p = DB.inventory.find(x=>x.id===partId); if(!p) return;
+  const h = document.getElementById('mvPart'); if(h) h.value = partId;
+  const s = document.getElementById('mvPartSearch'); if(s) s.value = p.name;
+  const box = document.getElementById('mvPartResults'); if(box) box.innerHTML = '';
+  const lp = lastPurchaseInfo(partId);
+  const picked = document.getElementById('mvPartPicked');
+  if(picked) picked.innerHTML = `<div class="card" style="padding:8px 10px;margin-top:6px;border-right:3px solid var(--accent)">
+    ✅ <b>${p.name}</b>${p.sku?` <span class="muted">(${p.sku})</span>`:''}
+    <div class="muted" style="font-size:11.5px;margin-top:2px">هيتصرف من: <b>${whName(partWhId(p))}</b> · الرصيد: ${p.qty} ${p.unit||''} · آخر سعر شراء: ${money(lp.price)}</div>
+  </div>`;
 }
 function openStockAdjustmentModal(presetPartId){
   if(!can('inv.adjust')){ toast('مالكش صلاحية تعديل الكميات المخزنية — ارجع لصاحب المركز.', true); return; }
@@ -5294,6 +5830,11 @@ async function saveCustomerReturn(){
 function openWorkOrderReport(jobId){
   openModal(workOrderReportHTML(jobId));
 }
+/* م131: فتح التقرير من سجل العميل — مع زرار رجوع للسجل عشان يقلّب في فواتيره براحته */
+function openWorkOrderReportFromCust(jobId, customerId){
+  openModal(workOrderReportHTML(jobId)
+    + `<button class="btn" style="width:100%;margin-top:8px" onclick="openCustomerHistory('${customerId}')">↩️ رجوع لسجل العميل</button>`);
+}
 /* ============ الملاحظة 59: شارة حالة الفوترة + فصل التواريخ ============
    الفرق اللي كان محيّر: «تاريخ الإغلاق» كان بيعرض وقت تغيير الحالة لـ«تم التسليم»
    (خروج السيارة) — وده ممكن يكون قبل الفاتورة بأيام. دلوقتي التلاتة منفصلين وواضحين. */
@@ -5340,10 +5881,11 @@ function workOrderReportHTML(jobId){
   const extWorkCost = job.items.filter(it=>it.kind==='ext_work').reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
   const totalRevenue = job.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
   const totalCost = inPartsCost + extPartsCost + extWorkCost + paintCost;
-  const realProfit = totalRevenue - totalCost;
+  /* م129: الربحية بصافي المبيعات — الخصم بيقلل الإيراد (المعادلة الموحدة) */
+  const pc129 = profitCore(totalRevenue, inv ? (inv.discount||0) : 0, totalCost);
+  const paintItems = (job.internalCosts||[]).filter(ic=>ic.kind==='paint');   // م128: للنسختين
   // نسخة بدون أرباح: للمخزن ولأي حد مالوش صلاحية الربحية (الملاحظتان 26 و32)
   if(!can('rep.profit')){
-    const paintItems = (job.internalCosts||[]).filter(ic=>ic.kind==='paint');
     const jobMoves = DB.stockMoves.filter(m=>m.jobId===job.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
     const mvLabel = (m)=> m.type==='out'?'صرف من المخزن': m.type==='ext_part'?'قطعة خارجية': m.type==='paint_out'?'خامات دهان': m.type;
     return `
@@ -5387,6 +5929,11 @@ function workOrderReportHTML(jobId){
     const p = m.partId ? DB.inventory.find(x=>x.id===m.partId) : null;
     return `<tr><td style="white-space:nowrap;font-size:12px">${fmtDateTime(m.date)}</td><td>${mvLabel(m)}</td><td>${p?p.name:(m.extName||'—')}</td><td>${m.qty}</td><td class="muted" style="font-size:11.5px">${m.actor||'—'}</td></tr>`;
   }).join('') : `<tr><td colspan="5" class="empty">لا توجد حركات</td></tr>`}</tbody></table>
+  ${(job.externalNotes||'').trim()?`
+  <div class="card" style="margin-top:12px;border-right:3px solid var(--accent)">
+    <label class="f-label" style="color:var(--accent)">📝 ملاحظات للعميل (المطبوعة على الفاتورة)</label>
+    <div style="white-space:pre-wrap;font-size:12.5px;margin-top:6px">${job.externalNotes}</div>
+  </div>`:''}
   ${liveInternalNotes(job).length ? `
   <div class="card" style="margin-top:12px;border-right:3px solid var(--accent-2)">
     <label class="f-label" style="color:var(--accent-2)">📝 ملاحظات الورشة الداخلية (عرض داخلي فقط)</label>
@@ -5413,7 +5960,9 @@ function workOrderReportHTML(jobId){
   <tbody>${services.length? services.map(it=>`<tr><td>${it.name}</td><td>${(it.technicianId||it.technician)?itemTechLabel(it, job):'—'}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>`).join('') : `<tr><td colspan="5" class="empty">لا توجد خدمات</td></tr>`}</tbody></table>
   <label class="f-label">قطع الغيار المصروفة</label>
   <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>القطعة</th><th>الكمية</th><th>سعر البيع</th><th>الإجمالي</th></tr></thead>
-  <tbody>${parts.length? parts.map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>`).join('') : `<tr><td colspan="4" class="empty">لا توجد قطع مصروفة</td></tr>`}</tbody></table>
+  <tbody>${parts.length? parts.map(it=>`<tr><td>${it.name}
+      <div class="muted" style="font-size:11px">💸 التكلفة: ${money(it.costPrice||0)}${it.qty>1?' × '+it.qty+' = '+money(it.qty*(it.costPrice||0)):''}</div></td>
+    <td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>`).join('') : `<tr><td colspan="4" class="empty">لا توجد قطع مصروفة</td></tr>`}</tbody></table>
   ${extItems.length? `
   <label class="f-label">قطع غيار وأعمال خارجية</label>
   <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>البند</th><th>النوع</th><th>المورد/الجهة</th><th>التكلفة</th><th>البيع</th></tr></thead>
@@ -5421,6 +5970,10 @@ function workOrderReportHTML(jobId){
     const sup = it.supplierId ? DB.suppliers.find(s=>s.id===it.supplierId) : null;
     return `<tr><td>${it.name}</td><td>${kindLabelFull(it)}</td><td>${sup?sup.name:'—'} <span class="muted" style="font-size:11px">(${it.payMethod||'كاش'})</span></td><td>${money(it.qty*(it.costPrice||0))}</td><td>${money(it.qty*it.unitPrice)}</td></tr>`;
   }).join('')}</tbody></table>` : ''}
+  ${paintItems.length? `
+  <label class="f-label">🎨 خامات الدهان (تكلفة داخلية — لا تظهر للعميل)</label>
+  <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>الخامة</th><th>الكمية</th><th>التكلفة</th><th>بواسطة</th></tr></thead>
+  <tbody>${paintItems.map(ic=>`<tr><td>${ic.name}</td><td>${ic.qty} ${ic.unit||''}</td><td>${money(ic.total)}</td><td class="muted" style="font-size:11.5px">${ic.by||'—'}</td></tr>`).join('')}</tbody></table>` : ''}
   <div class="grid g3">
     ${stat(money(partsCost),'بيع قطع الغيار (مخزن)')}
     ${stat(money(laborCost),'المصنعية الداخلية')}
@@ -5435,16 +5988,25 @@ function workOrderReportHTML(jobId){
       <tr><td>🎨 تكلفة خامات الدهان</td><td>${money(paintCost)}</td></tr>
     </tbody></table>
   </div>
-  <div class="grid g4" style="margin-top:10px">
-    ${stat(money(totalRevenue),'إجمالي الإيرادات (البيع)')}
-    ${stat(money(totalCost),'إجمالي التكاليف (الشراء)')}
-    ${stat(money(realProfit),'صافي الربح الحقيقي'+(inv?'':' المتوقع'), realProfit<0)}
-    ${stat((totalRevenue>0?Math.round(realProfit/totalRevenue*1000)/10:0)+'%','هامش الربح'+(inv?'':' المتوقع'), realProfit<0)}
+  <div class="grid g3" style="margin-top:10px">
+    ${stat(money(pc129.gross),'إجمالي البيع (قبل الخصم)')}
+    ${stat(money(pc129.discount),'الخصم', pc129.discount>0)}
+    ${stat(money(pc129.net),'صافي المبيعات (بعد الخصم)')}
+  </div>
+  <div class="grid g3" style="margin-top:10px">
+    ${stat(money(pc129.cost),'إجمالي التكاليف (الشراء)')}
+    ${stat(money(pc129.profit),'صافي الربح الحقيقي'+(inv?'':' المتوقع'), pc129.profit<0)}
+    ${stat(pc129.margin.toFixed(1)+'%','هامش الربح'+(inv?'':' المتوقع'), pc129.profit<0)}
   </div>
   <div class="card" style="margin-top:12px">
     <span class="muted" style="font-size:12px">👤 الموظف المسؤول عن أمر الشغل:</span>
     <span style="font-weight:800;margin-right:6px">${job.responsibleName||'غير محدد'}</span>
   </div>
+  ${(job.externalNotes||'').trim()?`
+  <div class="card" style="margin-top:12px;border-right:3px solid var(--accent)">
+    <label class="f-label" style="color:var(--accent)">📝 ملاحظات للعميل (المطبوعة على الفاتورة)</label>
+    <div style="white-space:pre-wrap;font-size:12.5px;margin-top:6px">${job.externalNotes}</div>
+  </div>`:''}
   ${liveInternalNotes(job).length ? `
   <div class="card" style="margin-top:12px;border-right:3px solid var(--accent-2)">
     <label class="f-label" style="color:var(--accent-2)">📝 ملاحظات الورشة الداخلية (عرض داخلي فقط — لا تظهر للعميل)</label>
@@ -5457,6 +6019,27 @@ function workOrderReportHTML(jobId){
 }
 
 /* ---- تقارير أوامر الشغل المفتوحة (الملاحظة 26) — للحسابات والمالك فقط ---- */
+/* ============================================================
+   م129 — معادلة الربحية الواحدة للسيستم كله (Single Source of Truth)
+   صافي المبيعات = إجمالي البيع − الخصم
+   صافي الربح   = صافي المبيعات − التكلفة
+   الهامش %     = صافي الربح ÷ صافي المبيعات × 100
+   الخصم بيقلل الإيراد — عمره ما يتجاهل في الربحية. والضريبة مش إيراد
+   فمش داخلة في صافي المبيعات. أي شاشة ربحية لازم تعدّي من هنا.
+   ============================================================ */
+function profitCore(gross, discount, cost){
+  const g = gross||0;
+  const d = Math.min(Math.max(discount||0, 0), g);
+  const net = g - d;
+  const c = cost||0;
+  const profit = net - c;
+  return { gross:g, discount:d, net, cost:c, profit, margin: net>0 ? profit/net*100 : 0 };
+}
+/* خصم الفاتورة السارية المربوطة بالأمر — صفر لو لسه مفيش فاتورة أو اتلغت */
+function jobInvoiceDiscount(job){
+  const inv = DB.invoices.find(i=>i.jobId===job.id && !i.cancelled);
+  return inv ? (inv.discount||0) : 0;
+}
 function jobCostBreakdown(job){
   const inParts = job.items.filter(it=>it.kind==='part').reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
   const extParts = job.items.filter(it=>it.kind==='ext_part').reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
@@ -5464,7 +6047,9 @@ function jobCostBreakdown(job){
   const paint = (job.internalCosts||[]).reduce((s,ic)=>s+ic.total,0);
   const revenue = job.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
   const total = inParts + extParts + extWork + paint;
-  return { inParts, extParts, extWork, paint, total, revenue, profit: revenue - total };
+  const pc = profitCore(revenue, jobInvoiceDiscount(job), total);   // م129
+  return { inParts, extParts, extWork, paint, total, revenue,
+    discount: pc.discount, netSales: pc.net, profit: pc.profit, margin: pc.margin };
 }
 function isOpenJob(j){
   // مفتوح = لسه ماتعملوش فاتورة سارية، ومش ملغي
@@ -5473,18 +6058,72 @@ function isOpenJob(j){
 }
 let openJobsSearch = '';
 function setOpenJobsSearch(v){ openJobsSearch = v.trim().toLowerCase(); refreshContent(); }
-function renderOpenJobsReport(){
-  const open = DB.jobs.filter(isOpenJob);
-  const tot = { parts:0, extWork:0, paint:0, total:0, revenue:0 };
-  open.forEach(j=>{ const b = jobCostBreakdown(j); tot.parts += b.inParts + b.extParts; tot.extWork += b.extWork; tot.paint += b.paint; tot.total += b.total; tot.revenue += b.revenue; });
+/* ============================================================
+   م136 — فلتر زمني بتاريخ الدخول + فصل تكلفة القطع (داخلية/خارجية)
+   + Export to Excel لنفس النتائج المعروضة بالظبط.
+   الفلتر بيعتمد **فقط** على receivedAt (تاريخ دخول العربية) —
+   والشاشة أصلاً مفتوح-فقط ⇒ «مفتوح حالياً + دخل في الفترة».
+   الإجماليات فوق بتتبع النتائج المعروضة (فلتر + بحث) — مش الورشة كلها.
+   الترتيب: الأقدم دخولاً الأول (طلب سيف). التكاليف حية لحظية — مفيش لقطة.
+   ============================================================ */
+let openJobsDateFrom = '', openJobsDateTo = '';
+function setOpenJobsDate(k, v){
+  if(k==='from') openJobsDateFrom = v; else if(k==='to') openJobsDateTo = v;
+  else { openJobsDateFrom=''; openJobsDateTo=''; }
+  refreshContent();
+}
+/* النتائج المعروضة — نفس القائمة للشاشة والإجماليات والتصدير */
+function openJobsDisplayed(){
   const t = openJobsSearch;
-  const filtered = open.filter(j=>{
-    if(!t) return true;
+  return DB.jobs.filter(isOpenJob)
+    .filter(j=>{
+      const d = new Date(j.receivedAt);
+      if(openJobsDateFrom && d < new Date(openJobsDateFrom)) return false;
+      if(openJobsDateTo && d > new Date(new Date(openJobsDateTo).getTime()+86399999)) return false;
+      return true;
+    })
+    .filter(j=>{
+      if(!t) return true;
+      const car = DB.cars.find(c=>c.id===j.carId)||{};
+      const cust = DB.customers.find(c=>c.id===j.customerId)||{};
+      return smartMatch(t, [j.jobNo, cust.name, cust.phone, cust.company, car.plate, car.make, car.model]);
+    })
+    .sort((a,b)=>new Date(a.receivedAt)-new Date(b.receivedAt));   // الأقدم دخولاً الأول
+}
+/* محتوى ملف الإكسل: صف واحد لكل أمر شغل (مفيش صفوف لقطع منفردة) + صف إجماليات */
+function openJobsCSVContent(){
+  const list = openJobsDisplayed();
+  const rows = [['رقم الأمر','العميل','الموبايل','اللوحة','السيارة','تاريخ الدخول','الحالة',
+    'تكلفة قطع غيار داخلية','تكلفة قطع غيار خارجية','تكلفة خامات الدهان','تكلفة أعمال خارجية','إجمالي التكلفة الحالية']];
+  const tot = { inParts:0, extParts:0, paint:0, extWork:0, total:0 };
+  list.forEach(j=>{
     const car = DB.cars.find(c=>c.id===j.carId)||{};
     const cust = DB.customers.find(c=>c.id===j.customerId)||{};
-    const hay = [j.jobNo, cust.name, cust.phone, cust.company, car.plate, car.make, car.model].filter(Boolean).join(' ').toLowerCase();
-    return hay.includes(t);
-  }).sort((a,b)=>new Date(b.receivedAt)-new Date(a.receivedAt));
+    const b = jobCostBreakdown(j);
+    tot.inParts+=b.inParts; tot.extParts+=b.extParts; tot.paint+=b.paint; tot.extWork+=b.extWork; tot.total+=b.total;
+    rows.push(['#'+j.jobNo, cust.name||'', cust.phone||'', car.plate||'', carLabel(car)||'', fmtDate(j.receivedAt), j.status,
+      b.inParts, b.extParts, b.paint, b.extWork, b.total]);
+  });
+  rows.push(['الإجمالي','','','','','','', tot.inParts, tot.extParts, tot.paint, tot.extWork, tot.total]);
+  return '﻿' + rows.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+}
+function exportOpenJobsCSV(){
+  const csv = openJobsCSVContent();
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'الورشة-المفتوحة-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  logAction('⬇ تصدير Excel لأوامر الشغل المفتوحة ('+openJobsDisplayed().length+' أمر)');
+  toast('اتصدّر ملف Excel بالنتائج المعروضة');
+}
+function renderOpenJobsReport(){
+  const filtered = openJobsDisplayed();
+  /* م136: الإجماليات من النتائج المعروضة بالظبط — والقطع الداخلية والخارجية منفصلين */
+  const tot = { inParts:0, extParts:0, extWork:0, paint:0, total:0, revenue:0 };
+  filtered.forEach(j=>{ const b = jobCostBreakdown(j); tot.inParts += b.inParts; tot.extParts += b.extParts; tot.extWork += b.extWork; tot.paint += b.paint; tot.total += b.total; tot.revenue += b.revenue; });
+  const t = openJobsSearch;
   /* م111: زراير الـSnapshot — إضافة واجهة بس، مفيش أي تغيير في أرقام الشاشة */
   const wipMiss = wipMissingLastMonth();
   return `
@@ -5500,12 +6139,13 @@ function renderOpenJobsReport(){
     ⏰ لسه ماتعملش <b>WIP Snapshot</b> عن الشهر اللي فات — <b>${wipMiss.label}</b>.
     <span class="muted">تذكير بس، مايمنعش أي عملية.</span></div>`:''}`:''}
   <div class="grid g4" style="margin-bottom:14px">
-    ${stat(String(open.length),'عدد أوامر الشغل المفتوحة')}
-    ${stat(money(tot.parts),'إجمالي تكلفة قطع الغيار')}
-    ${stat(money(tot.extWork),'إجمالي تكلفة الأعمال الخارجية')}
-    ${stat(money(tot.paint),'إجمالي تكلفة خامات الدهان')}
+    ${stat(String(filtered.length),'عدد أوامر الشغل المفتوحة'+((openJobsDateFrom||openJobsDateTo)?' (بالفلتر)':''))}
+    ${stat(money(tot.inParts),'تكلفة قطع الغيار الداخلية')}
+    ${stat(money(tot.extParts),'تكلفة قطع الغيار الخارجية')}
+    ${stat(money(tot.paint),'تكلفة خامات الدهان')}
   </div>
-  <div class="grid g3" style="margin-bottom:20px">
+  <div class="grid g4" style="margin-bottom:20px">
+    ${stat(money(tot.extWork),'تكلفة الأعمال الخارجية')}
     ${stat(money(tot.total),'💰 إجمالي التكلفة الحالية للورشة', tot.total>0)}
     ${stat(money(tot.revenue),'الإيراد المتوقع عند الفوترة')}
     ${stat(money(tot.revenue-tot.total),'الربحية المتوقعة', (tot.revenue-tot.total)<0)}
@@ -5515,10 +6155,18 @@ function renderOpenJobsReport(){
       ${ICONS.search}
       <input placeholder="بحث ذكي: رقم أمر الشغل، اسم العميل، الموبايل، الموديل، اللوحة، اسم الشركة..." value="${openJobsSearch}" oninput="setOpenJobsSearch(this.value)">
     </div>
+    <!-- م136: فلتر تاريخ الدخول (receivedAt فقط) + التصدير -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
+      <div class="form-row" style="margin:0"><label class="f-label">📅 دخلت الورشة من تاريخ</label><input class="f" type="date" value="${openJobsDateFrom}" onchange="setOpenJobsDate('from',this.value)"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${openJobsDateTo}" onchange="setOpenJobsDate('to',this.value)"></div>
+      ${(openJobsDateFrom||openJobsDateTo)?`<button class="btn btn-sm" onclick="setOpenJobsDate('clear')">✖ مسح الفلتر</button>`:''}
+      <button class="btn btn-sm btn-accent" style="margin-right:auto" onclick="exportOpenJobsCSV()">⬇ Export to Excel</button>
+    </div>
+    ${(openJobsDateFrom||openJobsDateTo)?`<div class="muted" style="font-size:11.5px;margin-top:6px">بيعرض الأوامر <b>المفتوحة حالياً</b> اللي تاريخ دخولها جوه الفترة — والإجماليات فوق بتحسب النتائج دي بس.</div>`:''}
   </div>
-  <div class="section-head"><h3>السيارات داخل الورشة (${filtered.length})</h3></div>
+  <div class="section-head"><h3>السيارات داخل الورشة (${filtered.length}) <span class="muted" style="font-size:11.5px;font-weight:400">— الأقدم دخولاً الأول</span></h3></div>
   <div class="card">
-    <table><thead><tr><th>رقم</th><th>العميل</th><th>السيارة</th><th>تاريخ الدخول</th><th>الحالة</th><th>قطع غيار</th><th>أعمال خارجية</th><th>خامات</th><th>إجمالي التكلفة</th><th>الربح المتوقع</th></tr></thead>
+    <table><thead><tr><th>رقم</th><th>العميل</th><th>السيارة</th><th>تاريخ الدخول</th><th>الحالة</th><th>قطع داخلية</th><th>قطع خارجية</th><th>أعمال خارجية</th><th>خامات</th><th>إجمالي التكلفة</th><th>الربح المتوقع</th></tr></thead>
     <tbody>${filtered.length? filtered.map(j=>{
       const car = DB.cars.find(c=>c.id===j.carId)||{};
       const cust = DB.customers.find(c=>c.id===j.customerId)||{};
@@ -5529,13 +6177,14 @@ function renderOpenJobsReport(){
         <td>${car.plate||'—'}<div class="muted" style="font-size:10.5px">${carLabel(car)}</div></td>
         <td style="white-space:nowrap;font-size:12.5px">${fmtDate(j.receivedAt)}</td>
         <td><span class="tag ${STATUS_TAGCLASS[j.status]||''}">${j.status}</span></td>
-        <td>${money(b.inParts+b.extParts)}</td>
+        <td>${money(b.inParts)}</td>
+        <td>${money(b.extParts)}</td>
         <td>${money(b.extWork)}</td>
         <td>${money(b.paint)}</td>
         <td style="font-weight:800">${money(b.total)}</td>
         <td style="font-weight:700;${b.profit<0?'color:var(--danger)':''}">${money(b.profit)}</td>
       </tr>`;
-    }).join('') : `<tr><td colspan="10" class="empty">${t?'مفيش نتائج مطابقة للبحث':'مفيش أوامر شغل مفتوحة حالياً — الورشة فاضية 🎉'}</td></tr>`}</tbody></table>
+    }).join('') : `<tr><td colspan="11" class="empty">${(t||openJobsDateFrom||openJobsDateTo)?'مفيش نتائج مطابقة للفلتر':'مفيش أوامر شغل مفتوحة حالياً — الورشة فاضية 🎉'}</td></tr>`}</tbody></table>
   </div>`;
 }
 
@@ -5841,16 +6490,26 @@ async function saveStockOut(){
   const qty = parseFloat(document.getElementById('mvQty').value)||0;
   const p = DB.inventory.find(x=>x.id===partId);
   const job = DB.jobs.find(j=>j.id===jobId);
+  /* م126: الاختيار بقى بالكروت — لازم يكون فيه قطعة مختارة فعلاً (ومن مخزن محدد) */
+  if(!p){ toast('اختار القطعة الأول من نتايج البحث', true); return; }
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
   if(qty>p.qty){ toast('الكمية أكبر من المتاح في المخزون', true); return; }
   const car = DB.cars.find(c=>c.id===job.carId);
   p.qty -= qty;
-  const newItem = {id:uid('it'), kind:'part', name:p.name, qty, unitPrice:p.sellPrice, costPrice:p.costPrice, partId:p.id};
+  /* ============ م128: تكلفة أمر الشغل = آخر سعر شراء فعلي (لقطة تاريخية) ============
+     لحظة الصرف بناخد التكلفة من **آخر حركة توريد بسعرها** (نفس مصدر «آخر سعر
+     شراء» في كروت البحث) — مش من خانة تكلفة الصنف اللي ممكن تكون اتعدلت يدوياً.
+     ولو الصنف ماجالوش توريد قط، بنرجع لتكلفة الصنف المسجلة (fallback جوه
+     lastPurchaseInfo). القيمة بتتنسخ في البند والحركة وبتفضل ثابتة للأبد —
+     أي شراء جديد بيغيّر الصنف بس، والأوامر والفواتير القديمة عمرها ما تتغير.
+     متوسط التكلفة وقيمة المخزون ما اتلمسوش (قرار سيف أ). */
+  const issueCost = lastPurchaseInfo(p.id).price;
+  const newItem = {id:uid('it'), kind:'part', name:p.name, qty, unitPrice:p.sellPrice, costPrice:issueCost, partId:p.id};
   job.items.push(newItem);
   const carDesc = car ? ` — السيارة: ${car.plate}${carLabel(car)?' / '+carLabel(car):''}` : '';
   /* م107: كل حركة صرف بتسجّل **المخزن اللي خرجت منه القطعة** — عشان أي
      مرتجع بعد كده يرجّعها لنفس المخزن تلقائياً من غير ما حد يختار. */
-  const newMove = {id:uid('mv'), partId, type:'out', qty, unitCost:p.costPrice, unitPrice:p.sellPrice,
+  const newMove = {id:uid('mv'), partId, type:'out', qty, unitCost:issueCost, unitPrice:p.sellPrice,
     warehouseId: partWhId(p),
     date:new Date().toISOString(), note:'صرف لأمر شغل #'+job.jobNo+carDesc, jobId:job.id, customerId:job.customerId, actor:actorName()};
   pushStockMove(newMove);
@@ -6833,6 +7492,9 @@ function purReversePayEffect(p){
     const fm = DB.finMoves.find(m=>m.id===auto.finMoveId);
     if(fm) addFinMove(fm.accountId, 'in', auto.amount, 'reversal', 'عكس دفع فاتورة شراء #'+p.purchaseNo+' (تغيير طريقة الدفع)', { refPurchase:p.id });
   }
+  /* م125: صف «سداد فاتورة مورد» في السجل المالي الموحد بيتشال مع عكس الدفعة —
+     السجل بيفضل دايماً مطابق للفواتير المعتمدة فعلاً */
+  DB.expenses = DB.expenses.filter(e=>!(expTxnType(e)==='purchase_payment' && e.purchaseId===p.id && e.payId===auto.id));
   p.payments = (p.payments||[]).filter(x=>!x.auto);
   return true;
 }
@@ -6844,7 +7506,16 @@ function purApplyPayEffect(p, accountId){
   const pay = { id:uid('spay'), amount:remaining, date:new Date().toISOString(), auto:true, accountId: accountId||null };
   if(accountId){
     const acc = DB.finAccounts.find(a=>a.id===accountId);
-    if(acc){ const fm = addFinMove(acc.id, 'out', remaining, 'supplier', 'دفع فاتورة شراء #'+p.purchaseNo+' — '+supName(p.supplierId), { refPurchase:p.id }); pay.finMoveId = fm.id; }
+    if(acc){
+      const fm = addFinMove(acc.id, 'out', remaining, 'supplier', 'دفع فاتورة شراء #'+p.purchaseNo+' — '+supName(p.supplierId), { refPurchase:p.id });
+      pay.finMoveId = fm.id;
+      /* م125: صف تلقائي مقفول في السجل المالي الموحد — مربوط بالفاتورة والدفعة والحركة */
+      DB.expenses.push({ id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'purchase_payment',
+        category:'سداد فاتورة مورد', description:'سداد فاتورة شراء #'+p.purchaseNo+' — '+supName(p.supplierId),
+        amount: remaining, date:new Date().toISOString(), payAccount:acc.name, accountId:acc.id,
+        supplierId:p.supplierId, purchaseId:p.id, purchaseNo:p.purchaseNo,
+        payId:pay.id, finMoveId:fm.id, recordedBy:actorName(), system:true });
+    }
   }
   p.payments = p.payments || [];
   p.payments.push(pay);
@@ -6988,6 +7659,239 @@ function supplierStatement(supplierId){
   rows.forEach(r=>{ run += r.amount; r.running = run; });
   return rows;
 }
+/* ============================================================
+   م133 — تقارير المورد: طبقة قراءة فقط فوق البيانات الموجودة
+   3 تقارير مستقلة (فواتير · كشف حساب · مرتجعات) بفلتر زمني موحّد
+   (اليوم / 7 / 14 / شهر / مخصوص / الكل) وسطور قابلة للفتح والقفل
+   وطباعة — من غير أي تعديل في الشاشات أو المنطق الأصلي.
+   ============================================================ */
+let supRepFilter = { preset:'all', from:'', to:'' };
+let _supRepCtx = { kind:'', supplierId:'' };
+const SUP_REP_PRESETS = [['all','كل التعاملات'],['today','اليوم'],['7d','آخر 7 أيام'],['14d','آخر 14 يوم'],['30d','آخر شهر'],['custom','فترة مخصوصة']];
+/* م134: محرك الفترة عام — بيخدم تقارير المورد وتقرير التحويلات وأي تقرير جاي */
+function repRangeOf(f){
+  if(f.preset==='all') return null;
+  const end = new Date(); end.setHours(23,59,59,999);
+  if(f.preset==='custom'){
+    if(!f.from && !f.to) return null;
+    return { from: f.from ? new Date(f.from) : new Date('2000-01-01'),
+             to: f.to ? new Date(new Date(f.to).getTime()+86399999) : end };
+  }
+  const days = f.preset==='today' ? 0 : f.preset==='7d' ? 7 : f.preset==='14d' ? 14 : 30;
+  const start = new Date(); start.setHours(0,0,0,0); start.setDate(start.getDate()-days);
+  return { from:start, to:end };
+}
+function supRepRange(){ return repRangeOf(supRepFilter); }
+function supRepIn(dateStr){
+  const r = supRepRange(); if(!r) return true;
+  const d = new Date(dateStr); return d>=r.from && d<=r.to;
+}
+function supRepPeriodLabel(){
+  const f = supRepFilter;
+  if(f.preset==='custom') return 'من '+(f.from||'البداية')+' إلى '+(f.to||'اليوم');
+  return (SUP_REP_PRESETS.find(x=>x[0]===f.preset)||['','كل التعاملات'])[1];
+}
+function supRepSet(k, v){ supRepFilter[k]=v; if(k==='preset'&&v!=='custom'){ supRepFilter.from=''; supRepFilter.to=''; } _supRepRerender(); }
+function _supRepRerender(){
+  const { kind, supplierId } = _supRepCtx;
+  if(kind==='invoices') openSupInvoicesReport(supplierId, true);
+  else if(kind==='statement') openSupStatementReport(supplierId, true);
+  else if(kind==='returns') openSupReturnsReport(supplierId, true);
+}
+/* فتح/قفل تفاصيل سطر جوه نفس الشاشة — من غير أي نافذة جديدة */
+function supRepToggle(id){
+  const el = document.getElementById(id);
+  if(el) el.style.display = (el.style.display==='none') ? '' : 'none';
+}
+/* شريط الفلتر الموحد + رأس التقرير */
+function supRepHeaderHTML(title, sup, printFn){
+  return `
+  <div class="flex-between" style="gap:10px;flex-wrap:wrap;margin-bottom:8px">
+    <h3 style="margin:0">${title} — ${sup.name}</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="${printFn}('${sup.id}')">🖨 طباعة التقرير</button>
+      <button class="btn btn-sm" onclick="openSupplierDetail('${sup.id}')">↩️ رجوع لتفاصيل المورد</button>
+    </div>
+  </div>
+  <div class="card" style="padding:8px 10px;margin-bottom:10px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${SUP_REP_PRESETS.map(([id,lbl])=>`<button class="btn btn-sm ${supRepFilter.preset===id?'btn-accent':''}" onclick="supRepSet('preset','${id}')">${lbl}</button>`).join('')}
+    </div>
+    ${supRepFilter.preset==='custom'?`<div class="grid g2" style="max-width:420px;margin-top:8px">
+      <div class="form-row" style="margin:0"><label class="f-label">من تاريخ</label><input class="f" type="date" value="${supRepFilter.from}" onchange="supRepSet('from',this.value)"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${supRepFilter.to}" onchange="supRepSet('to',this.value)"></div>
+    </div>`:''}
+    <div class="muted" style="font-size:11.5px;margin-top:6px">📋 تقرير للمراجعة والمطابقة والطباعة فقط — أي تصحيح بيتم من الشاشات الأصلية بصلاحياتها.</div>
+  </div>`;
+}
+/* مين أدخل الفاتورة — من أول سطر في تاريخها */
+function purCreator(p){
+  const h = (p.history||[]).find(x=>x.action==='created');
+  return (h && h.actor) || p.createdBy || '—';
+}
+/* ---------- ١) تقرير فواتير المورد ---------- */
+function supInvRepRows(supplierId){
+  return DB.purchases.filter(p=>p.supplierId===supplierId && supRepIn(p.date))
+    .sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+function supInvItemsTable(p){
+  return `<table class="tcompact"><thead><tr><th>الصنف</th><th>الكود</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th><th>المخزن</th></tr></thead>
+    <tbody>${(p.items||[]).map(it=>{
+      const part = it.partId ? DB.inventory.find(x=>x.id===it.partId) : null;
+      return `<tr><td>${it.name||(part&&part.name)||'—'}</td><td class="muted">${(part&&part.sku)||'—'}</td>
+        <td>${it.qty}</td><td>${money(it.unitCost)}</td><td style="font-weight:700">${money(it.qty*it.unitCost)}</td>
+        <td class="muted" style="font-size:11px">${it.warehouseId?whName(it.warehouseId):'—'}</td></tr>`;
+    }).join('') || `<tr><td colspan="6" class="empty">مفيش بنود</td></tr>`}</tbody></table>`;
+}
+function openSupInvoicesReport(supplierId, keep){
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  if(!keep){ supRepFilter = { preset:'all', from:'', to:'' }; }
+  _supRepCtx = { kind:'invoices', supplierId };
+  const list = supInvRepRows(supplierId);
+  const totalSum = list.reduce((s,p)=>s+(p.total||0),0);
+  openModal(`
+  ${supRepHeaderHTML('🧾 تقرير فواتير المورد', sup, 'printSupInvoicesReport')}
+  <div class="muted" style="font-size:12px;margin-bottom:8px">الفترة: <b>${supRepPeriodLabel()}</b> · ${list.length} فاتورة · الإجمالي: <b>${money(totalSum)}</b> — اضغط على الفاتورة لفتح/قفل بنودها</div>
+  ${list.length? list.map(p=>{
+    const paid = (p.payments||[]).reduce((s,x)=>s+x.amount,0);
+    return `
+    <div class="card" style="padding:0;margin-bottom:6px;overflow:hidden">
+      <div onclick="supRepToggle('supinv_${p.id}')" style="cursor:pointer;padding:9px 12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
+        <div style="font-weight:800;font-size:13px">#${p.purchaseNo} <span class="muted" style="font-weight:400">| ${fmtDate(p.date)} |</span> ${money(p.total)} <span class="muted" style="font-weight:400">| ${p.paymentMethod||'—'}</span></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${purStatusTag(p)}<span class="muted" style="font-size:11.5px">أدخلها: ${purCreator(p)}</span></div>
+      </div>
+      <div id="supinv_${p.id}" style="display:none;padding:0 12px 10px;border-top:1px solid var(--surface-2)">
+        ${supInvItemsTable(p)}
+        <div class="muted" style="font-size:11.5px;margin-top:6px">المدفوع: ${money(paid)} · المتبقي: ${money(Math.max(p.total-paid,0))}</div>
+      </div>
+    </div>`;
+  }).join('') : `<div class="empty">مفيش فواتير في الفترة دي</div>`}
+  `, 'xwide');
+}
+function printSupInvoicesReport(supplierId){
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  const list = [...supInvRepRows(supplierId)].reverse();
+  const totalSum = list.reduce((s,p)=>s+(p.total||0),0);
+  const html = `
+  <div style="direction:rtl;text-align:right;font-size:13px">
+    <h2 style="text-align:center;margin:4px 0">${DB.settings.centerName||''} — تقرير فواتير المورد</h2>
+    <div style="text-align:center;margin-bottom:10px">المورد: <b>${sup.name}</b> · الفترة: <b>${supRepPeriodLabel()}</b> · ${list.length} فاتورة · الإجمالي: <b>${money(totalSum)}</b></div>
+    ${list.map(p=>`
+      <div style="border:1px solid #999;border-radius:8px;padding:8px 10px;margin-bottom:8px;page-break-inside:avoid">
+        <div style="font-weight:800">فاتورة #${p.purchaseNo} | ${fmtDate(p.date)} | ${money(p.total)} | ${p.paymentMethod||'—'} | أدخلها: ${purCreator(p)}</div>
+        ${supInvItemsTable(p)}
+      </div>`).join('')}
+  </div>`;
+  logAction('🖨 طباعة تقرير فواتير المورد «'+sup.name+'» ('+supRepPeriodLabel()+')');
+  downloadHTML(html, 'تقرير-فواتير-'+sup.name);
+}
+/* ---------- ٢) تقرير كشف حساب المورد ---------- */
+function supStmtRepRows(supplierId){
+  const all = supplierStatement(supplierId);
+  const r = supRepRange();
+  if(!r) return { prev:0, rows:all };
+  const prevRows = all.filter(x=>new Date(x.date) < r.from);
+  const prev = prevRows.length ? prevRows[prevRows.length-1].running : 0;
+  const rows = all.filter(x=>supRepIn(x.date));
+  /* الرصيد الجاري بيكمل من رصيد ما قبل الفترة — عشان المطابقة تطلع صح */
+  let run = prev;
+  const out = rows.map(x=>{ run += x.amount; return { ...x, running:run }; });
+  return { prev, rows:out };
+}
+function supStmtTableHTML(supplierId){
+  const { prev, rows } = supStmtRepRows(supplierId);
+  const r = supRepRange();
+  return `<table class="tcompact"><thead><tr><th>التاريخ</th><th>نوع الحركة</th><th>المرجع / البيان</th>
+    <th style="color:var(--danger)">مدين (علينا)</th><th style="color:var(--accent)">دائن</th><th>الرصيد</th></tr></thead>
+  <tbody>
+    ${r?`<tr style="font-weight:700"><td colspan="5">⏮ رصيد ما قبل الفترة</td><td>${money(prev)}</td></tr>`:''}
+    ${rows.length? rows.map(x=>`<tr>
+      <td style="white-space:nowrap">${fmtDate(x.date)}</td><td>${x.type}</td><td class="muted" style="font-size:11.5px">${x.desc||'—'}</td>
+      <td style="color:var(--danger)">${x.amount>0?money(x.amount):'—'}</td>
+      <td style="color:var(--accent)">${x.amount<0?money(-x.amount):'—'}</td>
+      <td style="font-weight:700">${money(x.running)}</td></tr>`).join('')
+      : `<tr><td colspan="6" class="empty">مفيش حركات في الفترة دي</td></tr>`}
+  </tbody></table>`;
+}
+function openSupStatementReport(supplierId, keep){
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  if(!keep){ supRepFilter = { preset:'all', from:'', to:'' }; }
+  _supRepCtx = { kind:'statement', supplierId };
+  const { rows } = supStmtRepRows(supplierId);
+  openModal(`
+  ${supRepHeaderHTML('📄 تقرير كشف حساب المورد', sup, 'printSupStatementReport')}
+  <div class="muted" style="font-size:12px;margin-bottom:8px">الفترة: <b>${supRepPeriodLabel()}</b> · ${rows.length} حركة · الرصيد الحالي الكلي: <b>${money(supplierBalance(supplierId).balance)}</b></div>
+  ${supStmtTableHTML(supplierId)}
+  `, 'xwide');
+}
+function printSupStatementReport(supplierId){
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  const html = `
+  <div style="direction:rtl;text-align:right;font-size:13px">
+    <h2 style="text-align:center;margin:4px 0">${DB.settings.centerName||''} — تقرير كشف حساب المورد</h2>
+    <div style="text-align:center;margin-bottom:10px">المورد: <b>${sup.name}</b> · الفترة: <b>${supRepPeriodLabel()}</b> · الرصيد الحالي: <b>${money(supplierBalance(supplierId).balance)}</b></div>
+    ${supStmtTableHTML(supplierId)}
+  </div>`;
+  logAction('🖨 طباعة تقرير كشف حساب المورد «'+sup.name+'» ('+supRepPeriodLabel()+')');
+  downloadHTML(html, 'كشف-حساب-'+sup.name);
+}
+/* ---------- ٣) تقرير مرتجعات المورد ---------- */
+function supRetRepRows(supplierId){
+  return DB.supplierReturns.filter(r=>r.supplierId===supplierId && supRepIn(r.date))
+    .sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+function supRetDetailsHTML(r){
+  return `<table class="tcompact"><thead><tr><th>الصنف</th><th>الكود</th><th>الكمية</th><th>سعر المرتجع</th><th>إجمالي البند</th><th>المخزن</th></tr></thead>
+    <tbody><tr>
+      <td>${r.name||'—'}</td><td class="muted">${(r.partId&&(DB.inventory.find(x=>x.id===r.partId)||{}).sku)||'—'}</td>
+      <td>${r.qty}</td><td>${money(r.unitCost)}</td><td style="font-weight:700">${money(r.total)}</td>
+      <td class="muted" style="font-size:11px">${r.warehouseName||'—'}</td>
+    </tr></tbody></table>
+    <div class="muted" style="font-size:11.5px;margin-top:6px">
+      ${r.purchaseNo?'الفاتورة الأصلية: #'+r.purchaseNo+' · ':''}
+      ${typeof r.payableReduction==='number'?'خصم من المديونية: '+money(r.payableReduction)+' · ':''}
+      ${typeof r.creditAmount==='number'&&r.creditAmount>0?'رصيد دائن لنا: '+money(r.creditAmount)+' · ':''}
+      ${r.note?'📝 '+r.note:''}
+    </div>`;
+}
+function openSupReturnsReport(supplierId, keep){
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  if(!keep){ supRepFilter = { preset:'all', from:'', to:'' }; }
+  _supRepCtx = { kind:'returns', supplierId };
+  const list = supRetRepRows(supplierId);
+  const totalSum = list.reduce((s,r)=>s+(r.total||0),0);
+  openModal(`
+  ${supRepHeaderHTML('↩️ تقرير مرتجعات المورد', sup, 'printSupReturnsReport')}
+  <div class="muted" style="font-size:12px;margin-bottom:8px">الفترة: <b>${supRepPeriodLabel()}</b> · ${list.length} مرتجع · الإجمالي: <b>${money(totalSum)}</b> — اضغط على المرتجع لفتح/قفل تفاصيله</div>
+  ${list.length? list.map((r,i)=>`
+    <div class="card" style="padding:0;margin-bottom:6px;overflow:hidden">
+      <div onclick="supRepToggle('supret_${r.id}')" style="cursor:pointer;padding:9px 12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
+        <div style="font-weight:800;font-size:13px">مرتجع ${r.purchaseNo?'فاتورة #'+r.purchaseNo:'#'+(list.length-i)} <span class="muted" style="font-weight:400">| ${fmtDate(r.date)} |</span> ${money(r.total)}</div>
+        <span class="muted" style="font-size:11.5px">بواسطة: ${r.by||'—'}</span>
+      </div>
+      <div id="supret_${r.id}" style="display:none;padding:0 12px 10px;border-top:1px solid var(--surface-2)">
+        ${supRetDetailsHTML(r)}
+      </div>
+    </div>`).join('') : `<div class="empty">مفيش مرتجعات في الفترة دي</div>`}
+  `, 'xwide');
+}
+function printSupReturnsReport(supplierId){
+  const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
+  const list = [...supRetRepRows(supplierId)].reverse();
+  const totalSum = list.reduce((s,r)=>s+(r.total||0),0);
+  const html = `
+  <div style="direction:rtl;text-align:right;font-size:13px">
+    <h2 style="text-align:center;margin:4px 0">${DB.settings.centerName||''} — تقرير مرتجعات المورد</h2>
+    <div style="text-align:center;margin-bottom:10px">المورد: <b>${sup.name}</b> · الفترة: <b>${supRepPeriodLabel()}</b> · ${list.length} مرتجع · الإجمالي: <b>${money(totalSum)}</b></div>
+    ${list.map(r=>`
+      <div style="border:1px solid #999;border-radius:8px;padding:8px 10px;margin-bottom:8px;page-break-inside:avoid">
+        <div style="font-weight:800">${r.purchaseNo?'مرتجع فاتورة #'+r.purchaseNo:'مرتجع'} | ${fmtDate(r.date)} | ${money(r.total)} | بواسطة: ${r.by||'—'}</div>
+        ${supRetDetailsHTML(r)}
+      </div>`).join('')}
+  </div>`;
+  logAction('🖨 طباعة تقرير مرتجعات المورد «'+sup.name+'» ('+supRepPeriodLabel()+')');
+  downloadHTML(html, 'مرتجعات-'+sup.name);
+}
 /* الملاحظة 44: أرشفة المورد — بشرط رصيد صفر (مفيش مستحقات معلقة) */
 let supShowArchived = false;
 function toggleSupArchived(){ supShowArchived = !supShowArchived; refreshContent(); }
@@ -7019,9 +7923,8 @@ let supSearchTerm = '';
 function setSupStatusFilter(v){ supStatusFilter = v; refreshContent(); }
 function setSupSearch(v){ supSearchTerm = v; const b=document.getElementById('supListBox'); if(b) b.innerHTML = supplierCardsHTML(); }
 function supMatchesSearch(sup){
-  const q = normSearch(supSearchTerm);
-  if(!q) return true;
-  return normSearch([sup.name, sup.phone, sup.phone2, sup.contactPerson, sup.area, sup.city, sup.address, sup.note, sup.email].filter(Boolean).join(' ')).includes(q);
+  /* م126: كلمات متعددة بأي ترتيب (كان بيدوّر بالجملة كاملة بس) */
+  return smartMatch(supSearchTerm, [sup.name, sup.phone, sup.phone2, sup.contactPerson, sup.area, sup.city, sup.address, sup.note, sup.email]);
 }
 function visibleSuppliers(){
   return [...DB.suppliers]
@@ -7029,12 +7932,9 @@ function visibleSuppliers(){
     .filter(supMatchesSearch)
     .sort(cmpName);
 }
-function supplierCardsHTML(){
-  const list = visibleSuppliers();
-  if(!list.length) return emptyState(supSearchTerm?'مفيش مورد مطابق للبحث':'لسه مفيش موردين مسجلين');
-  return list.map(sup=>{
-    const b = supplierBalance(sup.id);
-    return `
+function supCardHTML(sup){
+  const b = supplierBalance(sup.id);
+  return `
     <div class="card" style="cursor:pointer${sup.archived?';opacity:.55':''}" onclick="openSupplierDetail('${sup.id}')">
       <div style="font-weight:800;font-size:15px">${sup.name}${sup.archived?' <span class="muted" style="font-size:11px">🗄️ مؤرشف</span>':''}</div>
       <div class="muted" style="font-size:12.5px;margin-top:2px">${sup.phone||'—'}${sup.contactPerson?' · '+sup.contactPerson:''}${sup.area?' · '+sup.area:''}</div>
@@ -7044,7 +7944,20 @@ function supplierCardsHTML(){
       </div>
       ${sup.archived && isOwnerSession() ? `<button class="btn btn-sm btn-accent" style="width:100%;margin-top:10px" onclick="event.stopPropagation(); restoreSupplier('${sup.id}')">♻️ استرجاع المورد</button>` : ''}
     </div>`;
-  }).join('');
+}
+function supplierCardsHTML(){
+  const list = visibleSuppliers();
+  if(!list.length) return emptyState(supSearchTerm?'مفيش مورد مطابق للبحث':'لسه مفيش موردين مسجلين');
+  /* م130: في وضع «الكل» المؤرشف بيظهر في قسم منفصل الأول — مش مدموج */
+  if(supStatusFilter==='all'){
+    const arch = list.filter(s=>s.archived), act = list.filter(s=>!s.archived);
+    if(arch.length){
+      const sec = t => `<div style="grid-column:1/-1;font-weight:800;font-size:13px;padding:4px 2px">${t}</div>`;
+      return sec('🗄️ موردون مؤرشفون ('+arch.length+')') + arch.map(supCardHTML).join('')
+        + (act.length? sec('الموردون النشطون ('+act.length+')') + act.map(supCardHTML).join('') : '');
+    }
+  }
+  return list.map(supCardHTML).join('');
 }
 function renderSuppliers(){
   const archivedCount = DB.suppliers.filter(s=>s.archived).length;
@@ -7233,7 +8146,7 @@ function supplierDetailHTML(supplierId){
   <!-- كشف الحساب + الفواتير جنب بعض (عمودين على الشاشات الكبيرة) -->
   <div class="grid g2" style="gap:12px;align-items:start">
   <div style="min-width:0">
-  <div class="dsec">📄 كشف الحساب الموحّد (${stmt.length} حركة)</div>
+  <div class="dsec" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>📄 كشف الحساب الموحّد (${stmt.length} حركة)</span><button class="btn btn-sm" onclick="openSupStatementReport('${sup.id}')">📊 تقارير</button></div>
   <div class="card" style="margin:0;max-height:41vh;overflow:auto;padding:6px">
     <table class="tcompact"><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th style="color:var(--danger)">مدين</th><th style="color:var(--accent)">دائن</th><th>الرصيد</th></tr></thead>
     <tbody>${stmt.length? stmt.map(r=>`<tr>
@@ -7247,7 +8160,7 @@ function supplierDetailHTML(supplierId){
   </div>
   </div>
   <div style="min-width:0">
-  <div class="dsec" style="margin-top:0">🧾 فواتير الشراء (${purchases.length}) — اضغط الفاتورة لبنودها</div>
+  <div class="dsec" style="margin-top:0;display:flex;justify-content:space-between;align-items:center;gap:8px"><span>🧾 فواتير الشراء (${purchases.length}) — اضغط الفاتورة لبنودها</span><button class="btn btn-sm" onclick="openSupInvoicesReport('${sup.id}')">📊 تقارير</button></div>
   <div class="card" style="margin:0;max-height:41vh;overflow:auto;padding:6px">
   ${purchases.length? purchases.map(p=>{
     const paid = (p.payments||[]).reduce((s,x)=>s+x.amount,0);
@@ -7285,7 +8198,7 @@ function supplierDetailHTML(supplierId){
   </div>
   </div>
   ${returns.length ? `
-  <div class="dsec">↩️ المرتجعات (${returns.length} — ${money(b.totalReturns)})</div>
+  <div class="dsec" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>↩️ المرتجعات (${returns.length} — ${money(b.totalReturns)})</span><button class="btn btn-sm" onclick="openSupReturnsReport('${sup.id}')">📊 تقارير</button></div>
   <div class="card" style="margin:0 0 8px;max-height:20vh;overflow:auto;padding:6px">
   <table class="tcompact"><thead><tr><th>التاريخ</th><th>الصنف</th><th>القيمة</th><th>الفاتورة</th><th>الأثر المالي</th><th>ملاحظة</th></tr></thead>
   <tbody>
@@ -7642,7 +8555,7 @@ async function purFinApprove(purchaseId){
   changes.push({ field:'الحالة', before:'بانتظار مراجعة المحاسب', after:'معتمدة مالياً' });
   p.status = 'approved'; p.finApproved = true; p.finApprovedBy = actorName(); p.finApprovedAt = new Date().toISOString();
   purLog(p, 'fin_approved', changes, reason);
-  await Promise.all([saveKey('purchases', DB.purchases), saveKey('finMoves', DB.finMoves)]);
+  await Promise.all([saveKey('purchases', DB.purchases), saveKey('finMoves', DB.finMoves), saveKey('expenses', DB.expenses)]);
   const afterBal = supplierBalance(p.supplierId).balance;
   await logAction('🟢 اعتماد مالي لفاتورة شراء #'+p.purchaseNo+auditDetails([
     ['المورد', supName(p.supplierId)], ['طريقة الدفع', wantMethod+(methodChanged?' (كانت '+oldMethod+')':'')],
@@ -7863,8 +8776,10 @@ async function saveSupplierPayment(supplierId){
   if(acc) addFinMove(acc.id, 'out', paidTotal, 'supplier', 'سداد مورد: '+supNm);
   // also log as an expense so it reflects in accounts/reports
   // م80: supplierId متسجّل على المصروف — عشان أي مراجعة تقدر تطابق المدفوع من الخزنة بالمحسوب على المورد
-  DB.expenses.push({id:uid('exp'), category:'سداد مورد', amount: paidTotal, note: supNm, supplierId,
-    accountId:acc?acc.id:null, payAccount:acc?acc.name:null, date:new Date().toISOString()});
+  DB.expenses.push({id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'supplier_payment', category:'سداد مورد',
+    amount: paidTotal, note: supNm, description:'سداد للمورد '+supNm, supplierId,
+    accountId:acc?acc.id:null, payAccount:acc?acc.name:null, date:new Date().toISOString(),
+    recordedBy:actorName(), system:true});
   await Promise.all([saveKey('expenses', DB.expenses), saveKey('finMoves', DB.finMoves)]);
   await logAction('سداد '+money(paidTotal)+' للمورد '+supNm+(acc?' من '+acc.name:'')
     +(paidInvoices.length?' — فواتير: '+paidInvoices.join(' · '):'')
@@ -8079,6 +8994,18 @@ function normSearch(s){
     .replace(/[^a-z0-9؀-ۿ]+/g,' ')
     .trim();
 }
+/* ============================================================
+   م126 — مطابقة ذكية موحّدة لكل خانات البحث في السيستم كله
+   (طلب سيف: «أي خانة بحث في السيستم كله تبقى سمارت سيرش»)
+   بتطبيع عربي كامل (همزات/ياء/تاء مربوطة/تشكيل/أرقام عربي) +
+   كل كلمة من البحث لازم تتلاقى في أي حتة من البيانات وبأي ترتيب.
+   ============================================================ */
+function smartMatch(term, parts){
+  const q = normSearch(term);
+  if(!q) return true;
+  const hay = normSearch(Array.isArray(parts) ? parts.filter(x=>x!==null && x!==undefined && x!=='').join(' ') : parts);
+  return q.split(' ').every(w=>hay.includes(w));
+}
 /* مسافة تحرير بسيطة بسقف (للأخطاء الإملائية) */
 function editDist(a,b,max){
   if(Math.abs(a.length-b.length)>max) return max+1;
@@ -8212,8 +9139,9 @@ function plNewSmartSearch(val){
   if(!warn || !box) return;
   const q = String(val||'').trim();
   if(q.length<2){ warn.innerHTML=''; box.innerHTML=''; return; }
-  const res = smartSearchParts(q, 6);
-  box.innerHTML = res.length ? `<label class="f-label" style="margin-top:8px">🔎 أصناف مشابهة موجودة بالفعل — اضغط على أي صنف لاستخدامه:</label>`+smartRowsHTML(res.map(r=>r.part)) : '';
+  const res = purPartSearch(q);   /* م132: نفس منطق الاحتواء — كل المطابقين بسكرول */
+  box.innerHTML = res.length ? `<label class="f-label" style="margin-top:8px">🔎 أصناف مشابهة موجودة بالفعل (${res.length}) — اضغط على أي صنف لاستخدامه:</label>
+    <div style="max-height:200px;overflow-y:auto">${smartRowsHTML(res.map(r=>r.part))}</div>` : '';
   warn.innerHTML = (res[0] && res[0].score>=0.7)
     ? `<div class="card" style="border:1px solid var(--danger);padding:8px 10px;margin-top:8px;font-size:12.5px;color:var(--danger);font-weight:700">⚠️ فيه قطع غيار مشابهة موجودة بالفعل في المخزون — راجعها قبل ما تنشئ صنف جديد (وتقدر تكمل عادي لو الصنف مختلف فعلاً).</div>`
     : '';
@@ -8308,9 +9236,32 @@ function switchPlTab(mode){
   document.getElementById('plTabSearchBtn').className = 'btn btn-sm '+(mode==='search'?'btn-accent':'');
   document.getElementById('plTabNewBtn').className = 'btn btn-sm '+(mode==='new'?'btn-accent':'');
 }
+/* ============================================================
+   م132 — بحث فاتورة شراء المورد: مطابقة احتواء (Contains) بلا سقف نتائج
+   المشكلة اللي رصدها سيف: «سير» ماكانتش بتجيب كل الأصناف — السبب سقف
+   الـ10/6 نتائج + فلتر التنقية. دلوقتي: أي صنف النص موجود في أي مكان
+   من اسمه/كوده بيظهر (وكل كلمات البحث بأي ترتيب — smartMatch بالتطبيع
+   العربي)، والقائمة بتعرض **كل** المطابقين (البوكس ليه سكرول).
+   الترتيب: اللي فيه العبارة كاملة زي ما اتكتبت الأول، وبعدها أبجدي.
+   ولو الاحتواء الحرفي ماجابش حاجة ⇒ خط رجوع للبحث الإملائي التقريبي.
+   ============================================================ */
+function purPartSearch(term){
+  const t = String(term||'').trim();
+  if(!t) return [];
+  const contains = activeInventory().filter(p=>smartMatch(t, partHaystack(p)));
+  if(contains.length){
+    const nt = normSearch(t);
+    contains.sort((a,b)=>{
+      const ap = partHaystack(a).includes(nt)?0:1, bp = partHaystack(b).includes(nt)?0:1;
+      return ap-bp || String(a.name||'').localeCompare(String(b.name||''),'ar');
+    });
+    return contains.map(p=>({ part:p, score:1 }));
+  }
+  return smartSearchParts(t, 12);   // خط الرجوع: تقريب إملائي لو مفيش احتواء حرفي
+}
 function filterPartsLive(term){
   const t = String(term||'').trim();
-  const results = t ? smartSearchParts(t, 10).map(r=>r.part) : activeInventory().slice(0,8);
+  const results = t ? purPartSearch(t).map(r=>r.part) : activeInventory().slice(0,8);
   const box = document.getElementById('plResults');
   if(!box) return;
   box.innerHTML = results.length ? smartRowsHTML(results)
@@ -8509,26 +9460,39 @@ function openCreateInvoiceModal(jobId){
   const job = DB.jobs.find(j=>j.id===jobId);
   if(job.items.length===0){ toast('أضف بنود للأمر الأول', true); return; }
   const subtotal = job.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
+  const dep = jobOpenDeposit(job);   // م127
+  const depAmt = dep ? dep.amount : 0;
   const defTax = DB.settings.vatRate||0;   // القيمة الافتراضية (0 غالباً) — والمستخدم يقدر يغيّرها يدوياً
   openModal(`
     <h3>إصدار فاتورة — أمر شغل #${job.jobNo}</h3>
     <div class="flex-between" style="font-weight:700"><span>الإجمالي الأولي (قبل الخصم)</span><span>${money(subtotal)}</span></div>
+    ${dep?`<div class="card" style="border-right:3px solid var(--accent);padding:8px 10px;margin-top:8px;font-size:12.5px">
+      💰 عربون مدفوع: <b>${money(depAmt)}</b> (إيصال #${dep.depNo}) — هيتخصم تلقائياً من الفاتورة كدفعة.
+      <span class="muted">الخصم مسموح على المتبقي بعد العربون بس.</span></div>`:''}
+    ${(job.externalNotes||'').trim()?`<div class="card" style="border-right:3px solid var(--accent);padding:8px 10px;margin-top:8px;font-size:12px">
+      📝 <b>ملاحظات هتظهر للعميل على الفاتورة:</b><div style="white-space:pre-wrap;margin-top:4px">${job.externalNotes}</div>
+      <div class="muted" style="font-size:11px;margin-top:4px">🔒 هتتقفل بعد الإصدار — لو عايز تعدلها ارجع للأمر الأول</div></div>`:''}
     ${can('bill.discount')
-      ? `<div class="form-row" style="margin-top:12px"><label class="f-label">قيمة الخصم (اختياري)</label><input class="f" id="invDiscount" type="number" min="0" step="any" value="0" oninput="updateInvoicePreview(${subtotal})"></div>`
+      ? `<div class="form-row" style="margin-top:12px"><label class="f-label">قيمة الخصم (اختياري)</label><input class="f" id="invDiscount" type="number" min="0" step="any" value="0" oninput="updateInvoicePreview(${subtotal}, ${depAmt})"></div>`
       : `<input type="hidden" id="invDiscount" value="0"><div class="muted" style="font-size:12px;margin-top:10px">🔒 مالكش صلاحية عمل خصم على الفاتورة</div>`}
     <div class="form-row"><label class="f-label">نسبة الضريبة % (اكتبها يدوياً — أي نسبة، الافتراضي 0)</label>
-      <input class="f" id="invTaxPct" type="number" min="0" step="any" value="${defTax}" placeholder="0" oninput="updateInvoicePreview(${subtotal})"></div>
+      <input class="f" id="invTaxPct" type="number" min="0" step="any" value="${defTax}" placeholder="0" oninput="updateInvoicePreview(${subtotal}, ${depAmt})"></div>
     <div class="card" style="margin-top:14px" id="invPreview"></div>
     <button class="btn btn-accent" style="width:100%;margin-top:14px" onclick="createInvoiceFromJob('${jobId}')">إصدار الفاتورة</button>
   `);
-  updateInvoicePreview(subtotal);
+  updateInvoicePreview(subtotal, depAmt);
 }
-function updateInvoicePreview(subtotal){
+function updateInvoicePreview(subtotal, depositAmt){
+  const dep = depositAmt||0;
   const discount = Math.max(parseFloat((document.getElementById('invDiscount')||{}).value)||0, 0);
   const taxPct = Math.max(parseFloat((document.getElementById('invTaxPct')||{}).value)||0, 0);
   const afterDiscount = Math.max(subtotal-discount,0);
   const taxAmount = afterDiscount*taxPct/100;
   const total = afterDiscount+taxAmount;
+  const remaining = total - dep;
+  /* م127: الخصم على المتبقي بعد العربون بس + الفاتورة لازم تغطي العربون */
+  const discTooBig = dep>0 && discount > Math.max(subtotal-dep, 0);
+  const belowDep = dep>0 && remaining < -0.005;
   document.getElementById('invPreview').innerHTML = `
     <div class="flex-between"><span class="muted">الإجمالي الأولي</span><span>${money(subtotal)}</span></div>
     <div class="flex-between"><span class="muted">قيمة الخصم</span><span>${discount>0?'- ':''}${money(discount)}</span></div>
@@ -8536,6 +9500,11 @@ function updateInvoicePreview(subtotal){
     <div class="flex-between"><span class="muted">نسبة الضريبة</span><span>${taxPct}%</span></div>
     <div class="flex-between"><span class="muted">قيمة الضريبة</span><span>${money(taxAmount)}</span></div>
     <div class="flex-between total-row" style="margin-top:6px;font-weight:800"><span>الإجمالي النهائي</span><span>${money(total)}</span></div>
+    ${dep>0?`
+    <div class="flex-between" style="color:var(--accent);font-weight:700"><span>💰 العربون المدفوع</span><span>- ${money(dep)}</span></div>
+    <div class="flex-between total-row" style="font-weight:900"><span>المتبقي على العميل</span><span>${money(Math.max(remaining,0))}</span></div>`:''}
+    ${discTooBig?`<div style="color:var(--danger);font-size:12px;font-weight:700;margin-top:6px">🚫 الخصم أكبر من المتبقي بعد العربون (أقصى خصم: ${money(Math.max(subtotal-dep,0))})</div>`:''}
+    ${belowDep?`<div style="color:var(--danger);font-size:12px;font-weight:700;margin-top:6px">🚫 إجمالي الفاتورة أقل من العربون المدفوع — راجع البنود أو استرد فرق العربون الأول</div>`:''}
   `;
 }
 async function createInvoiceFromJob(jobId){
@@ -8552,23 +9521,47 @@ async function createInvoiceFromJob(jobId){
   const afterDiscount = Math.max(subtotal-discount,0);
   const vatAmount = afterDiscount*vatRate/100;
   const total = afterDiscount+vatAmount;
+  /* ============ م127: العربون المفتوح بيتطبق على الفاتورة تلقائياً ============
+     الخصم مسموح على المتبقي بعد العربون بس، والفاتورة لازم تغطي العربون —
+     وإلا العميل يكون دفع أكتر من الشغل والفلوس تضيع في فاتورة أقل. */
+  const dep = jobOpenDeposit(job);
+  if(dep && discount > Math.max(subtotal - dep.amount, 0)){
+    toast('الخصم أكبر من المتبقي بعد العربون — أقصى خصم مسموح: '+money(Math.max(subtotal-dep.amount,0)), true); return;
+  }
+  if(dep && total < dep.amount - 0.005){
+    toast('إجمالي الفاتورة ('+money(total)+') أقل من العربون المدفوع ('+money(dep.amount)+') — راجع البنود أو استرد العربون الأول', true); return;
+  }
   // ختم وقت واحد للفاتورة والتسليم — عشان مايبقاش بينهم فرق ثواني في التقارير (الملاحظة 59)
   const stamp = new Date().toISOString();
   const inv = {
     id: uid('inv'), invNo: nextNo(DB.invoices,'invNo'),
     jobId, customerId: job.customerId, items: JSON.parse(JSON.stringify(job.items)),
     subtotal, discount, vatRate, vatAmount, total, payments: [], date: stamp,
+    /* م135: لقطة تاريخية من ملاحظات العميل — بتتطبع زي ما هي للأبد */
+    externalNotes: (job.externalNotes||'').trim(),
     notes:'', refNo:'', createdBy: actorName(),
     history: [{ id:uid('ih'), at:stamp, actor:actorName(), staffId:(session&&session.staffId)||null,
       action:'created', changes:[
         {field:'إجمالي البنود', before:'—', after:money(subtotal)},
         ...(discount>0?[{field:'الخصم', before:'—', after:money(discount)}]:[]),
         ...(vatRate>0?[{field:'الضريبة', before:'—', after:vatRate+'% ('+money(vatAmount)+')'}]:[]),
-        {field:'إجمالي الفاتورة', before:'—', after:money(total)}
+        {field:'إجمالي الفاتورة', before:'—', after:money(total)},
+        ...(dep?[{field:'💰 عربون مطبّق', before:'إيصال #'+dep.depNo, after:money(dep.amount)+' — المتبقي '+money(Math.max(total-dep.amount,0))}]:[])
       ], reason:'' }]
   };
+  if(dep){
+    /* العربون بيتسجل دفعة على الفاتورة **من غير** حركة مالية جديدة —
+       الفلوس دخلت الخزنة خلاص وقت القبض (مفيش ازدواج) */
+    inv.payments.push({ id:uid('pay'), amount:dep.amount, method:'عربون مقدم (إيصال #'+dep.depNo+')',
+      accountId:null, depositId:dep.id, date:stamp });
+    dep.status = 'applied';
+    dep.appliedInvoiceId = inv.id;
+    dep.appliedInvoiceNo = inv.invNo;
+    dep.appliedAt = stamp;
+  }
   DB.invoices.push(inv);
   await saveKey('invoices', DB.invoices);
+  if(dep) await saveKey('jobs', DB.jobs);
   // القاعدة: إصدار الفاتورة = تسليم السيارة وخروجها من المركز
   // (لو السيارة اتسلّمت قبل كده بيوم أو أكتر، تاريخ التسليم بيفضل زي ما هو — والفاتورة ليها تاريخها المستقل)
   if(job.status !== 'تم التسليم'){
@@ -8576,7 +9569,10 @@ async function createInvoiceFromJob(jobId){
     job.deliveredAt = stamp;
     await saveKey('jobs', DB.jobs);
   }
-  await logAction('إصدار فاتورة #'+inv.invNo+' بقيمة '+money(total)+' — تم تسليم السيارة وإقفال أمر الشغل #'+job.jobNo);
+  await logAction('إصدار فاتورة #'+inv.invNo+' بقيمة '+money(total)+' — تم تسليم السيارة وإقفال أمر الشغل #'+job.jobNo
+    +(dep?' — 💰 اتطبق عربون '+money(dep.amount)+' (إيصال #'+dep.depNo+') والمتبقي '+money(Math.max(total-dep.amount,0)):''));
+  if(dep) notify('cust_deposit_apply', '💰 عربون '+money(dep.amount)+' اتطبق على فاتورة #'+inv.invNo+' — المتبقي '+money(Math.max(total-dep.amount,0)),
+    { category:'financial', refType:'invoice', refId:inv.id, refNo:inv.invNo, amount:dep.amount });
   if(total <= 0) notify('invoice_zero', '⚠️ فاتورة #'+inv.invNo+' بإجمالي صفر', { category:'financial', refType:'invoice', refId:inv.id, refNo:inv.invNo });
   if(!(job.items||[]).length) notify('invoice_zero', '⚠️ إقفال أمر الشغل #'+job.jobNo+' وفوترته من غير أي بنود', { category:'financial', refType:'job', refId:job.id, refNo:job.jobNo });
   if(discount>0 && subtotal>0){
@@ -8665,10 +9661,9 @@ function invoiceMatchesFilters(inv){
   if(f.dateFrom && new Date(inv.date) < new Date(f.dateFrom)) return false;
   if(f.dateTo && new Date(inv.date) > new Date(new Date(f.dateTo).getTime()+86399999)) return false;
   if(f.search){
-    const t = f.search.trim().toLowerCase();
-    const hay = [cust&&cust.name, cust&&cust.phone, (cust&&cust.custType)||'فرد',
-      inv.invNo, job&&job.jobNo, car&&car.plate, car&&carLabel(car)].filter(Boolean).join(' | ').toLowerCase();
-    if(!hay.includes(t)) return false;
+    /* م126: بحث ذكي موحّد */
+    if(!smartMatch(f.search, [cust&&cust.name, cust&&cust.phone, cust&&cust.phone2, (cust&&cust.custType)||'فرد',
+      inv.invNo, job&&job.jobNo, car&&car.plate, car&&carLabel(car)])) return false;
   }
   return true;
 }
@@ -8934,11 +9929,28 @@ function cancelInvoice(invId){
     inv.cancelled = true;
     inv.cancelledAt = new Date().toISOString();
     inv.cancelReason = reason||'';
+    /* م127 (قرار سيف): عربون كان متطبق على الفاتورة دي؟ يرجع «مفتوح» على أمر الشغل —
+       الفلوس أصلاً في الخزنة ماتحركتش، وكده حماية الإلغاء تفضل شغالة والعربون مايضيعش */
+    let depReverted = null;
+    const depJob = inv.jobId ? DB.jobs.find(j=>j.id===inv.jobId) : null;
+    if(depJob){
+      const dApplied = (depJob.deposits||[]).find(d=>d.status==='applied' && d.appliedInvoiceId===inv.id);
+      if(dApplied){
+        dApplied.status = 'open';
+        delete dApplied.appliedInvoiceId; delete dApplied.appliedInvoiceNo; delete dApplied.appliedAt;
+        depReverted = dApplied;
+      }
+    }
     invLog(inv, 'cancelled', [
       { field:'حالة الفاتورة', before:'صادرة', after:'ملغاة' },
-      ...(paid>0 ? [{ field:'المحصّل وقت الإلغاء', before:money(paid), after:'محتاج تسوية يدوية' }] : [])
+      ...(paid>0 ? [{ field:'المحصّل وقت الإلغاء', before:money(paid), after:'محتاج تسوية يدوية' }] : []),
+      ...(depReverted ? [{ field:'💰 العربون (إيصال #'+depReverted.depNo+')', before:'مطبّق على الفاتورة', after:'رجع مفتوح على أمر الشغل' }] : [])
     ], reason);
     await saveKey('invoices', DB.invoices);
+    if(depReverted){
+      await saveKey('jobs', DB.jobs);
+      await logAction('💰 عربون '+money(depReverted.amount)+' (إيصال #'+depReverted.depNo+') رجع «مفتوح» بعد إلغاء فاتورة #'+inv.invNo);
+    }
     const cstI = DB.customers.find(c=>c.id===inv.customerId);
     await logAction('🚫 إلغاء فاتورة #'+inv.invNo+auditDetails([
       ['العميل', cstI?cstI.name:null], ['تاريخ الفاتورة', fmtDate(inv.date)],
@@ -9217,6 +10229,11 @@ function brandedInvoiceHTML(inv){
         <div class="binv-grand"><span>إجمالي المدفوع</span><span>${paid.toFixed(2)} ج.م</span></div>
       </div>`;
     })()}
+    ${(inv.externalNotes||'').trim()?`
+    <div class="binv-foot" style="border-top:1px dashed #999;margin-top:10px;padding-top:8px">
+      <div class="wtitle"># ملاحظات وتوصيات لعميلنا العزيز #</div>
+      ${inv.externalNotes.split('\n').map(l=>`<div>${l}</div>`).join('')}
+    </div>`:''}
     <div class="binv-foot">
       ${(s.warrantyText||'').split('\n').map((line,i)=> i===0?`<div class="wtitle"># الضمان #</div><div>${line}</div>`:`<div>${line}</div>`).join('')}
       <div class="binv-contact">📍 ${s.address||''} &nbsp;&nbsp; 📞 رقم التواصل: ${s.phone||''}</div>
@@ -9273,9 +10290,12 @@ const PERIOD_PRESETS = [['today','اليوم'],['yesterday','أمس'],['this_wee
 /* ---- محرك الربحية الإجمالية حسب الفترة (الملاحظة 16) ---- */
 function computeProfitStats(range){
   const invs = DB.invoices.filter(i=>!i.cancelled && inPeriod(i.date, range));
-  let sales=0, collected=0, inParts=0, extParts=0, extWork=0, paint=0;
+  let sales=0, gross=0, discounts=0, collected=0, inParts=0, extParts=0, extWork=0, paint=0;
   invs.forEach(inv=>{
-    sales += inv.total;
+    sales += inv.total;   // إجمالي الفواتير (بالضريبة) — للتحصيلات والمديونيات
+    /* م129: الربحية بصافي المبيعات — البيع قبل الخصم ثم الخصم (والضريبة برة الإيراد) */
+    gross += (inv.subtotal!=null ? inv.subtotal : inv.total + (inv.discount||0));
+    discounts += inv.discount||0;
     collected += (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
     const job = DB.jobs.find(j=>j.id===inv.jobId);
     if(job){
@@ -9290,14 +10310,14 @@ function computeProfitStats(range){
   });
   const cost = inParts + extParts + extWork + paint;
   const debt = sales - collected;
-  const profit = sales - cost;
-  const margin = sales>0 ? profit/sales*100 : 0;
+  const pc = profitCore(gross, discounts, cost);   // م129: المعادلة الموحدة
   // الملاحظة 56: الهالك خسارة تشغيلية داخلية بتتخصم من الربح — منفصلة عشان تفضل واضحة
   const scrapCost = DB.stockMoves.filter(m=>m.type==='scrap' && inPeriod(m.date, range))
     .reduce((s,m)=>s+(m.qty||0)*(m.unitCost||0),0);
-  const netProfit = profit - scrapCost;
-  const netMargin = sales>0 ? netProfit/sales*100 : 0;
-  return {count:invs.length, sales, collected, debt, cost, profit, margin, inParts, extParts, extWork, paint, scrapCost, netProfit, netMargin};
+  const netProfit = pc.profit - scrapCost;
+  const netMargin = pc.net>0 ? netProfit/pc.net*100 : 0;
+  return {count:invs.length, sales, gross, discounts, netSales:pc.net, collected, debt, cost,
+    profit:pc.profit, margin:pc.margin, inParts, extParts, extWork, paint, scrapCost, netProfit, netMargin};
 }
 function profitReportHTML(range){
   if(!can('rep.profit')) return `<div class="empty">🔒 تقارير الربحية متاحة لأصحاب الصلاحية فقط</div>`;
@@ -9305,14 +10325,18 @@ function profitReportHTML(range){
   return `
   <div class="grid g4" style="margin-bottom:10px">
     ${stat(String(ps.count),'عدد الفواتير')}
-    ${stat(money(ps.sales),'إجمالي المبيعات')}
+    ${stat(money(ps.gross),'إجمالي البيع (قبل الخصم)')}
+    ${stat(money(ps.discounts),'الخصومات', ps.discounts>0)}
+    ${stat(money(ps.netSales),'صافي المبيعات (بعد الخصم)')}
+  </div>
+  <div class="grid g4" style="margin-bottom:10px">
     ${stat(money(ps.collected),'إجمالي التحصيلات الفعلية')}
     ${stat(money(ps.debt),'إجمالي المديونيات', ps.debt>0)}
-  </div>
-  <div class="grid g3" style="margin-bottom:10px">
     ${stat(money(ps.cost),'إجمالي تكلفة الشغل')}
-    ${stat(money(ps.profit),'ربح الشغل (مبيعات − تكلفة)', ps.profit<0)}
-    ${stat(ps.margin.toFixed(1)+'%','نسبة ربح الشغل', ps.margin<15 && ps.sales>0)}
+    ${stat(money(ps.profit),'ربح الشغل (صافي مبيعات − تكلفة)', ps.profit<0)}
+  </div>
+  <div style="margin-bottom:10px;max-width:300px">
+    ${stat(ps.margin.toFixed(1)+'%','نسبة ربح الشغل (على صافي المبيعات)', ps.margin<15 && ps.netSales>0)}
   </div>
   <div class="grid g2" style="margin-bottom:10px">
     ${stat(money(ps.scrapCost),'🗑 خسائر الهالك والتالف', ps.scrapCost>0)}
@@ -9494,9 +10518,8 @@ function rcvRowsHTML(){
     if(f.dateFrom && new Date(inv.date) < new Date(f.dateFrom)) return false;
     if(f.dateTo && new Date(inv.date) > new Date(new Date(f.dateTo).getTime()+86399999)) return false;
     if(f.search){
-      const t = f.search.trim().toLowerCase();
-      const hay = [cust&&cust.name, cust&&cust.phone].filter(Boolean).join(' ').toLowerCase();
-      if(!hay.includes(t)) return false;
+      /* م126: بحث ذكي موحّد + رقم الفاتورة */
+      if(!smartMatch(f.search, [cust&&cust.name, cust&&cust.phone, cust&&cust.phone2, inv.invNo])) return false;
     }
     return true;
   });
@@ -9550,6 +10573,9 @@ function renderFinance(){
   const expensesOut = pm.filter(m=>m.kind==='expense').reduce((s,m)=>s+m.amount,0);
   const supplierOut = pm.filter(m=>m.kind==='supplier'||m.kind==='purchase').reduce((s,m)=>s+m.amount,0);
   const extDeposits = pm.filter(m=>m.kind==='deposit').reduce((s,m)=>s+m.amount,0);
+  /* م127: عرابين العملاء — واردة في سجل الحركات وبسطر واضح في التقرير */
+  const custDeps = pm.filter(m=>m.kind==='cust_deposit').reduce((s,m)=>s+m.amount,0);
+  const custDepRefunds = pm.filter(m=>m.kind==='cust_deposit_refund').reduce((s,m)=>s+m.amount,0);
   const netFlow = pm.filter(m=>m.kind!=='transfer').reduce((s,m)=>s+(m.type==='in'?m.amount:-m.amount),0);
   const totalAll = liveAccounts().reduce((s,a)=>s+accBalance(a.id),0);   // م87: المؤرشف بره السيولة الشغالة
   return `
@@ -9601,6 +10627,7 @@ function renderFinance(){
       ${stat(money(netFlow),'صافي التدفق النقدي', netFlow<0)}
     </div>
     ${extDeposits>0?`<div class="muted" style="font-size:12px">منها إيداعات خارجية (شركاء/ملاك): ${money(extDeposits)}</div>`:''}
+    ${custDeps>0||custDepRefunds>0?`<div class="muted" style="font-size:12px">💰 عرابين عملاء مقبوضة: ${money(custDeps)}${custDepRefunds>0?' · ↩️ عرابين مستردة: '+money(custDepRefunds):''}</div>`:''}
   </div>
 
   <div class="section-head"><h3>حركات الفترة (${pm.length})</h3></div>
@@ -9911,6 +10938,30 @@ let expensePeriod = { preset:'this_month', from:'', to:'' };
 function setExpenseView(v){ expenseView = v; refreshContent(); }
 function setExpPreset(p){ expensePeriod.preset = p; refreshContent(); }
 function expGroupOf(e){ if(e.group) return e.group; const c = DB.expenseCategories.find(x=>x.name===e.category); return c ? c.group : 'غير مصنّف'; }
+/* ============================================================
+   م125 — شاشة المصروفات = السجل المالي الموحد لكل الفلوس الخارجة
+   كل عملية ليها «نوع» من السجل ده. الأنواع المقفولة (locked) بيولّدها
+   السيستم تلقائياً من مصدرها (فاتورة شراء / سلفة) ومحدش يقدر يعدّلها
+   يدوياً — تعديلها بيتم من مصدرها بس والسيستم بيزامن السجل لوحده.
+   قرار سيف: «إجمالي المصروفات» في التقارير = التشغيلية فقط —
+   سداد الموردين والسلف حركات خزنة بتظهر في السجل بسطور منفصلة،
+   لأن تكلفة القطع محسوبة في الربحية والسلفة بتتخصم من المرتب.
+   أي نوع جديد مستقبلاً = سطر واحد هنا ويشتغل في الفلاتر والتقارير. */
+const EXP_TXN_TYPES = {
+  expense:          { label:'مصروف تشغيلي',      icon:'💸', locked:false, operating:true  },
+  purchase_payment: { label:'سداد فاتورة مورد',   icon:'🧾', locked:true,  operating:false },
+  supplier_payment: { label:'سداد مورد (دفعة)',   icon:'🏭', locked:true,  operating:false },
+  advance:          { label:'سلفة موظف',          icon:'💰', locked:true,  operating:false },
+  deposit_refund:   { label:'استرداد عربون',       icon:'↩️', locked:true,  operating:false },   // م127
+};
+function expTxnType(e){
+  if(e.txnType && EXP_TXN_TYPES[e.txnType]) return e.txnType;
+  if(e.category==='سداد مورد') return 'supplier_payment';   // السدادات اليدوية القديمة (قبل م125)
+  return 'expense';
+}
+function expTxnDef(e){ return EXP_TXN_TYPES[expTxnType(e)] || EXP_TXN_TYPES.expense; }
+function isOperatingExpense(e){ return expTxnDef(e).operating; }
+function operatingExpenses(list){ return (list||DB.expenses).filter(isOperatingExpense); }
 function expCatOptionsHTML(){
   let html = `<option value="">— اختر نوع المصروف —</option>`;
   EXPENSE_GROUPS.forEach(g=>{
@@ -9934,30 +10985,107 @@ function renderExpenses(){
   else body = renderExpenseList();
   return tabsBar + body;
 }
-function renderExpenseList(){
-  const list = [...DB.expenses].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const total = DB.expenses.reduce((s,e)=>s+(e.amount||0),0);
-  const noCats = DB.expenseCategories.length===0;
-  return `
-  <div class="section-head"><h3>المصروفات — إجمالي ${money(total)}</h3>
-    ${can('fin.expenses')?`<button class="btn btn-accent" onclick="openNewExpenseModal()">${ICONS.plus} مصروف جديد</button>`:''}</div>
-  ${noCats?`<div class="muted" style="margin-bottom:12px">⚠️ لسه مفيش أنواع مصروفات مكوّدة. روح تبويب "أنواع المصروفات" وكوّدها الأول.</div>`:''}
-  <div class="card">
-    <table><thead><tr><th>التاريخ</th><th>رقم</th><th>النوع</th><th>المجموعة</th><th>الوصف</th><th>المبلغ</th><th>وسيلة الدفع</th><th>ملاحظات</th><th></th></tr></thead>
-    <tbody>
-    ${list.length? list.map(e=>`<tr>
+/* ============ م125: قائمة السجل المالي الموحد — بحث ذكي + فلاتر + ملخص لحظي ============ */
+let expFilters = { q:'', type:'', preset:'all', from:'', to:'' };
+let expShowLimit = 250;
+function expShowMore(){ expShowLimit += 250; const b=document.getElementById('expTableBody'); if(b) b.innerHTML = expRowsHTML(); }
+const EXP_DATE_PRESETS = [['all','الكل'],['today','اليوم'],['this_week','هذا الأسبوع'],['this_month','هذا الشهر'],['last_month','الشهر الماضي'],['custom','فترة مخصوصة']];
+/* كومة البحث: كل نص ليه علاقة بالعملية — الوصف والأسماء والأرقام والحساب والملاحظات */
+function expSearchHay(e){
+  const sup = e.supplierId ? (DB.suppliers.find(s=>s.id===e.supplierId)||{}).name : '';
+  const emp = e.employeeId ? (DB.employees.find(x=>x.id===e.employeeId)||{}).name : '';
+  return [e.description, e.note, e.notes, e.category, expTxnDef(e).label, expGroupOf(e),
+    e.payAccount, sup, emp, e.recordedBy, e.actor,
+    e.expNo?('#'+e.expNo+' '+e.expNo):'', e.purchaseNo?('#'+e.purchaseNo+' '+e.purchaseNo):''
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+function expMatchesFilters(e){
+  const f = expFilters;
+  if(f.type && expTxnType(e)!==f.type) return false;
+  if(f.preset && f.preset!=='all'){
+    const range = f.preset==='custom' ? periodRange({preset:'custom', from:f.from, to:f.to}) : periodRange({preset:f.preset});
+    if(!inPeriod(e.date, range)) return false;
+  }
+  if(f.q.trim()){
+    if(!smartMatch(f.q, expSearchHay(e))) return false;   // م126: نفس المطابقة الذكية الموحّدة
+  }
+  return true;
+}
+function refreshExpTable(){
+  expShowLimit = 250;   // أي تغيير فلتر يرجّع للصفحة الأولى
+  const b = document.getElementById('expTableBody'); if(b) b.innerHTML = expRowsHTML();
+  const s = document.getElementById('expSummaryBar'); if(s) s.innerHTML = expSummaryHTML();
+}
+/* شريط الملخص اللحظي: عدد العمليات + إجمالي المبلغ (حسب البحث والفلاتر) */
+function expSummaryHTML(){
+  const list = DB.expenses.filter(expMatchesFilters);
+  const total = list.reduce((s,e)=>s+(e.amount||0),0);
+  const opTotal = list.filter(isOperatingExpense).reduce((s,e)=>s+(e.amount||0),0);
+  const showOp = !expFilters.type && Math.round(opTotal*100)!==Math.round(total*100);
+  return `<b>عدد العمليات:</b> ${list.length.toLocaleString('ar-EG')}
+    &nbsp;·&nbsp; <b>إجمالي المبلغ:</b> <span style="font-weight:800">${money(total)}</span>
+    ${showOp?`&nbsp;·&nbsp; <span class="muted">منها مصروفات تشغيلية: ${money(opTotal)}</span>`:''}`;
+}
+function expSourceBtn(e){
+  const t = expTxnType(e);
+  if((t==='purchase_payment'||t==='supplier_payment') && e.purchaseId)
+    return `<button class="btn btn-sm" onclick="openPurApprove('${e.purchaseId}')">🔗 الفاتورة</button>`;
+  if(t==='advance' && e.employeeId)
+    return `<button class="btn btn-sm" onclick="openEmployeeDetail('${e.employeeId}')">🔗 الموظف</button>`;
+  return '';
+}
+function expRowsHTML(){
+  const all = [...DB.expenses].filter(expMatchesFilters).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const list = all.slice(0, expShowLimit);
+  const moreRow = all.length > list.length ? `<tr><td colspan="10" style="text-align:center;padding:10px">
+    <button class="btn btn-sm" onclick="expShowMore()">عرض المزيد (باقي ${(all.length-list.length).toLocaleString('ar-EG')} عملية)</button></td></tr>` : '';
+  if(list.length===0) return `<tr><td colspan="10" class="empty">لا توجد عمليات مطابقة</td></tr>`;
+  return list.map(e=>{
+    const def = expTxnDef(e);
+    return `<tr>
       <td style="white-space:nowrap">${fmtDate(e.date)}</td>
       <td>${e.expNo?'#'+e.expNo:'—'}</td>
+      <td style="white-space:nowrap"><span class="tag" style="font-size:11px">${def.icon} ${def.label}</span>${def.locked?` <span class="muted" title="عملية مولّدة تلقائياً — التعديل من مصدرها بس" style="font-size:10px">🔒</span>`:''}</td>
       <td>${e.category||'—'}</td>
-      <td class="muted">${expGroupOf(e)}</td>
+      <td class="muted">${isOperatingExpense(e)?expGroupOf(e):'—'}</td>
       <td class="muted">${e.description||e.note||'—'}</td>
       <td style="font-weight:800">${money(e.amount)}</td>
       <td class="muted">${e.payAccount||'—'}</td>
       <td class="muted" style="font-size:12px">${e.notes||'—'}</td>
-      <td>${e.receipt?`<button class="btn btn-sm" onclick="viewReceipt('${e.id}')">📎 صورة</button>`:''}</td>
-    </tr>`).join('')
-      : `<tr><td colspan="9" class="empty">لسه مفيش مصروفات مسجلة</td></tr>`}
-    </tbody></table>
+      <td style="white-space:nowrap">${e.receipt?`<button class="btn btn-sm" onclick="viewReceipt('${e.id}')">📎</button>`:''}${expSourceBtn(e)}</td>
+    </tr>`;
+  }).join('') + moreRow;
+}
+function renderExpenseList(){
+  const noCats = DB.expenseCategories.length===0;
+  const f = expFilters;
+  return `
+  <div class="section-head"><h3>المصروفات والحركات المالية</h3>
+    ${can('fin.expenses')?`<button class="btn btn-accent" onclick="openNewExpenseModal()">${ICONS.plus} مصروف جديد</button>`:''}</div>
+  ${noCats?`<div class="muted" style="margin-bottom:12px">⚠️ لسه مفيش أنواع مصروفات مكوّدة. روح تبويب "أنواع المصروفات" وكوّدها الأول.</div>`:''}
+  <div class="card" style="margin-bottom:14px">
+    <div class="form-row"><label class="f-label">🔍 بحث شامل (اسم مورد · موظف · رقم فاتورة · وصف · حساب · أي حاجة)</label>
+      <input class="f" id="expSearchBox" placeholder="مثال: أحمد علي · بنزين · 1052 · فودافون كاش..." value="${f.q}" oninput="expFilters.q=this.value;refreshExpTable()"></div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">نوع العملية</label>
+        <select class="f" onchange="expFilters.type=this.value;refreshExpTable()">
+          <option value="">الكل</option>
+          ${Object.entries(EXP_TXN_TYPES).map(([id,t])=>`<option value="${id}" ${f.type===id?'selected':''}>${t.icon} ${t.label}</option>`).join('')}
+        </select></div>
+      <div class="form-row"><label class="f-label">الفترة</label>
+        <select class="f" onchange="expFilters.preset=this.value;refreshContent()">
+          ${EXP_DATE_PRESETS.map(([id,lbl])=>`<option value="${id}" ${f.preset===id?'selected':''}>${lbl}</option>`).join('')}
+        </select></div>
+    </div>
+    ${f.preset==='custom'?`<div class="grid g2" style="max-width:440px">
+      <div class="form-row"><label class="f-label">من تاريخ</label><input class="f" type="date" value="${f.from}" onchange="expFilters.from=this.value;refreshExpTable()"></div>
+      <div class="form-row"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${f.to}" onchange="expFilters.to=this.value;refreshExpTable()"></div>
+    </div>`:''}
+  </div>
+  <div class="card" id="expSummaryBar" style="margin-bottom:14px;padding:10px 14px;font-size:13.5px">${expSummaryHTML()}</div>
+  <div class="card">
+    <table><thead><tr><th>التاريخ</th><th>رقم</th><th>نوع العملية</th><th>النوع</th><th>المجموعة</th><th>الوصف</th><th>المبلغ</th><th>وسيلة الدفع</th><th>ملاحظات</th><th></th></tr></thead>
+    <tbody id="expTableBody">${expRowsHTML()}</tbody></table>
   </div>`;
 }
 function openNewExpenseModal(){
@@ -10028,7 +11156,7 @@ async function saveExpense(){
   }
   const date = dateVal ? new Date(dateVal+'T'+new Date().toTimeString().slice(0,8)).toISOString() : new Date().toISOString();
   DB.expenses.push({
-    id:uid('exp'), expNo: nextNo(DB.expenses,'expNo'),
+    id:uid('exp'), expNo: nextNo(DB.expenses,'expNo'), txnType:'expense',
     category: cat.name, categoryId: cat.id, group: cat.group,
     description, notes, note: description, amount,
     accountId: acc?acc.id:null, payAccount: acc?acc.name:null,
@@ -10095,7 +11223,13 @@ async function deleteExpenseCat(id){
 }
 function renderExpenseReport(){
   const range = periodRange(expensePeriod);
-  const inRange = DB.expenses.filter(e=>inPeriod(e.date, range));
+  /* م125 (قرار سيف): تقارير المصروفات بتحسب **التشغيلية فقط** — سداد الموردين
+     والسلف حركات خزنة (التكلفة محسوبة في الربحية والسلفة بتتخصم من المرتب)
+     وبيظهروا تحت في سطور منفصلة للشفافية من غير ما يدخلوا الإجمالي. */
+  const allInRange = DB.expenses.filter(e=>inPeriod(e.date, range));
+  const inRange = allInRange.filter(isOperatingExpense);
+  const supPaid125 = allInRange.filter(e=>['purchase_payment','supplier_payment'].includes(expTxnType(e))).reduce((s,e)=>s+(e.amount||0),0);
+  const advPaid125 = allInRange.filter(e=>expTxnType(e)==='advance').reduce((s,e)=>s+(e.amount||0),0);
   const total = inRange.reduce((s,e)=>s+(e.amount||0),0);
   const sumBy = (fn)=>{ const m={}; inRange.forEach(e=>{ const k=fn(e)||'غير محدد'; m[k]=(m[k]||0)+(e.amount||0); }); return Object.entries(m).sort((a,b)=>b[1]-a[1]); };
   const cats = sumBy(e=>e.category);
@@ -10103,8 +11237,8 @@ function renderExpenseReport(){
   const groups = sumBy(e=>expGroupOf(e));
   const investment = inRange.filter(e=>INVESTMENT_GROUPS.includes(expGroupOf(e))).reduce((s,e)=>s+(e.amount||0),0);
   const operational = total - investment;
-  const thisM = DB.expenses.filter(e=>inPeriod(e.date, periodRange({preset:'this_month'}))).reduce((s,e)=>s+(e.amount||0),0);
-  const lastM = DB.expenses.filter(e=>inPeriod(e.date, periodRange({preset:'last_month'}))).reduce((s,e)=>s+(e.amount||0),0);
+  const thisM = operatingExpenses().filter(e=>inPeriod(e.date, periodRange({preset:'this_month'}))).reduce((s,e)=>s+(e.amount||0),0);
+  const lastM = operatingExpenses().filter(e=>inPeriod(e.date, periodRange({preset:'last_month'}))).reduce((s,e)=>s+(e.amount||0),0);
   const diff = thisM - lastM;
   const periodLbl = PERIOD_PRESETS.find(x=>x[0]===expensePeriod.preset)?.[1] || 'فترة مخصصة';
   const bar = (val)=>{ const pct = total>0?Math.round(val/total*100):0; return `<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;max-width:160px;background:var(--surface-2);border-radius:6px;height:8px;overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--accent)"></div></div><span>${pct}%</span></div>`; };
@@ -10131,6 +11265,12 @@ function renderExpenseReport(){
     ${stat(money(investment),'مصروفات استثمارية (أصول)')}
     ${stat(cats.length?cats[0][0]:'—','أعلى بند مصروف')}
   </div>
+  ${(supPaid125>0||advPaid125>0)?`<div class="card" style="margin-bottom:20px;padding:10px 14px;font-size:12.5px">
+    <b>حركات خزنة في نفس الفترة (خارج إجمالي المصروفات):</b>
+    ${supPaid125>0?` 🧾 سداد موردين كاش: <b>${money(supPaid125)}</b>`:''}
+    ${advPaid125>0?` · 💰 سلف موظفين: <b>${money(advPaid125)}</b>`:''}
+    <span class="muted">— تكلفة القطع بتتحسب في الربحية، والسلف بتتخصم من المرتبات</span>
+  </div>`:''}
   <div class="grid g2" style="margin-bottom:22px">
     ${stat(money(thisM),'مصروفات هذا الشهر')}
     ${stat((diff>=0?'▲ +':'▼ ')+money(Math.abs(diff)),'الفرق عن الشهر الماضي ('+money(lastM)+')', diff>0)}
@@ -10410,7 +11550,8 @@ function renderReports(){
   const totalSales = DB.invoices.filter(i=>!i.cancelled).reduce((s,i)=>s+i.total,0);
   const totalCollected = DB.invoices.filter(i=>!i.cancelled).reduce((s,i)=>s+(i.payments||[]).reduce((a,p)=>a+p.amount,0),0);
   const outstanding = totalSales - totalCollected;
-  const totalExpenses = DB.expenses.reduce((s,e)=>s+e.amount,0);
+  /* م125 (قرار سيف): التشغيلية فقط — سداد الموردين والسلف مش مصروفات تشغيل */
+  const totalExpenses = operatingExpenses().reduce((s,e)=>s+e.amount,0);
   const scrapLoss = scrapTotals().total;
   const net = totalCollected - totalExpenses - scrapLoss;
   const lowStock = activeInventory().filter(p=>p.qty<=p.minQty).length;
@@ -10421,7 +11562,7 @@ function renderReports(){
     ${stat(money(totalSales),'إجمالي المبيعات')}
     ${stat(money(totalCollected),'إجمالي المحصّل')}
     ${stat(money(outstanding),'مستحقات لم تحصّل')}
-    ${stat(money(totalExpenses),'إجمالي المصروفات')}
+    ${stat(money(totalExpenses),'المصروفات التشغيلية')}
   </div>
   <div class="grid g3" style="margin-bottom:24px">
     ${stat(money(net),'صافي الربح (محصّل − مصروفات − هالك)')}
@@ -11996,8 +13137,9 @@ function openAdvanceModal(empId){
       <div class="form-row"><label class="f-label">تاريخ السلفة</label><input class="f" id="advDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
       <div class="form-row"><label class="f-label">قيمة السلفة</label><input class="f" id="advAmt" type="number" min="0"></div>
     </div>
-    <div class="form-row"><label class="f-label">الحساب اللي اتدفعت منه (اختياري — بيخصم من الخزنة)</label>
-      <select class="f" id="advAcc"><option value="">— من غير خصم من الخزنة —</option>${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+    <!-- م125 (قرار سيف): مصدر الدفع إلزامي — سلفة يعني فلوس خرجت فعلاً من حساب -->
+    <div class="form-row"><label class="f-label">مصدر الدفع (إلزامي — الحساب اللي هتتخصم منه)</label>
+      <select class="f" id="advAcc"><option value="">— اختار الحساب —</option>${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
     <div class="form-row"><label class="f-label">سبب السلفة</label><input class="f" id="advReason"></div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="advNote"></div>
     <div class="muted" style="font-size:12px;margin-bottom:10px">السلفة هتتخصم تلقائياً من راتب شهرها في شاشة الرواتب.</div>
@@ -12015,13 +13157,20 @@ async function saveAdvance(empId){
   const accId = (document.getElementById('advAcc')||{}).value;
   if(!date){ toast('اختر تاريخ السلفة', true); return; }
   if(amount<=0){ toast('اكتب قيمة السلفة', true); return; }
+  /* م125 (قرار سيف): مصدر الدفع إلزامي — والسلفة بتتسجل في السجل المالي الموحد */
   const acc = accId ? DB.finAccounts.find(a=>a.id===accId) : null;
+  if(!acc){ toast('اختار مصدر الدفع — السلفة لازم تتخصم من حساب', true); return; }
   if(!e.advances) e.advances = [];
-  e.advances.push({ id:uid('adv'), date, amount, reason, note, accountId:acc?acc.id:null, recordedBy:actorName(), createdAt:new Date().toISOString() });
-  if(acc) addFinMove(acc.id, 'out', amount, 'advance', 'سلفة موظف: '+e.name+(reason?' — '+reason:''));
-  await Promise.all([saveKey('employees'), acc?saveKey('finMoves'):Promise.resolve()]);
-  await logAction('سلفة '+money(amount)+' — '+e.name+(acc?' من '+acc.name:''));
-  closeModal(); toast('تم تسجيل السلفة'+(acc?' وخصمها من '+acc.name:'')); openEmployeeDetail(empId);
+  const adv = { id:uid('adv'), date, amount, reason, note, accountId:acc.id, recordedBy:actorName(), createdAt:new Date().toISOString() };
+  e.advances.push(adv);
+  const advFm = addFinMove(acc.id, 'out', amount, 'advance', 'سلفة موظف: '+e.name+(reason?' — '+reason:''));
+  DB.expenses.push({ id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'advance', category:'سلفة موظف',
+    description:'سلفة — '+e.name+(reason?' — '+reason:''), amount, date,
+    payAccount:acc.name, accountId:acc.id, employeeId:e.id, advanceId:adv.id, finMoveId:advFm.id,
+    notes:note||'', recordedBy:actorName(), system:true });
+  await Promise.all([saveKey('employees'), saveKey('finMoves'), saveKey('expenses', DB.expenses)]);
+  await logAction('سلفة '+money(amount)+' — '+e.name+' من '+acc.name);
+  closeModal(); toast('تم تسجيل السلفة وخصمها من '+acc.name); openEmployeeDetail(empId);
 }
 function openPenaltyModal(empId){
   if(!can('hr.penalties')){ toast('مالكش صلاحية تسجيل الجزاءات', true); return; }
@@ -12336,10 +13485,9 @@ function renderTools(){
 }
 function renderToolsList(){
   const t = toolsSearch;
-  const list = DB.tools.filter(x=>{
-    if(!t) return true;
-    return [x.name, x.code, x.category, x.serial, x.notes].filter(Boolean).join(' ').toLowerCase().includes(t);
-  }).sort((a,b)=>(a.code||'').localeCompare(b.code||''));
+  /* م126: بحث ذكي موحّد */
+  const list = DB.tools.filter(x=> smartMatch(t, [x.name, x.code, x.category, x.serial, x.notes]))
+    .sort((a,b)=>(a.code||'').localeCompare(b.code||''));
   return `
   <div class="card" style="margin-bottom:16px">
     <div class="search-box" style="max-width:100%">${ICONS.search}
@@ -13046,6 +14194,11 @@ function setArchiveDaysPreset(d){
   const el = document.getElementById('setArchiveDays');
   if(el){ el.value = d; toast(d>0 ? 'مدة حذف الأرشيف بقت '+d+' يوم — اضغط «حفظ العتبات» عشان تتسجّل' : 'الحذف التلقائي اتوقف — اضغط «حفظ العتبات»'); }
 }
+/* م124: أزرار سريعة لمدة الاحتفاظ بسجل العمليات */
+function setAuditKeepPreset(d){
+  const el = document.getElementById('setAuditKeep');
+  if(el){ el.value = d; toast(d>0 ? 'الاحتفاظ بسجل العمليات بقى '+d+' يوم — اضغط «حفظ العتبات» عشان يتسجّل' : 'سجل العمليات بيتحفظ للأبد — اضغط «حفظ العتبات»'); }
+}
 /* ============================================================
    م121 — الحذف التلقائي للأرشيف
    بيمسح نهائياً الإشعارات المؤرشفة (approved/rejected) اللي عدّى عليها
@@ -13071,6 +14224,26 @@ async function cleanupArchivedNotifs(){
     await logAction('🧹 حذف تلقائي للأرشيف: '+removed+' إشعار عدّى عليه أكتر من '+days+' يوم من تاريخ الأرشفة');
   }
   return removed;
+}
+/* ============================================================
+   م124 — مدة الاحتفاظ بسجل العمليات (اختيارية — الافتراضي: للأبد)
+   السجل بيتحفظ في القاعدة بشكل دائم. لو سيف حدد مدة من الإعدادات،
+   السجلات الأقدم منها بتتمسح **من القاعدة مباشرة** — لأن الجهاز أصلاً
+   مش محمّل غير آخر 30 يوم، فالحذف المحلي وحده مايكفيش. 0 = متوقف.
+   ============================================================ */
+async function cleanupOldActivityLog(){
+  const days = Math.max(parseFloat(DB.settings.auditKeepDays)||0, 0);
+  if(!days) return 0;
+  const cutoff = new Date(Date.now() - days*86400000).toISOString();
+  const { error } = await sb.from('activity_log').delete().lte('data->>date', cutoff);
+  if(error) throw error;
+  const before = DB.activityLog.length;
+  DB.activityLog = DB.activityLog.filter(l=>!l.date || l.date > cutoff);
+  /* الظل يتبني من جديد — الصفوف دي اتمسحت من القاعدة خلاص، مانبعتش حذف تاني */
+  if(DB.activityLog.length !== before) _shadow.activityLog = _snapshot('activityLog');
+  _auditOldRows = [];
+  _auditFetchState = { from:'', to:'', loading:false, error:false };
+  return before - DB.activityLog.length;
 }
 /* أزرار سريعة لحد الركود في الإعدادات (30 / 60 / 90) */
 function setStagnantPreset(d){
@@ -13912,10 +15085,48 @@ function openNotifRecord(id){
 
 /* ======================= ACTIVITY LOG (سجل العمليات) ======================= */
 let auditFilters = { actor:'', text:'', dateFrom:'', dateTo:'', refNo:'' };
+/* م124: السجل الكامل محفوظ في القاعدة للأبد — الجهاز بيحمّل آخر 30 يوم بس.
+   لو سيف فلتر على «من تاريخ» أقدم من النافذة، بنجيب الفترة دي من القاعدة
+   عند الطلب وبنحطها في مصفوفة عرض منفصلة (مش DB.activityLog — عشان الحفظ
+   بالفروقات مايتلغبطش). والعرض بأحدث 300 + «عرض المزيد» زي حركة المخزن. */
+const AUDIT_WINDOW_DAYS = 30;
+let auditShowLimit = 300;
+let _auditOldRows = [];
+let _auditFetchState = { from:'', to:'', loading:false, error:false };
+function auditShowMore(){ auditShowLimit += 300; const b=document.getElementById('auditTableBody'); if(b) b.innerHTML = auditRowsHTML(); }
+function _auditNeedsFetch(){
+  const f = auditFilters.dateFrom;
+  if(!f) return false;
+  if(new Date(f).getTime() >= Date.now() - AUDIT_WINDOW_DAYS*86400000) return false;
+  const st = _auditFetchState;
+  return !st.loading && (st.from !== f || st.to !== (auditFilters.dateTo||''));
+}
+async function _fetchOldAudit(){
+  const from = auditFilters.dateFrom, to = auditFilters.dateTo||'';
+  _auditFetchState = { from, to, loading:true, error:false };
+  try{
+    const fromISO = new Date(from).toISOString();
+    const toISO = to ? new Date(new Date(to).getTime()+86399999).toISOString() : new Date().toISOString();
+    const { data, error } = await sb.from('activity_log').select('data')
+      .gte('data->>date', fromISO).lte('data->>date', toISO);
+    if(error) throw error;
+    const have = new Set(DB.activityLog.map(l=>l.id));
+    _auditOldRows = (data||[]).map(r=>r&&r.data).filter(l=>l && l.id && !have.has(l.id));
+    _auditFetchState.loading = false;
+  }catch(e){
+    _auditFetchState = { from:'', to:'', loading:false, error:true };
+  }
+  const b = document.getElementById('auditTableBody');
+  if(b) b.innerHTML = auditRowsHTML();
+}
 function renderActivityLog(){
   const actors = [...new Set(DB.activityLog.map(l=>l.actor||l.role).filter(Boolean))];
   return `
   <div class="section-head"><h3>سجل العمليات (Audit Trail)</h3></div>
+  <div class="muted" style="font-size:11.5px;line-height:1.7;margin-bottom:10px">
+    كل السجلات محفوظة بشكل دائم. الشاشة بتعرض آخر ${AUDIT_WINDOW_DAYS} يوم —
+    ولو حددت «من تاريخ» أقدم، السيستم بيجيب الفترة دي من القاعدة تلقائياً.
+  </div>
   <div class="card" style="margin-bottom:16px">
     <div class="grid g4">
       <div class="form-row"><label class="f-label">الموظف / القسم</label>
@@ -13932,7 +15143,7 @@ function renderActivityLog(){
     <div class="grid g2" style="max-width:520px">
       <div class="form-row"><label class="f-label">رقم أمر شغل / فاتورة</label>
         <input class="f" placeholder="مثال: 0010" value="${auditFilters.refNo}" oninput="auditFilters.refNo=this.value;refreshAuditTable()"></div>
-      <div class="form-row" style="align-self:flex-end"><button class="btn btn-sm" onclick="auditFilters={actor:'',text:'',dateFrom:'',dateTo:'',refNo:''};refreshContent()">مسح الفلاتر</button></div>
+      <div class="form-row" style="align-self:flex-end"><button class="btn btn-sm" onclick="auditFilters={actor:'',text:'',dateFrom:'',dateTo:'',refNo:''};_auditOldRows=[];_auditFetchState={from:'',to:'',loading:false,error:false};refreshContent()">مسح الفلاتر</button></div>
     </div>
   </div>
   <div class="card">
@@ -13940,25 +15151,41 @@ function renderActivityLog(){
     <tbody id="auditTableBody">${auditRowsHTML()}</tbody></table>
   </div>`;
 }
-function refreshAuditTable(){ const b=document.getElementById('auditTableBody'); if(b) b.innerHTML = auditRowsHTML(); }
+function refreshAuditTable(){
+  auditShowLimit = 300;   // م124: أي تغيير فلتر يرجّع للصفحة الأولى
+  if(_auditNeedsFetch()) _fetchOldAudit();   // بيحدّث الجدول بنفسه لما يخلص
+  const b=document.getElementById('auditTableBody'); if(b) b.innerHTML = auditRowsHTML();
+}
 function auditRowsHTML(){
   const f = auditFilters;
-  let list = [...DB.activityLog].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  /* م124: المحلي (آخر 30 يوم) + الأقدم المتجاب عند الطلب */
+  const src = _auditOldRows.length ? DB.activityLog.concat(_auditOldRows) : DB.activityLog;
+  let list = [...src].sort((a,b)=>new Date(b.date)-new Date(a.date));
   list = list.filter(l=>{
     const actor = l.actor || l.role || '';
     if(f.actor && actor!==f.actor) return false;
-    if(f.text && !l.text.toLowerCase().includes(f.text.trim().toLowerCase())) return false;
+    if(f.text && !smartMatch(f.text, [l.text, l.actor, l.role, l.device])) return false;   // م126: بحث ذكي
     if(f.dateFrom && new Date(l.date) < new Date(f.dateFrom)) return false;
     if(f.dateTo && new Date(l.date) > new Date(new Date(f.dateTo).getTime()+86399999)) return false;
     if(f.refNo && !l.text.includes('#'+f.refNo.trim())) return false;
     return true;
-  }).slice(0,300);
-  if(list.length===0) return `<tr><td colspan="4" class="empty">لا توجد عمليات مطابقة</td></tr>`;
-  return list.map(l=>`<tr>
+  });
+  const shown = list.slice(0, auditShowLimit);
+  let extraRow = '';
+  if(_auditFetchState.loading)
+    extraRow = `<tr><td colspan="4" class="empty">⏳ بجيب السجلات الأقدم من القاعدة...</td></tr>`;
+  else if(_auditFetchState.error)
+    extraRow = `<tr><td colspan="4" class="empty">تعذّر جلب السجلات الأقدم — اتأكد من النت
+      <button class="btn btn-sm" onclick="refreshAuditTable()">إعادة المحاولة</button></td></tr>`;
+  else if(list.length > shown.length)
+    extraRow = `<tr><td colspan="4" style="text-align:center;padding:10px">
+      <button class="btn btn-sm" onclick="auditShowMore()">عرض المزيد (باقي ${(list.length-shown.length).toLocaleString('ar-EG')} عملية)</button></td></tr>`;
+  if(shown.length===0 && !extraRow) return `<tr><td colspan="4" class="empty">لا توجد عمليات مطابقة</td></tr>`;
+  return shown.map(l=>`<tr>
     <td style="white-space:nowrap">${fmtDateTime(l.date)}</td>
     <td style="font-weight:700">${l.actor||l.role||'—'}</td>
     <td class="muted" style="font-size:11.5px">${l.device||'—'}</td>
-    <td>${l.text}</td></tr>`).join('');
+    <td>${l.text}</td></tr>`).join('') + extraRow;
 }
 
 /* ======================= SETTINGS (owner only) ======================= */
@@ -14020,6 +15247,19 @@ function renderSettings(){
       <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap">
         ${[5,10,15,30,60,90].map(d=>`<button class="btn btn-sm" onclick="setArchiveDaysPreset(${d})">${d} يوم</button>`).join('')}
         <button class="btn btn-sm" onclick="setArchiveDaysPreset(0)">إيقاف</button>
+      </div>
+    </div>
+    <!-- م124: مدة الاحتفاظ بسجل العمليات — الافتراضي: للأبد (بعد ما سقف الـ500 مسح شهر 7) -->
+    <div class="muted" style="font-size:12px;margin:12px 0 6px;font-weight:700">🗂️ سجل العمليات</div>
+    <div class="muted" style="font-size:11.5px;line-height:1.7;margin-bottom:8px">
+      السجل بيتحفظ <b>للأبد</b> ومفيش حذف تلقائي. لو حبيت تحدد مدة، السجلات الأقدم منها
+      بتتمسح <b>نهائياً من القاعدة</b> بلا رجعة. <b>0 = مفيش حذف</b> (الافتراضي والمُوصى به).
+    </div>
+    <div class="form-row"><label class="f-label">حذف سجل العمليات الأقدم من (يوم)</label>
+      <input class="f" id="setAuditKeep" type="number" min="0" value="${DB.settings.auditKeepDays||0}">
+      <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap">
+        ${[90,180,365].map(d=>`<button class="btn btn-sm" onclick="setAuditKeepPreset(${d})">${d} يوم</button>`).join('')}
+        <button class="btn btn-sm" onclick="setAuditKeepPreset(0)">إيقاف (للأبد)</button>
       </div>
     </div>
     <!-- م114: عتبات تحليل حركة المخزون — الركود وسرعة الحركة -->
@@ -14404,6 +15644,8 @@ async function saveNotifThresholds(){
   DB.settings.fastMoveMin = parseFloat((document.getElementById('setFastMoves')||{}).value)||5;   // م114
   /* م121: حذف الأرشيف التلقائي — 0 = مفيش حذف (الافتراضي) */
   DB.settings.notifArchiveDays = Math.max(parseFloat((document.getElementById('setArchiveDays')||{}).value)||0, 0);
+  /* م124: مدة الاحتفاظ بسجل العمليات — 0 = للأبد (الافتراضي) */
+  DB.settings.auditKeepDays = Math.max(parseFloat((document.getElementById('setAuditKeep')||{}).value)||0, 0);
   /* م121: أنواع شاشات مركز الإشعارات بقت **ثابتة في تصميم السيستم** —
      مفيش حفظ ولا قراءة لأي notifTypes، وأي قيمة قديمة بتتجاهل. */
   delete DB.settings.notifTypes;
@@ -14425,6 +15667,8 @@ async function saveNotifThresholds(){
   }
   await logAction('تعديل عتبات الإشعارات — مصروف كبير: '+money(exp)+' · خصم عالي: '+disc+'%');
   toast('تم حفظ العتبات');
+  // م124: لو سيف حدد مدة احتفاظ لسجل العمليات، تتطبق فوراً مش بس عند البدء
+  cleanupOldActivityLog().catch(()=>{});
 }
 // بناء كائن النسخة الاحتياطية — كل أنواع البيانات (DATA_KEYS) + المستخدمين والإعدادات (KV_KEYS)
 function buildBackupObject(){
@@ -14519,6 +15763,7 @@ function setBusy(on){
     'saveNewEmployee','saveEmployeeEdit','saveLeaveRequest','saveAbsence','saveAdvance','savePenalty','savePermit',
     'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveWorkingDays',
     'saveNewTool','saveToolEdit','saveToolIssue','saveToolReturn',
+    'saveDeposit','saveDepositRefund',   /* م127 */
     'setNotifStatus','addNotifComment','saveNotifThresholds','saveCustody','saveSettleCustody'];
   opNames.forEach(name=>{
     const orig = window[name];
