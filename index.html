@@ -79,6 +79,9 @@
 :root[data-theme="standard"] .tag-unpaid{background:#432a2a;color:#FF8A82;}
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Tajawal',sans-serif;}
+/* م144 (تصحيح): التكبير لشاشة عهدة الموظفين **بس** — طلب سيف كان عليها هي،
+   والزوم العام على السيستم كله اترجع زي ما كان. */
+.empc-big{zoom:1.15;}
 h1,h2,h3,h4,.num,.brand{font-family:'Cairo',sans-serif;}
 #root{min-height:100vh;}
 ::-webkit-scrollbar{width:8px;height:8px;}
@@ -266,7 +269,9 @@ const TABLE_MAP = {
   expenseCategories:'expense_categories', employees:'hr_employees', leaveRequests:'leave_requests',
   permits:'hr_permits', tools:'special_tools', toolMoves:'tool_moves',
   notifications:'notifications', custodies:'custodies', attendance:'attendance',
-  wipSnapshots:'wip_snapshots'   /* م111: نسخ إقفال الأعمال تحت التنفيذ */
+  wipSnapshots:'wip_snapshots',   /* م111: نسخ إقفال الأعمال تحت التنفيذ */
+  empCustody:'emp_custody',       /* م137: عهدة الموظفين العينية */
+  csCases:'cs_cases'              /* م143: خدمة العملاء — رضا وشكاوى */
 };
 const DATA_KEYS = Object.keys(TABLE_MAP);
 const KV_KEYS = ['users','settings'];
@@ -530,13 +535,13 @@ function showStorageWarning(reason){
 function hideStorageWarning(){ const w=document.getElementById('storageWarnBar'); if(w) w.remove(); }
 
 /* ======================= APP STATE ======================= */
-const DB = { customers:[], cars:[], jobs:[], inventory:[], stockMoves:[], invoices:[], expenses:[], suppliers:[], purchases:[], supplierReturns:[], inventoryCounts:[], warehouses:[], staff:[], finAccounts:[], finMoves:[], appointments:[], cannedServices:[], activityLog:[], attendance:[], wipSnapshots:[], users:null, settings:null };
+const DB = { customers:[], cars:[], jobs:[], inventory:[], stockMoves:[], invoices:[], expenses:[], suppliers:[], purchases:[], supplierReturns:[], inventoryCounts:[], warehouses:[], staff:[], finAccounts:[], finMoves:[], appointments:[], cannedServices:[], activityLog:[], attendance:[], wipSnapshots:[], empCustody:[], csCases:[], users:null, settings:null };
 let session = null; // {role, name}
 let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v149';
+const APP_VERSION = 'v158';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -546,23 +551,23 @@ const ROLE_TABS = {
   warehouse:['dashboard','inventory','invanalysis','stockmoves','tools','suppliers'],
   accounts:['dashboard','jobs','openjobs','invoices','receivables','finance','expenses','suppliers','hr','tools','reports','services'],
   hr:['dashboard','hr'],
-  owner:['dashboard','notifications','customers','jobs','openjobs','appointments','inventory','invanalysis','stockmoves','tools','suppliers','invoices','receivables','finance','expenses','hr','reports','services','activitylog','settings']
+  owner:['dashboard','notifications','customers','custservice','jobs','openjobs','appointments','inventory','invanalysis','stockmoves','tools','empcustody','suppliers','invoices','receivables','finance','expenses','hr','reports','services','activitylog','settings']
 };
 
 /* ============ نظام الصلاحيات متعدد المستويات (الملاحظة 32) ============
    مستويين: (1) شاشات يقدر يشوفها  (2) إجراءات ينفذها جوه الشاشة.
    الشاشة الممنوعة بتختفي تماماً — مش بتظهر مقفولة. المالك عنده كل حاجة دايماً. */
 const SCREEN_LABELS = {
-  dashboard:'الرئيسية', notifications:'مركز الإشعارات', customers:'العملاء والسيارات', jobs:'أوامر الشغل', openjobs:'الأوامر المفتوحة',
+  dashboard:'الرئيسية', notifications:'مركز الإشعارات', customers:'العملاء والسيارات', custservice:'خدمة العملاء', jobs:'أوامر الشغل', openjobs:'الأوامر المفتوحة', empcustody:'عهدة الموظفين',
   appointments:'المواعيد', inventory:'المخزون', invanalysis:'تحليل حركة المخزون', stockmoves:'حركة المخزن', tools:'العدد الخاصة',
   suppliers:'الموردين', invoices:'الفواتير', receivables:'المديونيات', finance:'الخزنة والحسابات',
   expenses:'المصروفات', hr:'الموارد البشرية', reports:'التقارير', services:'قوائم الخدمات',
   activitylog:'سجل العمليات', settings:'الإعدادات'
 };
 const DEPT_SCREENS = {
-  reception:['dashboard','customers','jobs','appointments','hr'],
+  reception:['dashboard','customers','custservice','jobs','appointments','hr'],
   warehouse:['dashboard','inventory','stockmoves','tools','suppliers','jobs'],
-  accounts:['dashboard','notifications','jobs','openjobs','invoices','receivables','finance','expenses','suppliers','services','reports','hr','tools'],
+  accounts:['dashboard','notifications','jobs','openjobs','invoices','receivables','finance','expenses','suppliers','services','reports','hr','tools','custservice'],
   hr:['dashboard','hr'],
   owner:Object.keys(SCREEN_LABELS)
 };
@@ -598,6 +603,17 @@ const ACTION_GROUPS = [
     ['cars.archive','أرشفة سيارة عميل'],
     ['cars.delete','حذف سيارة عميل نهائياً'],
   ]],
+  /* م143: خدمة العملاء — حل الشكوى منفصلة تماماً عن باقي الصلاحيات
+     (مش كل موظف خدمة عملاء يقدر يقفل شكوى). «عرض الشاشة» نفسها بتتدي
+     من قايمة الشاشات زي كل الشاشات — مفيش شيك بوكس ملوش تأثير (درس م82). */
+  ['خدمة العملاء', [
+    ['cs.history','عرض سجل الفاتورة من خدمة العملاء'],
+    ['cs.report','فتح تقرير أمر الشغل (نسخة بدون أرباح وتكاليف)'],
+    ['cs.satisfy','تسجيل رضا العميل (بتعليق إجباري)'],
+    ['cs.complaint','عرض وإدارة الشكاوى'],
+    ['cs.followup','إضافة متابعة على شكوى'],
+    ['cs.resolve','حل الشكوى واعتماد «راضي بعد الحل»'],
+  ]],
   ['المخزن', [
     ['inv.issue','صرف قطع لأمر شغل'],
     ['inv.receive','توريد ومشتريات'],
@@ -612,6 +628,15 @@ const ACTION_GROUPS = [
   ['العدد الخاصة', [
     ['tools.issue','صرف واستلام العدد'],
     ['tools.manage','إضافة وتعديل وحذف العدد'],
+  ]],
+  /* م137: عهدة الموظفين العينية — التسوية صلاحية مستقلة تماماً عن الإدارة */
+  ['عهدة الموظفين', [
+    ['empc.manage','إدارة عهدة الموظفين (إنشاء · بنود · جرد)'],
+    ['empc.settle','تسوية عهدة الموظفين'],
+    /* م138: تلات صلاحيات مستقلة — للبنود «المتاحة» فقط (الناقص/التالف يتسوى الأول) */
+    ['empc.edit','تعديل كمية وسعر العهدة'],
+    ['empc.delete','حذف بند من العهدة'],
+    ['empc.transfer','نقل العهدة بين الموظفين'],
   ]],
   ['الفواتير والتحصيل', [
     ['bill.create','إصدار فاتورة'],
@@ -685,6 +710,13 @@ const PERM_INFO = {
   'customers.delete':'حذف عميل نهائياً بكل سجلاته. خطيرة — يفضل تفضل لصاحب المركز.',
   'cars.archive':'أرشفة سيارة عميل — بتختفي من القوائم النشطة وسجلها كامل بيفضل محفوظ، وتقدر ترجّعها في أي وقت.',
   'cars.delete':'حذف سيارة عميل نهائياً — متاح بس للسيارات اللي **مالهاش أي سجل** (ولا أمر شغل ولا فاتورة). اللي عليها سجل بتتأرشف بس.',
+  /* م143: خدمة العملاء — عرض الشاشة نفسها بيتدي من قايمة الشاشات */
+  'cs.history':'فتح «سجل الفاتورة» (الإصدار والتحصيلات والتعديلات بالوقت والموظف) من جوه خدمة العملاء — عشان الموظف يفهم سياق الفاتورة قبل ما يكلم العميل. قراءة فقط.',
+  'cs.report':'فتح تقرير أمر الشغل من خدمة العملاء — بيفتح <b>نسخة خاصة من غير أي تكاليف أو أرباح داخلية</b> حتى لو الموظف معاه صلاحية الربحية. بتوضح اتعمل إيه في العربية بالظبط.',
+  'cs.satisfy':'تسجيل نتيجة مكالمة الرضا (راضي/محايد/غير راضي) بتعليق إجباري في الحالات التلاتة. «غير راضي» بيفتح شكوى تلقائياً. لو في شكوى مفتوحة — الرضا مايتغيرش غير عن طريق حل الشكوى.',
+  'cs.complaint':'فتح تفاصيل الشكاوى وسجل متابعاتها. مايسمحش بالحل — الحل صلاحية منفصلة.',
+  'cs.followup':'إضافة متابعات على الشكاوى المفتوحة (بملاحظة إجبارية وتحديث الحالة). مفيش متابعة بتتمسح أبداً.',
+  'cs.resolve':'حل الشكوى نهائياً بسبب حل إلزامي — بيحوّل العميل لـ«راضي بعد حل المشكلة» وبينزّل عدّاد «عملاء غير راضيين» الحي. حساسة — مش كل موظف خدمة عملاء ياخدها.',
   'inv.issue':'صرف قطع من المخزون على أوامر الشغل. بيخصم من الرصيد فوراً.',
   'inv.receive':'تسجيل توريدات ومشتريات وفواتير شراء الموردين. بيزوّد الرصيد.',
   'inv.return':'تسجيل مرتجعات العملاء للمخزون.',
@@ -696,6 +728,11 @@ const PERM_INFO = {
   'inv.count_approve':'اعتماد نتيجة الجرد وتطبيق التسويات النهائية.',
   'tools.issue':'صرف واستلام العدد الخاصة للفنيين.',
   'tools.manage':'إضافة وتعديل وحذف العدد الخاصة نفسها.',
+  'empc.manage':'شاشة عهدة الموظفين: إنشاء عهد وإضافة بنود بالأقسام والجرد وتسجيل النواقص والتالف. البند «غير المتاح» بيتحسب عجز على الموظف بقيمته.',
+  'empc.settle':'تسوية عهدة الموظفين: إرجاع «غير متاح» أو «تالف» لحالة «متاح» بسبب إلزامي — دي بس اللي بتقفل العجز. حساسة ومنفصلة عن الإدارة.',
+  'empc.edit':'تعديل كمية أو سعر بند عهدة موجود (بدل تسجيل مكرر) — للبنود «المتاحة» فقط، وبيتسجل بقبل/بعد.',
+  'empc.delete':'حذف بند من عهدة الموظف نهائياً بسبب إلزامي — الأثر التاريخي بيفضل محفوظ للأبد. للبنود «المتاحة» فقط.',
+  'empc.transfer':'نقل بند عهدة من موظف لموظف تاني — بيتسجل في عهدة الاتنين وفي سجل العمليات. للبنود «المتاحة» فقط.',
   'bill.create':'إصدار فواتير من أوامر الشغل. الإصدار بيسلّم السيارة تلقائياً.',
   'bill.collect':'تحصيل دفعات من العملاء على الفواتير.',
   'bill.discount':'عمل خصم على الفاتورة وقت الإصدار. الخصومات العالية بتوصل لصاحب المركز كإشعار.',
@@ -1696,6 +1733,7 @@ function shellHTML(){
     dashboard: navItem('dashboard','الرئيسية',ICONS.home),
     notifications: navItem('notifications', '🔔 مركز الإشعارات'+((()=>{ const n=pendingNotifCount(); return n?' ('+n+')':''; })()), ICONS.clock),
     customers: navItem('customers','العملاء والسيارات',ICONS.users),
+    custservice: navItem('custservice','🎧 خدمة العملاء'+((()=>{ const n=csUnhappyCustomers().length; return n?' ('+n+')':''; })()),ICONS.users),
     jobs: navItem('jobs','أوامر الشغل',ICONS.wrench),
     openjobs: navItem('openjobs','الأوامر المفتوحة',ICONS.chart),
     appointments: navItem('appointments','المواعيد',ICONS.calendar),
@@ -1703,6 +1741,7 @@ function shellHTML(){
     invanalysis: navItem('invanalysis','تحليل حركة المخزون',ICONS.chart),
     stockmoves: navItem('stockmoves','حركة المخزن',ICONS.arrows),
     tools: navItem('tools','العدد الخاصة',ICONS.wrench),
+    empcustody: navItem('empcustody','عهدة الموظفين',ICONS.users),
     suppliers: navItem('suppliers','الموردين',ICONS.truck),
     invoices: navItem('invoices','الفواتير',ICONS.invoice),
     receivables: navItem('receivables','المديونيات',ICONS.wallet),
@@ -1714,7 +1753,7 @@ function shellHTML(){
     activitylog: navItem('activitylog','سجل العمليات',ICONS.clock),
     settings: navItem('settings','الإعدادات',ICONS.gear),
   };
-  const titles = {dashboard:'الرئيسية',notifications:'🔔 مركز الإشعارات والحوكمة',customers:'العملاء والسيارات',jobs:'أوامر الشغل',openjobs:'تقارير أوامر الشغل المفتوحة',appointments:'المواعيد',inventory:'المخزون',invanalysis:'📊 تحليل حركة المخزون',stockmoves:'حركة المخزن',tools:'العدد الخاصة (Special Tools)',suppliers:'الموردين',invoices:'الفواتير',receivables:'المديونيات والمستحقات',finance:'الخزنة والحسابات المالية',expenses:'المصروفات',hr:(session.role==='reception'?'الإجازات والأذونات':'الموارد البشرية (HR)'),reports:'التقارير',services:'قوائم الخدمات',activitylog:'سجل العمليات',settings:'الإعدادات',newPurchase:'فاتورة شراء مورد جديدة',inventoryCount:'جرد المخزن'};
+  const titles = {dashboard:'الرئيسية',notifications:'🔔 مركز الإشعارات والحوكمة',customers:'العملاء والسيارات',custservice:'🎧 خدمة العملاء ومتابعة الرضا',jobs:'أوامر الشغل',openjobs:'تقارير أوامر الشغل المفتوحة',appointments:'المواعيد',inventory:'المخزون',invanalysis:'📊 تحليل حركة المخزون',stockmoves:'حركة المخزن',tools:'العدد الخاصة (Special Tools)',empcustody:'🧰 عهدة الموظفين',suppliers:'الموردين',invoices:'الفواتير',receivables:'المديونيات والمستحقات',finance:'الخزنة والحسابات المالية',expenses:'المصروفات',hr:(session.role==='reception'?'الإجازات والأذونات':'الموارد البشرية (HR)'),reports:'التقارير',services:'قوائم الخدمات',activitylog:'سجل العمليات',settings:'الإعدادات',newPurchase:'فاتورة شراء مورد جديدة',inventoryCount:'جرد المخزن'};
 
   return `
   <div class="shell">
@@ -1765,6 +1804,7 @@ function renderTab(){
     case 'dashboard': return renderDashboard();
     case 'notifications': return renderNotifications();
     case 'customers': return renderCustomers();
+    case 'custservice': return renderCustService();
     case 'jobs': return renderJobs();
     case 'openjobs': return renderOpenJobsReport();
     case 'invanalysis': return renderInvAnalysis();
@@ -1772,6 +1812,7 @@ function renderTab(){
     case 'inventory': return renderInventory();
     case 'stockmoves': return renderStockMoves();
     case 'tools': return renderTools();
+    case 'empcustody': return renderEmpCustody();
     case 'suppliers': return renderSuppliers();
     case 'newPurchase': return renderNewPurchaseInvoice();
     case 'inventoryCount': return renderInventoryCount();
@@ -2330,7 +2371,7 @@ function customerHistoryHTML(customerId){
   }).join('') || `<tr><td colspan="6" class="empty">لا يوجد سجل صيانة بعد</td></tr>`}</tbody></table>
   ${invoices.length? `
   <label class="f-label" style="margin-top:16px;display:block">الفواتير السابقة <span class="muted" style="font-size:11px">— دوس على الفاتورة يفتحلك تقرير أمر الشغل بتاعها</span></label>
-  <table style="margin-top:6px"><thead><tr><th>رقم</th><th>أمر الشغل</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th></tr></thead>
+  <table style="margin-top:6px"><thead><tr><th>رقم</th><th>أمر الشغل</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th><th>خدمة العملاء</th></tr></thead>
   <tbody>${invoices.map(inv=>{
     /* م131: رقم أمر الشغل جنب الفاتورة + الضغط بيفتح تقريره — عشان سيف يعرف
        العميل عمل كام فاتورة وكل فاتورة اتعمل فيها إيه بالظبط */
@@ -2339,7 +2380,12 @@ function customerHistoryHTML(customerId){
     return `<tr ${jb?`onclick="openWorkOrderReportFromCust('${jb.id}','${customerId}')" style="cursor:pointer" title="دوس لتقرير أمر الشغل #${jb.jobNo}"`:''}>
       <td>#${inv.invNo}${inv.cancelled?' <span class="tag tag-cancel" style="font-size:10px">🚫 ملغاة</span>':''}</td>
       <td style="font-weight:700">${jb?'#'+jb.jobNo:'—'}</td>
-      <td>${fmtDate(inv.date)}</td><td>${money(inv.total)}</td><td>${money(paid)}</td></tr>`;
+      <td>${fmtDate(inv.date)}</td><td>${money(inv.total)}</td><td>${money(paid)}</td>
+      <td>${(()=>{ /* م143: نتيجة خدمة العملاء لكل فاتورة — جزء دائم من سجل العميل */
+        const st143 = csStatusOf(inv.id);
+        return st143.key==='none' ? '<span class="muted" style="font-size:11px">—</span>'
+          : '<span class="tag '+st143.cls+'" style="font-size:10px">'+st143.label+'</span>';
+      })()}</td></tr>`;
   }).join('')}</tbody></table>` : ''}
   `;
 }
@@ -5863,7 +5909,7 @@ function jobDatesGridHTML(job){
     <div><span class="muted" style="font-size:12px">⏱ ${durLbl}</span><div><b>${durVal}</b></div></div>
   </div>`;
 }
-function workOrderReportHTML(jobId){
+function workOrderReportHTML(jobId, opts){
   const job = DB.jobs.find(j=>j.id===jobId);
   if(!job) return `<h3>الأمر غير موجود</h3>`;
   const car = DB.cars.find(c=>c.id===job.carId)||{};
@@ -5884,6 +5930,55 @@ function workOrderReportHTML(jobId){
   /* م129: الربحية بصافي المبيعات — الخصم بيقلل الإيراد (المعادلة الموحدة) */
   const pc129 = profitCore(totalRevenue, inv ? (inv.discount||0) : 0, totalCost);
   const paintItems = (job.internalCosts||[]).filter(ic=>ic.kind==='paint');   // م128: للنسختين
+  /* م143: نسخة خدمة العملاء — الغرض «اتعمل إيه في العربية» عشان الموظف يكلم
+     العميل وهو فاهم. أسعار البيع ظاهرة (هي نفسها اللي على فاتورة العميل)،
+     لكن **ولا أي تكلفة أو ربح داخلي** — حتى لو الفاتح معاه صلاحية الربحية،
+     لأن الشاشة دي ممكن تتعرض قدام العميل نفسه. */
+  if(opts && opts.csMode){
+    return `
+  <div class="flex-between" style="margin-bottom:10px;gap:10px;flex-wrap:wrap">
+    <h3 style="margin:0">تقرير أمر الشغل #${job.jobNo} <span class="muted" style="font-size:12px">(نسخة خدمة العملاء)</span></h3>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${jobBillBadge(job)}</div>
+  </div>
+  <div class="grid g2" style="margin-bottom:14px">
+    <div class="card"><div class="muted" style="font-size:11.5px">العميل</div><div style="font-weight:700">${cust.name||'—'}</div><div class="muted" style="font-size:12px">📞 ${cust.phone||''}</div></div>
+    <div class="card"><div class="muted" style="font-size:11.5px">السيارة</div><div style="font-weight:700">${car.plate||'—'}</div><div class="muted" style="font-size:12px">${carLabel(car)}${job.odometer?' · العداد: '+job.odometer+' كم':''}</div></div>
+  </div>
+  ${jobDatesGridHTML(job)}
+  <div style="margin-bottom:14px"><span class="muted" style="font-size:12px">الحالة:</span> <span class="tag ${STATUS_TAGCLASS[job.status]}">${job.status}</span></div>
+  <label class="f-label">الخدمات المنفذة</label>
+  <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>الخدمة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+  <tbody>${services.length? services.map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>`).join('') : `<tr><td colspan="4" class="empty">لا توجد خدمات</td></tr>`}</tbody></table>
+  <label class="f-label">قطع الغيار المركبة</label>
+  <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>القطعة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+  <tbody>${parts.length? parts.map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>`).join('') : `<tr><td colspan="4" class="empty">لا توجد قطع مصروفة</td></tr>`}</tbody></table>
+  ${extItems.length? `
+  <label class="f-label">قطع غيار وأعمال خارجية</label>
+  <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>البند</th><th>النوع</th><th>الكمية</th><th>الإجمالي</th></tr></thead>
+  <tbody>${extItems.map(it=>`<tr><td>${it.name}</td><td>${kindLabelFull(it)}</td><td>${it.qty}</td><td>${money(it.qty*it.unitPrice)}</td></tr>`).join('')}</tbody></table>` : ''}
+  ${paintItems.length? `
+  <label class="f-label">🎨 خامات دهان مستخدمة</label>
+  <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>الخامة</th><th>الكمية</th></tr></thead>
+  <tbody>${paintItems.map(ic=>`<tr><td>${ic.name}</td><td>${ic.qty} ${ic.unit||''}</td></tr>`).join('')}</tbody></table>` : ''}
+  <div class="grid g2" style="margin-bottom:12px">
+    ${stat(inv?money(inv.total):'—','إجمالي الفاتورة')}
+    ${stat(job.responsibleName||'غير محدد','الموظف المسؤول عن الأمر')}
+  </div>
+  ${(job.externalNotes||'').trim()?`
+  <div class="card" style="margin-top:12px;border-right:3px solid var(--accent)">
+    <label class="f-label" style="color:var(--accent)">📝 ملاحظات للعميل (المطبوعة على الفاتورة)</label>
+    <div style="white-space:pre-wrap;font-size:12.5px;margin-top:6px">${job.externalNotes}</div>
+  </div>`:''}
+  ${liveInternalNotes(job).length ? `
+  <div class="card" style="margin-top:12px;border-right:3px solid var(--accent-2)">
+    <label class="f-label" style="color:var(--accent-2)">📝 ملاحظات الورشة الداخلية (عرض داخلي فقط — لا تظهر للعميل)</label>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+      ${liveInternalNotes(job).map(n=>`<div style="font-size:12.5px"><b>${n.byName||'—'}</b> <span class="muted">· ${n.dept||'—'} · ${fmtDateTime(n.date)}</span><div style="white-space:pre-wrap">${n.text}</div></div>`).join('')}
+    </div>
+  </div>`:''}
+  <div class="muted" style="font-size:11.5px;margin-top:10px">🎧 نسخة خدمة العملاء — بأسعار البيع اللي على الفاتورة، ومن غير أي أرقام داخلية للمركز.</div>
+  `;
+  }
   // نسخة بدون أرباح: للمخزن ولأي حد مالوش صلاحية الربحية (الملاحظتان 26 و32)
   if(!can('rep.profit')){
     const jobMoves = DB.stockMoves.filter(m=>m.jobId===job.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
@@ -7934,13 +8029,20 @@ function visibleSuppliers(){
 }
 function supCardHTML(sup){
   const b = supplierBalance(sup.id);
+  /* م142: أرقام الفترة جوه نفس الكارت — والرقم الكبير فاضل «المستحق الحالي» الفعلي */
+  const pf = supPeriodFin(sup.id);
+  const hasF = supFinFilter.preset!=='all';
   return `
     <div class="card" style="cursor:pointer${sup.archived?';opacity:.55':''}" onclick="openSupplierDetail('${sup.id}')">
       <div style="font-weight:800;font-size:15px">${sup.name}${sup.archived?' <span class="muted" style="font-size:11px">🗄️ مؤرشف</span>':''}</div>
       <div class="muted" style="font-size:12.5px;margin-top:2px">${sup.phone||'—'}${sup.contactPerson?' · '+sup.contactPerson:''}${sup.area?' · '+sup.area:''}</div>
-      <div class="flex-between" style="margin-top:14px">
+      <div class="muted" style="font-size:11.5px;margin-top:8px">
+        🧾 مشتريات${hasF?' الفترة':''}: <b>${money(pf.purchases)}</b> · 💵 مدفوع${hasF?' الفترة':''}: <b>${money(pf.paid)}</b>
+        ${hasF?`<br>📌 مستحق الفترة: <b style="${pf.periodOut>0.005?'color:var(--danger)':''}">${money(pf.periodOut)}</b>`:''}
+      </div>
+      <div class="flex-between" style="margin-top:10px">
         <span class="muted" style="font-size:12px">فواتير: ${b.count}${b.discountsCount?' · خصومات: '+b.discountsCount:''}</span>
-        <span style="font-weight:800;${b.balance>0.005?'color:var(--danger)':(b.balance<-0.005?'color:var(--accent-2)':'color:var(--success)')}">${money(b.balance)}</span>
+        <span style="font-weight:800;${b.balance>0.005?'color:var(--danger)':(b.balance<-0.005?'color:var(--accent-2)':'color:var(--success)')}" title="المستحق الحالي الفعلي — مايتأثرش بالفلتر">${money(b.balance)}</span>
       </div>
       ${sup.archived && isOwnerSession() ? `<button class="btn btn-sm btn-accent" style="width:100%;margin-top:10px" onclick="event.stopPropagation(); restoreSupplier('${sup.id}')">♻️ استرجاع المورد</button>` : ''}
     </div>`;
@@ -7959,15 +8061,108 @@ function supplierCardsHTML(){
   }
   return list.map(supCardHTML).join('');
 }
+/* ============================================================
+   م142 — شاشة الموردين: ملخص مالي عام + فلتر زمني + Excel
+   ⚠️ فصل صريح بين مفهومين (بند 5 من مواصفة سيف):
+   - «المستحق الحالي» = الرصيد الفعلي الجاري — مايتأثرش بالفلتر أبداً.
+   - «مستحق الفترة» = مشتريات الفترة − مدفوعها (تحليل مالي للفترة بس).
+   الحساب كله من البيانات الموجودة (فواتير + دفعات + سدادات الحساب) —
+   مفيش أي سجلات مالية جديدة ولا تغيير في أرصدة الموردين.
+   ============================================================ */
+let supFinFilter = { preset:'all', from:'', to:'' };
+function supFinIn(d){
+  const r = repRangeOf(supFinFilter); if(!r) return true;
+  const x = new Date(d); return x>=r.from && x<=r.to;
+}
+function supFinPeriodLabel(){
+  const f = supFinFilter;
+  if(f.preset==='custom') return 'من '+(f.from||'البداية')+' إلى '+(f.to||'اليوم');
+  return (SUP_REP_PRESETS.find(x=>x[0]===f.preset)||['','كل التعاملات'])[1];
+}
+function setSupFinFilter(k, v){
+  supFinFilter[k]=v;
+  if(k==='preset' && v!=='custom'){ supFinFilter.from=''; supFinFilter.to=''; }
+  refreshContent();
+}
+/* مشتريات ومدفوعات المورد جوه الفترة الحالية — من نفس بيانات الحسابات الموجودة */
+function supPeriodFin(supplierId){
+  const purs = DB.purchases.filter(p=>p.supplierId===supplierId);
+  const purchases = purs.filter(p=>supFinIn(p.date)).reduce((s,p)=>s+(p.total||0),0);
+  let paid = 0;
+  purs.forEach(p=>(p.payments||[]).forEach(pay=>{ if(supFinIn(pay.date)) paid += (pay.amount||0); }));
+  const sup = DB.suppliers.find(s=>s.id===supplierId);
+  if(sup) supLedger(sup).filter(e=>e.kind==='payment' && supFinIn(e.date)).forEach(e=>{ paid += (e.amount||0); });
+  return { purchases: Math.round(purchases*100)/100, paid: Math.round(paid*100)/100,
+    periodOut: Math.round((purchases-paid)*100)/100 };
+}
+function suppliersFinCSVContent(){
+  const list = visibleSuppliers();
+  const hasF = supFinFilter.preset!=='all';
+  const tot = { purchases:0, paid:0, periodOut:0, current:0 };
+  const body = list.map(sup=>{
+    const pf = supPeriodFin(sup.id);
+    const cur = supplierBalance(sup.id).balance;
+    tot.purchases+=pf.purchases; tot.paid+=pf.paid; tot.periodOut+=pf.periodOut; tot.current+=cur;
+    return [sup.name, pf.purchases, pf.paid, pf.periodOut, Math.round(cur*100)/100];
+  });
+  const rows = [
+    ['الفترة', supFinPeriodLabel()],
+    ['إجمالي المشتريات'+(hasF?' في الفترة':''), Math.round(tot.purchases*100)/100],
+    ['إجمالي المدفوع'+(hasF?' في الفترة':''), Math.round(tot.paid*100)/100],
+    ['إجمالي مستحق الفترة', Math.round(tot.periodOut*100)/100],
+    ['إجمالي المستحق الحالي', Math.round(tot.current*100)/100],
+    [],
+    ['المورد','مشتريات'+(hasF?' الفترة':''),'مدفوع'+(hasF?' الفترة':''),'مستحق الفترة','المستحق الحالي'],
+    ...body
+  ];
+  return '﻿' + rows.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+}
+function exportSuppliersFinCSV(){
+  const blob = new Blob([suppliersFinCSVContent()], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'الموردين-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  logAction('⬇ تصدير Excel للموردين ('+supFinPeriodLabel()+')');
+  toast('اتصدّر ملف Excel بالموردين المعروضين');
+}
 function renderSuppliers(){
   const archivedCount = DB.suppliers.filter(s=>s.archived).length;
   const totalOwed = activeSuppliers().reduce((s,sup)=>s+supplierBalance(sup.id).balance,0);
+  const hasF = supFinFilter.preset!=='all';
+  /* م142: الملخص من الموردين المعروضين بالظبط (بحث + فلتر حالة) */
+  const vis = visibleSuppliers();
+  const g = { purchases:0, paid:0, periodOut:0, current:0 };
+  vis.forEach(sup=>{ const pf = supPeriodFin(sup.id); g.purchases+=pf.purchases; g.paid+=pf.paid; g.periodOut+=pf.periodOut; g.current+=supplierBalance(sup.id).balance; });
   return `
   <div class="section-head"><h3>الموردين (${activeSuppliers().length}${archivedCount?` + ${archivedCount} مؤرشف`:''}) — إجمالي المستحق ${money(totalOwed)}</h3>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="exportSuppliersFinCSV()">⬇ Export Excel</button>
       <button class="btn" onclick="openNewPurchaseInvoicePage()">🧾 فاتورة شراء جديدة</button>
       <button class="btn btn-accent" onclick="openNewSupplierModal()">${ICONS.plus} مورد جديد</button>
     </div></div>
+  <div class="card" style="padding:8px 10px;margin-bottom:10px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${SUP_REP_PRESETS.map(([id,lbl])=>`<button class="btn btn-sm ${supFinFilter.preset===id?'btn-accent':''}" onclick="setSupFinFilter('preset','${id}')">${lbl}</button>`).join('')}
+    </div>
+    ${supFinFilter.preset==='custom'?`<div class="grid g2" style="max-width:420px;margin-top:8px">
+      <div class="form-row" style="margin:0"><label class="f-label">من تاريخ</label><input class="f" type="date" value="${supFinFilter.from}" onchange="setSupFinFilter('from',this.value)"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${supFinFilter.to}" onchange="setSupFinFilter('to',this.value)"></div>
+    </div>`:''}
+  </div>
+  ${hasF?`
+  <div class="grid g4" style="margin-bottom:12px">
+    ${stat(money(g.purchases),'مشتريات الفترة ('+supFinPeriodLabel()+')')}
+    ${stat(money(g.paid),'مدفوع الفترة')}
+    ${stat(money(g.periodOut),'مستحق الفترة (مشتريات − مدفوع)', g.periodOut>0)}
+    ${stat(money(g.current),'المستحق الحالي الفعلي (مايتأثرش بالفلتر)', g.current>0)}
+  </div>`:`
+  <div class="grid g3" style="margin-bottom:12px">
+    ${stat(money(g.purchases),'إجمالي المشتريات')}
+    ${stat(money(g.paid),'إجمالي المدفوع')}
+    ${stat(money(g.current),'المستحق الحالي', g.current>0)}
+  </div>`}
   <div class="grid g2" style="max-width:760px;margin-bottom:12px">
     <div class="form-row" style="margin:0"><input class="f" placeholder="🔎 ابحث باسم المورد، تليفون، مسؤول التواصل، منطقة، ملاحظات..." value="${supSearchTerm}" oninput="setSupSearch(this.value)" autocomplete="off"></div>
     <div class="form-row" style="margin:0"><select class="f" onchange="setSupStatusFilter(this.value)">
@@ -9848,6 +10043,14 @@ function editInvCalcFrom(inv){
 /* ---------- سجل الفاتورة ---------- */
 function openInvoiceHistory(invId){
   if(!can('bill.history')){ toast('مالكش صلاحية عرض سجل الفاتورة', true); return; }
+  _invoiceHistoryModal(invId);
+}
+/* م143: نفس المودال بيتفتح من خدمة العملاء بصلاحيتها المستقلة cs.history */
+function csOpenInvHistory(invId){
+  if(!can('cs.history')){ toast('مالكش صلاحية عرض سجل الفاتورة من خدمة العملاء', true); return; }
+  _invoiceHistoryModal(invId);
+}
+function _invoiceHistoryModal(invId){
   const inv = DB.invoices.find(i=>i.id===invId);
   if(!inv){ toast('الفاتورة غير موجودة', true); return; }
   const cst = DB.customers.find(c=>c.id===inv.customerId);
@@ -11176,7 +11379,7 @@ function renderExpenseCategories(){
   <div class="section-head"><h3>أنواع المصروفات (${DB.expenseCategories.length})</h3>
     <button class="btn btn-accent" onclick="openNewExpenseCatModal()">${ICONS.plus} نوع مصروف جديد</button></div>
   <div class="muted" style="margin-bottom:14px;font-size:13px">كوّد هنا كل أنواع المصروفات اللي بتصرفها في المركز، عشان تظهر كاختيار جاهز وقت تسجيل أي مصروف وتتجمّع في التقارير.</div>
-  ${EXPENSE_GROUPS.map(g=>{
+  ${allExpenseGroups().map(g=>{   /* م141: المجموعات المخصوصة بتظهر برضه */
     const cats = DB.expenseCategories.filter(c=>c.group===g).sort(cmpName);
     return `<div class="card" style="margin-bottom:14px">
       <label class="f-label" style="font-size:14px;font-weight:800">${g} <span class="muted">(${cats.length})</span></label>
@@ -11187,18 +11390,27 @@ function renderExpenseCategories(){
     </div>`;
   }).join('')}`;
 }
+/* م141: مجموعات المصروفات بقت حرة — الجاهزة + أي مجموعة سيف أنشأها */
+function allExpenseGroups(){
+  return [...new Set([...EXPENSE_GROUPS, ...DB.expenseCategories.map(c=>c.group).filter(Boolean)])];
+}
 function openNewExpenseCatModal(){
   openModal(`
     <h3>نوع مصروف جديد</h3>
     <div class="form-row"><label class="f-label">اسم النوع</label><input class="f" id="ecName" placeholder="مثال: صيانة تكييف، دعاية وإعلان..."></div>
-    <div class="form-row"><label class="f-label">المجموعة</label><select class="f" id="ecGroup">${EXPENSE_GROUPS.map(g=>`<option value="${g}">${g}</option>`).join('')}</select></div>
+    <div class="form-row"><label class="f-label">المجموعة</label><select class="f" id="ecGroup">${allExpenseGroups().map(g=>`<option value="${g}">${g}</option>`).join('')}<option value="__new__">➕ مجموعة جديدة...</option></select></div>
+    <div class="form-row"><label class="f-label">اسم المجموعة الجديدة (لو اخترت مجموعة جديدة)</label><input class="f" id="ecGroupNew" placeholder="مثال: مصروفات فروع"></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveExpenseCat()">حفظ</button>
   `);
 }
 async function saveExpenseCat(){
   if(!(can('fin.expenses'))){ toast('مالكش صلاحية إدارة بنود المصروفات', true); return; }   /* حارس م65 */
   const name = document.getElementById('ecName').value.trim();
-  const group = (document.getElementById('ecGroup')||{}).value || EXPENSE_GROUPS[0];
+  let group = (document.getElementById('ecGroup')||{}).value || EXPENSE_GROUPS[0];
+  if(group==='__new__'){
+    group = ((document.getElementById('ecGroupNew')||{}).value||'').trim();
+    if(!group){ toast('اكتب اسم المجموعة الجديدة', true); return; }
+  }
   if(!name){ toast('اكتب اسم النوع', true); return; }
   if(DB.expenseCategories.some(c=>c.name===name && c.group===group)){ toast('النوع ده موجود بالفعل في نفس المجموعة', true); return; }
   DB.expenseCategories.push({id:uid('ec'), name, group, createdAt:new Date().toISOString()});
@@ -14002,6 +14214,515 @@ function pushNotif(opts){
     saveKey('notifications').catch(()=>{});
   }catch(e){ /* المراقبة ماتوقفش التشغيل أبداً */ }
 }
+/* ============================================================
+   م137 — عهدة الموظفين العينية (Employee Custody)
+   ------------------------------------------------------------
+   ⚠️ دي مش «العدد الخاصة» (م116 — أصول مشتركة بتتصرف وترجع) ولا
+   «العُهد النثرية المالية» (م34). دي أصول بمسؤولية دائمة على موظف
+   أو أكتر: عدة · زي · أجهزة · معدات...
+   القواعد الذهبية (سيف — م137):
+   - غير متاح = عجز على الموظف بقيمته. تالف = خسارة تشغيلية، مش عجز.
+   - التسوية (غير متاح/تالف ← متاح) بصلاحية empc.settle المستقلة + سبب إلزامي.
+   - كل عجز وكل تسوية سجل تاريخي دائم مايتمسحش أبداً + قيد في سجل العمليات.
+   - «عجز عهد الموظفين» في مركز الإشعارات قيمة Live بتنزل مع كل تسوية.
+   ============================================================ */
+const EMPC_CATEGORIES = ['عدة','زي','أجهزة','معدات','أخرى'];
+const EMPC_STATUS = { available:'متاح', missing:'غير متاح', damaged:'تالف/هالك' };
+function empcStatusTag(st){
+  return st==='available' ? '<span class="tag tag-paid">✅ متاح</span>'
+    : st==='missing' ? '<span class="tag tag-unpaid">❌ غير متاح</span>'
+    : '<span class="tag tag-cancel">🗑 تالف/هالك</span>';
+}
+function empcEmpNames(c){
+  return (c.employeeIds||[]).map(id=>{ const e = DB.employees.find(x=>x.id===id); return e?e.name:'—'; }).join(' + ');
+}
+function empcItemTotal(it){ return Math.round((it.qty||0)*(it.unitPrice||0)*100)/100; }
+function empcTotals(c){
+  const t = { value:0, shortage:0, damaged:0 };
+  (c.items||[]).forEach(it=>{
+    const v = empcItemTotal(it);
+    t.value += v;
+    if(it.status==='missing') t.shortage += v;
+    else if(it.status==='damaged') t.damaged += v;
+  });
+  return t;
+}
+/* القيمة الحية لإجمالي العجز القائم — التالف مش داخل فيها أبداً (قاعدة 13) */
+function empcShortageTotal(){
+  return DB.empCustody.reduce((s,c)=>s+empcTotals(c).shortage, 0);
+}
+function empcShortageByEmployee(){
+  const map = {};
+  DB.empCustody.forEach(c=>{
+    const sh = empcTotals(c).shortage;
+    if(sh>0){ const k = empcEmpNames(c)||'—'; map[k] = map[k] || { total:0, custodyId:c.id }; map[k].total += sh; }
+  });
+  return Object.entries(map).map(([name,v])=>({ name, total:v.total, custodyId:v.custodyId })).sort((a,b)=>b.total-a.total);
+}
+function empcLog(c, entry){
+  c.history = c.history||[];
+  c.history.push({ id:uid('ech'), at:new Date().toISOString(), by:actorName(), ...entry });
+}
+function renderEmpCustody(){
+  const list = DB.empCustody;
+  const shTotal = empcShortageTotal();
+  const dmTotal = list.reduce((s,c)=>s+empcTotals(c).damaged, 0);
+  const valTotal = list.reduce((s,c)=>s+empcTotals(c).value, 0);
+  return `
+  <div class="empc-big">
+  <div class="section-head"><h3>🧰 عهدة الموظفين (${list.length})</h3>
+    ${can('empc.manage')?`<button class="btn btn-accent" onclick="openNewEmpCustodyModal()">${ICONS.plus} عهدة جديدة</button>`:''}</div>
+  <div class="muted" style="font-size:12px;margin-bottom:12px">أصول بمسؤولية دائمة على الموظف (عدة · زي · أجهزة · معدات) — مختلفة عن «العدد الخاصة» المشتركة. «غير المتاح» بيتحسب عجز على الموظف، و«التالف» خسارة تشغيلية منفصلة.</div>
+  <div class="grid g3" style="margin-bottom:16px">
+    ${stat(money(valTotal),'إجمالي قيمة العهد')}
+    ${stat(money(shTotal),'❌ إجمالي عجز العهد القائم', shTotal>0)}
+    ${stat(money(dmTotal),'🗑 إجمالي التالف/الهالك (خسارة تشغيلية)', dmTotal>0)}
+  </div>
+  <div class="grid g3">
+    ${list.length? list.map(c=>{
+      const t = empcTotals(c);
+      return `<div class="card" style="cursor:pointer" onclick="openEmpCustodyDetail('${c.id}')">
+        <div style="font-weight:800;font-size:14px">${empcEmpNames(c)||'—'}</div>
+        <div class="muted" style="font-size:12px;margin-top:3px">${(c.items||[]).length} بند · قيمة العهدة: ${money(t.value)}</div>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          ${t.shortage>0?`<span class="tag tag-unpaid">❌ عجز: ${money(t.shortage)}</span>`:''}
+          ${t.damaged>0?`<span class="tag tag-cancel">🗑 تالف: ${money(t.damaged)}</span>`:''}
+          ${(t.shortage<=0&&t.damaged<=0)?'<span class="tag tag-paid">✅ كاملة</span>':''}
+        </div>
+      </div>`;
+    }).join('') : emptyState('لسه مفيش عهد مسجلة — ابدأ بـ«عهدة جديدة»')}
+  </div>
+  </div>`;
+}
+function openNewEmpCustodyModal(){
+  if(!can('empc.manage')){ toast('مالكش صلاحية إدارة عهدة الموظفين', true); return; }
+  const emps = DB.employees.filter(e=>e.status!=='موقوف');
+  if(!emps.length){ toast('سجّل موظفين الأول من شاشة الموارد البشرية', true); return; }
+  openModal(`
+    <h3>🧰 عهدة جديدة</h3>
+    <div class="form-row"><label class="f-label">الموظف المسؤول (موظف أو أكتر — علّم عليهم)</label>
+      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--surface-2);border-radius:8px;padding:8px">
+        ${emps.map(e=>`<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;cursor:pointer;font-size:13px">
+          <input type="checkbox" class="empcEmpChk" id="empcChk_${e.id}" value="${e.id}" style="width:15px;height:15px"> ${e.name} <span class="muted" style="font-size:11px">(${e.jobTitle||e.department||'موظف'})</span></label>`).join('')}
+      </div></div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveNewEmpCustody()">إنشاء العهدة</button>
+  `);
+}
+async function saveNewEmpCustody(){
+  if(!can('empc.manage')){ toast('مالكش صلاحية إدارة عهدة الموظفين', true); return; }
+  const ids = [...document.querySelectorAll('.empcEmpChk:checked')].map(x=>x.value);
+  if(!ids.length){ toast('اختار موظف واحد على الأقل', true); return; }
+  const c = { id:uid('empc'), employeeIds:ids, items:[], history:[], createdAt:new Date().toISOString(), createdBy:actorName() };
+  empcLog(c, { event:'created', desc:'إنشاء العهدة' });
+  DB.empCustody.push(c);
+  await saveKey('empCustody', DB.empCustody);
+  await logAction('🧰 إنشاء عهدة موظفين: '+empcEmpNames(c));
+  closeModal(); toast('اتعملت العهدة — ضيف البنود بالأقسام'); openEmpCustodyDetail(c.id); refreshContent();
+}
+function openEmpCustodyDetail(custodyId){
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const t = empcTotals(c);
+  const cats = [...new Set([...EMPC_CATEGORIES, ...(c.items||[]).map(it=>it.category)])];
+  const byCat = {};
+  (c.items||[]).forEach(it=>{ (byCat[it.category||'أخرى'] = byCat[it.category||'أخرى']||[]).push(it); });
+  openModal(`
+  <div class="empc-big">
+  <div class="flex-between" style="gap:8px;flex-wrap:wrap;margin-bottom:6px">
+    <h3 style="margin:0">🧰 عهدة: ${empcEmpNames(c)}</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${can('empc.manage')?`<button class="btn btn-sm" onclick="openEmpcAddItemModal('${c.id}')">➕ إضافة بند</button>`:''}
+      <button class="btn btn-sm" onclick="printEmpCustody('${c.id}')">🖨 طباعة العهدة</button>
+      <button class="btn btn-sm" onclick="exportEmpCustodyCSV('${c.id}')">⬇ Export Excel</button>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-bottom:12px">
+    ${stat(money(t.value),'إجمالي قيمة العهدة')}
+    ${stat(money(t.shortage),'❌ عجز على الموظف', t.shortage>0)}
+    ${stat(money(t.damaged),'🗑 تالف/هالك (مش عجز)', t.damaged>0)}
+  </div>
+  ${Object.keys(byCat).length? `<div class="muted" style="font-size:11.5px;margin-bottom:6px">👆 دوس على القسم يفتحلك بنوده — ودوس تاني يقفله (عشان العهد الكبيرة متبقاش زحمة)</div>`:''}
+  ${Object.keys(byCat).length? Object.entries(byCat).map(([cat,items],catIdx)=>{
+    /* م139: الأقسام مطوية افتراضياً — القسم بيتفتح بالضغط عليه بس.
+       رأس القسم بيلخص المحتوى (عدد · قيمة · عجز · تالف) عشان تعرف مين محتاج مراجعة قبل ما تفتحه */
+    const catVal = items.reduce((s,it)=>s+empcItemTotal(it),0);
+    const catShort = items.filter(it=>it.status==='missing').reduce((s,it)=>s+empcItemTotal(it),0);
+    const catDmg = items.filter(it=>it.status==='damaged').reduce((s,it)=>s+empcItemTotal(it),0);
+    return `
+  <div class="dsec" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px" onclick="supRepToggle('empcat_${c.id}_${catIdx}')">
+    <span>📂 ${cat} (${items.length} بند)</span>
+    <span class="muted" style="font-size:11.5px;font-weight:400">قيمة: ${money(catVal)}${catShort>0?' · <b style="color:var(--danger)">❌ عجز: '+money(catShort)+'</b>':''}${catDmg>0?' · 🗑 تالف: '+money(catDmg):''}</span>
+  </div>
+  <div id="empcat_${c.id}_${catIdx}" style="display:none">
+  <table class="tcompact" style="margin-bottom:10px"><thead><tr><th>البند</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th><th>الحالة</th><th></th></tr></thead>
+  <tbody>${items.map(it=>`<tr>
+    <td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td>
+    <td style="font-weight:700">${money(empcItemTotal(it))}</td>
+    <td>${empcStatusTag(it.status)}${it.status!=='available'&&it.invDate?`<div class="muted" style="font-size:10.5px">جرد ${fmtDate(it.invDate)} · ${it.statusBy||''}</div>`:''}</td>
+    <td style="white-space:nowrap">
+      ${it.status==='available' && can('empc.manage') ? `
+        <button class="btn btn-sm" onclick="openEmpcMarkModal('${c.id}','${it.id}','missing')" title="تسجيل عجز">❌</button>
+        <button class="btn btn-sm" onclick="openEmpcMarkModal('${c.id}','${it.id}','damaged')" title="تسجيل تالف">🗑</button>` : ''}
+      ${it.status==='available' && can('empc.edit') ? `
+        <button class="btn btn-sm" onclick="openEmpcEditModal('${c.id}','${it.id}')" title="تعديل الكمية/السعر">✏️</button>` : ''}
+      ${it.status==='available' && can('empc.transfer') ? `
+        <button class="btn btn-sm" onclick="openEmpcTransferModal('${c.id}','${it.id}')" title="نقل لموظف تاني">🔄</button>` : ''}
+      ${it.status==='available' && can('empc.delete') ? `
+        <button class="btn btn-sm btn-danger" onclick="openEmpcDeleteModal('${c.id}','${it.id}')" title="حذف من العهدة">✖</button>` : ''}
+      ${it.status!=='available' && can('empc.settle') ? `
+        <button class="btn btn-sm btn-accent" onclick="openEmpcSettleModal('${c.id}','${it.id}')">✅ تسوية</button>` : ''}
+    </td>
+  </tr>`).join('')}</tbody></table>
+  </div>`;
+  }).join('') : `<div class="empty">لسه مفيش بنود — ضيف أول بند</div>`}
+  ${(c.history||[]).length?`
+  <div class="dsec">🕘 سجل العهدة الكامل (${c.history.length})</div>
+  <div style="max-height:220px;overflow-y:auto">
+  <table class="tcompact"><thead><tr><th>الوقت</th><th>الحدث</th><th>البند</th><th>القيمة</th><th>قبل ← بعد</th><th>بواسطة</th><th>السبب</th></tr></thead>
+  <tbody>${[...c.history].reverse().map(h=>`<tr>
+    <td style="white-space:nowrap;font-size:11px">${fmtDateTime(h.at)}</td>
+    <td>${h.event==='shortage'?'❌ عجز':h.event==='damage'?'🗑 تالف':h.event==='settle'?'✅ تسوية':h.event==='item_added'?'➕ بند':h.event==='created'?'🧰 إنشاء':h.event==='edited'?'✏️ تعديل':h.event==='removed'?'✖ حذف':h.event==='transfer_out'?'🔄 نقل ↗':h.event==='transfer_in'?'🔄 استلام ↙':h.event}</td>
+    <td>${h.itemName||'—'}${h.category?` <span class="muted" style="font-size:10px">(${h.category})</span>`:''}</td>
+    <td>${h.total!=null?money(h.total):'—'}</td>
+    <td style="font-size:11px">${h.before?h.before+' ← '+h.after:'—'}</td>
+    <td class="muted" style="font-size:11px">${h.by||'—'}</td>
+    <td class="muted" style="font-size:11px">${h.reason||'—'}</td>
+  </tr>`).join('')}</tbody></table></div>`:''}
+  <input type="hidden" id="empcCats" value="${cats.join('|')}">
+  </div>
+  `, 'xwide');
+}
+function openEmpcAddItemModal(custodyId){
+  if(!can('empc.manage')){ toast('مالكش صلاحية إدارة عهدة الموظفين', true); return; }
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const cats = [...new Set([...EMPC_CATEGORIES, ...(c.items||[]).map(it=>it.category)])];
+  openModal(`
+    <h3>➕ إضافة بند للعهدة — ${empcEmpNames(c)}</h3>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">القسم</label>
+        <select class="f" id="empcItemCat">${cats.map(x=>`<option value="${x}">${x}</option>`).join('')}<option value="__new__">➕ قسم جديد...</option></select></div>
+      <div class="form-row"><label class="f-label">اسم القسم الجديد (لو اخترت قسم جديد)</label><input class="f" id="empcItemCatNew" placeholder="مثال: أجهزة قياس"></div>
+    </div>
+    <div class="form-row"><label class="f-label">اسم البند (حر — مفك · أفرول · لابتوب · جهاز فحص...)</label><input class="f" id="empcItemName"></div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">الكمية</label><input class="f" id="empcItemQty" type="number" min="1" value="1"></div>
+      <div class="form-row"><label class="f-label">سعر الوحدة</label><input class="f" id="empcItemPrice" type="number" min="0" step="any"></div>
+    </div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveEmpcItem('${custodyId}')">حفظ البند</button>
+  `);
+}
+async function saveEmpcItem(custodyId){
+  if(!can('empc.manage')){ toast('مالكش صلاحية إدارة عهدة الموظفين', true); return; }
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  let cat = (document.getElementById('empcItemCat')||{}).value;
+  if(cat==='__new__') cat = ((document.getElementById('empcItemCatNew')||{}).value||'').trim();
+  const name = ((document.getElementById('empcItemName')||{}).value||'').trim();
+  const qty = parseFloat((document.getElementById('empcItemQty')||{}).value)||0;
+  const price = parseFloat((document.getElementById('empcItemPrice')||{}).value)||0;
+  if(!cat){ toast('اختار القسم أو اكتب اسم قسم جديد', true); return; }
+  if(!name){ toast('اكتب اسم البند', true); return; }
+  if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
+  const it = { id:uid('eci'), category:cat, name, qty, unitPrice:price, status:'available' };
+  c.items = c.items||[];
+  c.items.push(it);
+  empcLog(c, { event:'item_added', itemName:name, category:cat, qty, unitPrice:price, total:empcItemTotal(it) });
+  await saveKey('empCustody', DB.empCustody);
+  await logAction('🧰 إضافة بند عهدة «'+name+'» ('+cat+') قيمة '+money(empcItemTotal(it))+' — عهدة '+empcEmpNames(c));
+  closeModal(); toast('اتضاف البند'); openEmpCustodyDetail(custodyId); refreshContent();
+}
+/* ============ م140: العجز الجزئي — تسجيل عجز/تالف بجزء من الكمية ============
+   مفك تست ×2 وضاع واحد؟ العجز 400 على قطعة واحدة مش 800 على الاتنين:
+   البند بينقسم لسطرين (متاح 1 + عجز 1). ولقم ×10 عجز 3 ⇒ متاح 7 + عجز 3.
+   والتسوية بترجّع الجزء المتسوي وتدمجه تاني مع سطر المتاح تلقائياً. */
+function openEmpcMarkModal(custodyId, itemId, newStatus){
+  if(!can('empc.manage')){ toast('مالكش صلاحية إدارة عهدة الموظفين', true); return; }
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const it = (c.items||[]).find(x=>x.id===itemId); if(!it) return;
+  if(it.status!=='available'){ toast('البند مش «متاح» — الرجوع لمتاح بيتم بالتسوية بس', true); return; }
+  if((it.qty||0) <= 1){ empcMarkItem(custodyId, itemId, newStatus, 1); return; }   // كمية واحدة — مفيش داعي للسؤال
+  const lbl = newStatus==='missing' ? '❌ تسجيل عجز' : '🗑 تسجيل تالف';
+  openModal(`
+    <h3>${lbl} — ${it.name}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:8px">الكمية الكلية: <b>${it.qty}</b> × ${money(it.unitPrice)} — ${newStatus==='missing'?'ضايع منهم كام؟':'تالف منهم كام؟'}</div>
+    <div class="form-row"><label class="f-label">الكمية ${newStatus==='missing'?'اللي عجزت':'التالفة'} (من أصل ${it.qty})</label>
+      <input class="f" id="empcMarkQty" type="number" min="1" max="${it.qty}" value="1"></div>
+    <div class="card" style="border-right:3px solid var(--accent-2);padding:8px 10px;margin-bottom:10px;font-size:11.5px" id="empcMarkHint">
+      الباقي هيفضل «متاح» بسطره — و${newStatus==='missing'?'العجز بيتحسب على الكمية اللي حددتها بس':'التالف بيتحسب بالكمية اللي حددتها بس (خسارة تشغيلية — مش عجز)'}.</div>
+    <button class="btn ${newStatus==='missing'?'btn-danger':'btn-accent'}" style="width:100%" onclick="empcMarkItem('${custodyId}','${itemId}','${newStatus}', parseFloat((document.getElementById('empcMarkQty')||{}).value)||0)">تأكيد</button>
+  `);
+}
+/* الجرد: متاح ← غير متاح (عجز) أو تالف — بصلاحية الإدارة. الرجوع لمتاح = تسوية بس */
+async function empcMarkItem(custodyId, itemId, newStatus, markQty){
+  if(!can('empc.manage')){ toast('مالكش صلاحية إدارة عهدة الموظفين', true); return; }
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const it = (c.items||[]).find(x=>x.id===itemId); if(!it) return;
+  if(it.status!=='available'){ toast('البند مش «متاح» — الرجوع لمتاح بيتم بالتسوية بس', true); return; }
+  if(newStatus!=='missing' && newStatus!=='damaged') return;
+  /* م140: من غير كمية محددة = البند كله (زي الأول). بكمية محددة = جزئي بحدودها */
+  let q;
+  if(markQty==null || isNaN(parseFloat(markQty))) q = it.qty;
+  else {
+    q = Math.round(parseFloat(markQty));
+    if(q < 1 || q > it.qty){ toast('اكتب كمية صحيحة (من 1 لـ'+it.qty+')', true); return; }
+  }
+  const invDate = new Date().toISOString();
+  const before = EMPC_STATUS['available'];
+  let marked = it;   // السطر اللي هياخد الحالة الجديدة
+  if(q < it.qty){
+    /* م140: انقسام — الباقي بيفضل متاح بسطره، والكمية المحددة بس هي اللي بتتعلم */
+    it.qty -= q;
+    marked = { id:uid('eci'), category:it.category, name:it.name, qty:q, unitPrice:it.unitPrice, status:newStatus };
+    const idx = c.items.indexOf(it);
+    c.items.splice(idx+1, 0, marked);
+  } else {
+    marked.status = newStatus;
+  }
+  marked.statusAt = invDate; marked.statusBy = actorName(); marked.invDate = invDate;
+  /* قاعدة 8 + 10: سجل تاريخي دائم بكل التفاصيل — عمره ما يتمسح */
+  empcLog(c, { event:newStatus==='missing'?'shortage':'damage', itemName:marked.name, category:marked.category,
+    qty:q, unitPrice:marked.unitPrice, total:empcItemTotal(marked), before, after:EMPC_STATUS[newStatus], invDate });
+  await saveKey('empCustody', DB.empCustody);
+  if(newStatus==='missing'){
+    await logAction('❌ تسجيل عجز عهدة على '+empcEmpNames(c)+auditDetails([
+      ['البند', marked.name+' ('+marked.category+')'], ['الكمية', q], ['القيمة', money(empcItemTotal(marked))], ['خلال جرد بتاريخ', fmtDate(invDate)]]));
+    notify('empc_shortage', '❌ عجز عهدة: «'+marked.name+'» ×'+q+' قيمة '+money(empcItemTotal(marked))+' على '+empcEmpNames(c),
+      { category:'hr', refType:'empCustody', refId:c.id, amount:empcItemTotal(marked) });
+  } else {
+    await logAction('🗑 تسجيل تالف/هالك عهدة (خسارة تشغيلية — مش عجز): «'+marked.name+'» ×'+q+' قيمة '+money(empcItemTotal(marked))+' — عهدة '+empcEmpNames(c));
+  }
+  _liveAlertsMemo = { at:0, val:0 };
+  closeModal();
+  toast(newStatus==='missing' ? 'اتسجل عجز '+money(empcItemTotal(marked))+' على '+q+' قطعة' : 'اتسجل تالف ×'+q+' (خسارة تشغيلية — مش محسوب عجز)');
+  openEmpCustodyDetail(custodyId); refreshContent();
+}
+const EMPC_SETTLE_REASONS = ['الموظف لقى البند المفقود','الموظف اشترى بديل من فلوسه','قيمة العجز اتخصمت من الموظف',
+  'الشركة عوّضت البند','تسوية مالية تمت','البند اتصلح','اتضح إن البند سليم وصالح','سبب آخر (اكتبه)'];
+function openEmpcSettleModal(custodyId, itemId){
+  if(!can('empc.settle')){ toast('التسوية محتاجة صلاحية «تسوية عهدة الموظفين» المستقلة', true); return; }
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const it = (c.items||[]).find(x=>x.id===itemId); if(!it || it.status==='available') return;
+  openModal(`
+    <h3>✅ تسوية بند عهدة — ${empcEmpNames(c)}</h3>
+    <div class="card" style="margin-bottom:10px;padding:10px 12px">
+      <b>${it.name}</b> (${it.category}) · الكمية: ${it.qty} · القيمة: <b>${money(empcItemTotal(it))}</b><br>
+      الحالة الحالية: ${empcStatusTag(it.status)} ← بعد التسوية: <span class="tag tag-paid">✅ متاح</span>
+      ${it.status==='missing'?`<div class="muted" style="font-size:11.5px;margin-top:4px">التسوية هتشيل ${money(empcItemTotal(it))} من عجز الموظف القائم فوراً</div>`:''}
+    </div>
+    <div class="form-row"><label class="f-label">سبب التسوية (إلزامي — بيتسجل في السجل وسجل العمليات)</label>
+      <select class="f" id="empcSettleSel" onchange="const t=document.getElementById('empcSettleTxt'); if(t) t.value = this.value==='سبب آخر (اكتبه)'?'':this.value;">
+        <option value="">— اختار السبب —</option>
+        ${EMPC_SETTLE_REASONS.map(r=>`<option value="${r}">${r}</option>`).join('')}
+      </select>
+      <input class="f" id="empcSettleTxt" style="margin-top:6px" placeholder="أو اكتب السبب يدوياً..."></div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveEmpcSettle('${custodyId}','${itemId}')">تأكيد التسوية</button>
+  `);
+}
+async function saveEmpcSettle(custodyId, itemId){
+  /* قاعدة 5+6+7: التسوية بصلاحيتها المستقلة — والحفظ نفسه بيرفض مش الزرار بس */
+  if(!can('empc.settle')){ toast('التسوية محتاجة صلاحية «تسوية عهدة الموظفين» المستقلة', true); return; }
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const it = (c.items||[]).find(x=>x.id===itemId); if(!it) return;
+  if(it.status==='available'){ toast('البند متاح بالفعل', true); return; }
+  const reason = ((document.getElementById('empcSettleTxt')||{}).value||'').trim();
+  if(!reason){ toast('سبب التسوية إلزامي — اختار من القايمة أو اكتبه', true); return; }
+  const before = EMPC_STATUS[it.status];
+  const wasMissing = it.status==='missing';
+  it.status = 'available';
+  it.settledAt = new Date().toISOString(); it.settledBy = actorName();
+  /* قاعدة 9+10+14+15: سجل تسوية دائم — وسجل العجز الأصلي فاضل زي ما هو */
+  empcLog(c, { event:'settle', itemName:it.name, category:it.category, qty:it.qty, unitPrice:it.unitPrice,
+    total:empcItemTotal(it), before, after:'متاح', reason });
+  /* م140: لو البند كان جزء متقسم (عجز جزئي) — بعد التسوية بيندمج تاني مع سطر المتاح */
+  const sib = (c.items||[]).find(x=>x.id!==it.id && x.status==='available'
+    && x.category===it.category && x.name===it.name && x.unitPrice===it.unitPrice);
+  if(sib){ sib.qty += it.qty; c.items = c.items.filter(x=>x.id!==it.id); }
+  await saveKey('empCustody', DB.empCustody);
+  await logAction('✅ تسوية عهدة '+empcEmpNames(c)+auditDetails([
+    ['البند', it.name+' ('+it.category+')'], ['القيمة', money(empcItemTotal(it))],
+    ['الحالة', before+' ← متاح'], ['السبب', reason]]));
+  notify('empc_settle', '✅ تسوية عهدة: «'+it.name+'» ('+before+' ← متاح) — '+empcEmpNames(c)+' — السبب: '+reason,
+    { category:'hr', refType:'empCustody', refId:c.id, amount:empcItemTotal(it), reason });
+  _liveAlertsMemo = { at:0, val:0 };
+  closeModal();
+  toast(wasMissing ? 'اتسوّى العجز — '+money(empcItemTotal(it))+' اتشالت من العجز القائم' : 'اتسوّى البند التالف');
+  openEmpCustodyDetail(custodyId); refreshContent();
+}
+/* ============ م138: تعديل / حذف / نقل — تلات صلاحيات مستقلة ============
+   قاعدة الحوكمة (قرار سيف): التلاتة للبنود «المتاحة ✅» فقط — البند
+   الناقص أو التالف لازم يتسوى الأول بصلاحية التسوية وسببها، وإلا الحذف
+   أو النقل يبقى باب خلفي بيطيّر العجز من غير مساءلة. */
+function empcItemEditable(it){ return it && it.status==='available'; }
+function openEmpcEditModal(custodyId, itemId){
+  if(!can('empc.edit')){ toast('مالكش صلاحية تعديل كمية وسعر العهدة', true); return; }
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const it = (c.items||[]).find(x=>x.id===itemId); if(!it) return;
+  if(!empcItemEditable(it)){ toast('البند مش «متاح» — لازم يتسوى الأول قبل أي تعديل', true); return; }
+  openModal(`
+    <h3>✏️ تعديل بند عهدة — ${empcEmpNames(c)}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:8px"><b>${it.name}</b> (${it.category}) — التعديل على نفس السجل، مفيش تسجيل مكرر. التاريخ القديم بأرقامه ثابت.</div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">الكمية</label><input class="f" id="empcEdQty" type="number" min="1" value="${it.qty}"></div>
+      <div class="form-row"><label class="f-label">سعر الوحدة</label><input class="f" id="empcEdPrice" type="number" min="0" step="any" value="${it.unitPrice}"></div>
+    </div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveEmpcEdit('${custodyId}','${itemId}')">حفظ التعديل</button>
+  `);
+}
+async function saveEmpcEdit(custodyId, itemId){
+  if(!can('empc.edit')){ toast('مالكش صلاحية تعديل كمية وسعر العهدة', true); return; }
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const it = (c.items||[]).find(x=>x.id===itemId); if(!it) return;
+  if(!empcItemEditable(it)){ toast('البند مش «متاح» — لازم يتسوى الأول قبل أي تعديل', true); return; }
+  const qty = parseFloat((document.getElementById('empcEdQty')||{}).value)||0;
+  const price = parseFloat((document.getElementById('empcEdPrice')||{}).value)||0;
+  if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
+  const beforeQty = it.qty, beforePrice = it.unitPrice, beforeTotal = empcItemTotal(it);
+  if(qty===beforeQty && price===beforePrice){ closeModal(); return; }
+  it.qty = qty; it.unitPrice = price;
+  empcLog(c, { event:'edited', itemName:it.name, category:it.category, qty, unitPrice:price, total:empcItemTotal(it),
+    before:'كمية '+beforeQty+' × '+money(beforePrice), after:'كمية '+qty+' × '+money(price) });
+  await saveKey('empCustody', DB.empCustody);
+  await logAction('✏️ تعديل بند عهدة '+empcEmpNames(c)+auditDetails([
+    ['البند', it.name+' ('+it.category+')'],
+    ['الكمية', beforeQty+' ← '+qty], ['سعر الوحدة', money(beforePrice)+' ← '+money(price)],
+    ['الإجمالي', money(beforeTotal)+' ← '+money(empcItemTotal(it))]]));
+  closeModal(); toast('اتعدل البند'); openEmpCustodyDetail(custodyId); refreshContent();
+}
+function openEmpcDeleteModal(custodyId, itemId){
+  if(!can('empc.delete')){ toast('مالكش صلاحية حذف بنود العهدة', true); return; }
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const it = (c.items||[]).find(x=>x.id===itemId); if(!it) return;
+  if(!empcItemEditable(it)){ toast('البند مش «متاح» — لازم يتسوى الأول قبل الحذف (عشان العجز مايتمسحش من غير تسوية)', true); return; }
+  askConfirmReason('حذف «'+it.name+'» ('+it.category+') قيمة '+money(empcItemTotal(it))+' من عهدة '+empcEmpNames(c)+'؟<br><span class="muted" style="font-size:12px">البند هيتشال من العهدة الحالية — لكن الأثر التاريخي (مين حذف وامتى وليه) هيفضل محفوظ للأبد في سجل العهدة وسجل العمليات.</span>',
+    (reason)=>saveEmpcDelete(custodyId, itemId, reason));
+}
+async function saveEmpcDelete(custodyId, itemId, reason){
+  if(!can('empc.delete')){ toast('مالكش صلاحية حذف بنود العهدة', true); return; }
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const it = (c.items||[]).find(x=>x.id===itemId); if(!it) return;
+  if(!empcItemEditable(it)){ toast('البند مش «متاح» — لازم يتسوى الأول قبل الحذف', true); return; }
+  if(!String(reason||'').trim()){ toast('سبب الحذف إلزامي', true); return; }
+  c.items = c.items.filter(x=>x.id!==itemId);
+  /* الأثر التاريخي دائم — البند اتشال من العهدة مش من التاريخ */
+  empcLog(c, { event:'removed', itemName:it.name, category:it.category, qty:it.qty, unitPrice:it.unitPrice,
+    total:empcItemTotal(it), before:'متاح', after:'محذوف من العهدة', reason:String(reason).trim() });
+  await saveKey('empCustody', DB.empCustody);
+  await logAction('✖ حذف بند من عهدة '+empcEmpNames(c)+auditDetails([
+    ['البند', it.name+' ('+it.category+')'], ['الكمية', it.qty], ['القيمة', money(empcItemTotal(it))],
+    ['السبب', String(reason).trim()]]));
+  closeModal(); toast('اتشال البند من العهدة — والأثر التاريخي محفوظ'); openEmpCustodyDetail(custodyId); refreshContent();
+}
+function openEmpcTransferModal(custodyId, itemId){
+  if(!can('empc.transfer')){ toast('مالكش صلاحية نقل العهدة بين الموظفين', true); return; }
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const it = (c.items||[]).find(x=>x.id===itemId); if(!it) return;
+  if(!empcItemEditable(it)){ toast('البند مش «متاح» — مسؤولية العجز ماتتنقلش، لازم يتسوى الأول', true); return; }
+  const otherCustodies = DB.empCustody.filter(x=>x.id!==custodyId);
+  const inCustody = new Set(DB.empCustody.flatMap(x=>x.employeeIds||[]));
+  const freeEmps = DB.employees.filter(e=>e.status!=='موقوف' && !inCustody.has(e.id));
+  if(!otherCustodies.length && !freeEmps.length){ toast('مفيش موظف تاني ينفع ينقله البند', true); return; }
+  openModal(`
+    <h3>🔄 نقل بند عهدة — ${it.name}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:8px">من: <b>${empcEmpNames(c)}</b> · الكمية: ${it.qty} · القيمة: ${money(empcItemTotal(it))}</div>
+    <div class="form-row"><label class="f-label">ينتقل إلى</label>
+      <select class="f" id="empcTrTarget">
+        ${otherCustodies.map(x=>`<option value="cust:${x.id}">عهدة: ${empcEmpNames(x)}</option>`).join('')}
+        ${freeEmps.map(e=>`<option value="emp:${e.id}">موظف جديد: ${e.name} (هتتعمله عهدة تلقائياً)</option>`).join('')}
+      </select></div>
+    <div class="card" style="border-right:3px solid var(--accent-2);padding:8px 10px;margin-bottom:10px;font-size:11.5px">
+      النقل بيتسجل في عهدة الاتنين وفي سجل العمليات: من مين ← لمين · البند · الكمية · السعر · التاريخ · المنفّذ.</div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveEmpcTransfer('${custodyId}','${itemId}')">تأكيد النقل</button>
+  `);
+}
+async function saveEmpcTransfer(custodyId, itemId){
+  if(!can('empc.transfer')){ toast('مالكش صلاحية نقل العهدة بين الموظفين', true); return; }
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const it = (c.items||[]).find(x=>x.id===itemId); if(!it) return;
+  if(!empcItemEditable(it)){ toast('البند مش «متاح» — لازم يتسوى الأول قبل النقل', true); return; }
+  const target = ((document.getElementById('empcTrTarget')||{}).value||'');
+  if(!target){ toast('اختار المستلم', true); return; }
+  let dest = null;
+  if(target.startsWith('cust:')) dest = DB.empCustody.find(x=>x.id===target.slice(5));
+  else if(target.startsWith('emp:')){
+    const empId = target.slice(4);
+    dest = { id:uid('empc'), employeeIds:[empId], items:[], history:[], createdAt:new Date().toISOString(), createdBy:actorName() };
+    empcLog(dest, { event:'created', desc:'إنشاء تلقائي عند استلام نقل' });
+    DB.empCustody.push(dest);
+  }
+  if(!dest || dest.id===c.id){ toast('المستلم غير صحيح', true); return; }
+  const fromNames = empcEmpNames(c), toNames = empcEmpNames(dest);
+  c.items = c.items.filter(x=>x.id!==itemId);
+  dest.items = dest.items||[];
+  dest.items.push(it);   // بينتقل بحالته «متاح» زي ما هو
+  const det = { itemName:it.name, category:it.category, qty:it.qty, unitPrice:it.unitPrice, total:empcItemTotal(it) };
+  empcLog(c,    { event:'transfer_out', ...det, before:fromNames, after:toNames });
+  empcLog(dest, { event:'transfer_in',  ...det, before:fromNames, after:toNames });
+  await saveKey('empCustody', DB.empCustody);
+  await logAction('🔄 نقل بند عهدة'+auditDetails([
+    ['البند', it.name+' ('+it.category+')'], ['الكمية', it.qty], ['سعر الوحدة', money(it.unitPrice)],
+    ['القيمة', money(empcItemTotal(it))], ['من', fromNames], ['إلى', toNames]]));
+  closeModal(); toast('اتنقل البند من '+fromNames+' إلى '+toNames); openEmpCustodyDetail(dest.id); refreshContent();
+}
+/* الطباعة والإكسل — بهيكل الأقسام + الإجماليات الثلاثة منفصلة (قاعدة 17) */
+function empCustodyPrintHTML(c){
+  const t = empcTotals(c);
+  const byCat = {};
+  (c.items||[]).forEach(it=>{ (byCat[it.category||'أخرى'] = byCat[it.category||'أخرى']||[]).push(it); });
+  return `
+  <div style="direction:rtl;text-align:right;font-size:13px">
+    <h2 style="text-align:center;margin:4px 0">${DB.settings.centerName||''} — كشف عهدة موظف</h2>
+    <div style="text-align:center;margin-bottom:10px">الموظف: <b>${empcEmpNames(c)}</b> · تاريخ الطباعة: ${fmtDate(new Date().toISOString())} · للجرد الشهري الفعلي</div>
+    ${Object.entries(byCat).map(([cat,items])=>`
+      <h3 style="border-bottom:1.5px solid #222;padding-bottom:3px">${cat}</h3>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:10px">
+        <thead><tr style="background:#eee"><th style="border:1px solid #999;padding:4px">البند</th><th style="border:1px solid #999;padding:4px">الكمية</th><th style="border:1px solid #999;padding:4px">القيمة</th><th style="border:1px solid #999;padding:4px">الحالة بالسيستم</th><th style="border:1px solid #999;padding:4px">نتيجة الجرد الفعلي</th></tr></thead>
+        <tbody>${items.map(it=>`<tr>
+          <td style="border:1px solid #999;padding:4px">${it.name}</td>
+          <td style="border:1px solid #999;padding:4px">${it.qty}</td>
+          <td style="border:1px solid #999;padding:4px">${money(empcItemTotal(it))}</td>
+          <td style="border:1px solid #999;padding:4px">${EMPC_STATUS[it.status]}</td>
+          <td style="border:1px solid #999;padding:4px">&nbsp;</td></tr>`).join('')}</tbody>
+      </table>`).join('')}
+    <div style="border:1.5px solid #222;border-radius:8px;padding:8px 12px;margin-top:8px">
+      <b>إجمالي قيمة العهدة:</b> ${money(t.value)} &nbsp;·&nbsp;
+      <b>إجمالي العجز (على الموظف):</b> ${money(t.shortage)} &nbsp;·&nbsp;
+      <b>إجمالي التالف/الهالك (خسارة تشغيلية):</b> ${money(t.damaged)}
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:30px;padding:0 18px">
+      <div style="text-align:center"><div style="border-top:1.5px solid #222;padding-top:5px;min-width:150px">توقيع الموظف</div></div>
+      <div style="text-align:center"><div style="border-top:1.5px solid #222;padding-top:5px;min-width:150px">توقيع المسؤول</div></div>
+    </div>
+  </div>`;
+}
+function printEmpCustody(custodyId){
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  logAction('🖨 طباعة كشف عهدة '+empcEmpNames(c));
+  downloadHTML(empCustodyPrintHTML(c), 'عهدة-'+empcEmpNames(c).replace(/[\\/:*?"<>|]/g,'-'));
+}
+function empCustodyCSVContent(c){
+  const t = empcTotals(c);
+  const rows = [['الموظف', empcEmpNames(c)], [],
+    ['القسم','البند','الكمية','سعر الوحدة','الإجمالي','الحالة']];
+  const byCat = {};
+  (c.items||[]).forEach(it=>{ (byCat[it.category||'أخرى'] = byCat[it.category||'أخرى']||[]).push(it); });
+  Object.entries(byCat).forEach(([cat,items])=>{
+    items.forEach(it=>rows.push([cat, it.name, it.qty, it.unitPrice, empcItemTotal(it), EMPC_STATUS[it.status]]));
+  });
+  rows.push([]);
+  rows.push(['إجمالي قيمة العهدة','','','', t.value, '']);
+  rows.push(['إجمالي العجز (على الموظف)','','','', t.shortage, '']);
+  rows.push(['إجمالي التالف/الهالك (خسارة تشغيلية)','','','', t.damaged, '']);
+  return '﻿' + rows.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+}
+function exportEmpCustodyCSV(custodyId){
+  const c = DB.empCustody.find(x=>x.id===custodyId); if(!c) return;
+  const blob = new Blob([empCustodyCSVContent(c)], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'عهدة-'+empcEmpNames(c).replace(/[\\/:*?"<>|]/g,'-')+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  logAction('⬇ تصدير Excel لعهدة '+empcEmpNames(c));
+  toast('اتصدّر كشف العهدة Excel');
+}
 /* ============ م90: مهلة سداد المديونية بقت متحكّم فيها من الإعدادات ============
    طلب سيف: «عايز مهلة سداد المديونية سواء أفراد أو شركات تظهر في عتبات مركز
    الإشعارات عشان أتحكم فيها براحتي». قبل كده كانت أرقام ثابتة في الكود
@@ -14443,12 +15164,475 @@ function overdueCustodiesAlert(){ return (typeof overdueCustodies==='function') 
    فبنخزّن نتيجته 5 ثواني بدل ما نعيد كل الحسابات مع كل ضغطة زرار.
    تأخير 5 ثواني في بادچ عدّاد مايفرقش، والسرعة بترجع لكل السيستم. */
 let _liveAlertsMemo = { at: 0, val: 0 };
+/* ============================================================
+   م143 — شاشة «خدمة العملاء» 🎧 (v156)
+   ------------------------------------------------------------
+   متابعة العملاء بعد الفوترة: كل فاتورة صادرة بتظهر تلقائياً، وموظف
+   خدمة العملاء بيتصل ويسجل الرضا (بتعليق إجباري في الحالات التلاتة).
+   قواعد سيف الثابتة:
+   - الرضا مربوط بالفاتورة نفسها — مش حالة عامة للعميل.
+   - «غير راضي» ⇒ شكوى بتتفتح تلقائياً + عدّاد Live «عملاء غير راضيين»
+     في مركز الإشعارات (بيعدّ **العملاء** مش الشكاوى، وفتح الإشعار مش
+     بيصفّر حاجة — الحل الرسمي بس هو اللي بينزّل العدد).
+   - حل الشكوى صلاحية منفصلة + سبب حل إلزامي — وبعد الحل الحالة بتبقى
+     «راضي — بعد حل المشكلة» والتاريخ كله (عدم الرضا الأصلي والشكوى
+     والمتابعات) بيفضل محفوظ للأبد. مفيش أي حذف لأي أثر.
+   - مع شكوى مفتوحة: تسجيل الرضا مقفول — التغيير الوحيد عن طريق الحل.
+   - الفواتير الملغية: بتختفي لو مالهاش سجل خدمة عملاء، وبتفضل ظاهرة
+     بشارة «ملغاة» لو عليها سجل (قرار سيف م143).
+   - مفيش أي نسخ للبيانات — الشاشة بتقرا من الفواتير والأوامر والعملاء
+     الموجودين، وسجل الخدمة نفسه في جدول مستقل cs_cases.
+   ============================================================ */
+const CS_SAT_LABEL = { satisfied:'😊 راضي', neutral:'😐 محايد', unsatisfied:'😞 غير راضي' };
+const CS_COMPLAINT_STATUS = {
+  new:'جديدة', pending:'في انتظار المتابعة', contacted:'تم التواصل مع العميل',
+  inprogress:'جاري الحل', waiting:'في انتظار الحل',
+  resolved:'تم الحل', closed:'مقفولة نهائياً'
+};
+const CS_OPEN_STATUSES = ['new','pending','contacted','inprogress','waiting'];
+const CS_PRESETS = [['all','الكل'],['today','اليوم'],['7d','آخر 7 أيام'],['14d','آخر 14 يوم'],['30d','آخر 30 يوم'],['custom','فترة مخصوصة']];
+let csFilter = { preset:'30d', from:'', to:'' };   /* الافتراضي آخر 30 يوم — عشان الشاشة ماتغرقش بالقديم (قرار سيف) */
+let csSearch = '';
+let csSatFilter = '';
+let csCompFilter = '';
+let csEmpFilter = '';
+let csView = 'cases';   /* cases | complaints | resolved */
+
+function csCaseOf(invoiceId){ return DB.csCases.find(c=>c.invoiceId===invoiceId) || null; }
+function csEnsureCase(inv){
+  let c = csCaseOf(inv.id);
+  if(c) return c;
+  c = { id:uid('cs'), csNo: nextNo(DB.csCases,'csNo'), invoiceId:inv.id, jobId:inv.jobId||null,
+    customerId:inv.customerId, satisfaction:null, satisfactionLog:[], complaints:[], history:[] };
+  DB.csCases.push(c);
+  return c;
+}
+/* الأثر الدائم — كل حدث بيتسجل هنا وعمره ما بيتمسح */
+function csLog(c, event, details){
+  c.history.push({ id:uid('csh'), at:new Date().toISOString(), by:actorName(), event, details:String(details||'') });
+}
+function csComplaints(c){ return (c && Array.isArray(c.complaints)) ? c.complaints : []; }
+/* الشكوى المفتوحة حالياً (لو فيه) — آخر شكوى ولسه حالتها من الحالات المفتوحة */
+function csActiveComplaint(c){
+  const arr = csComplaints(c); const last = arr[arr.length-1];
+  return (last && CS_OPEN_STATUSES.includes(last.status)) ? last : null;
+}
+/* الحالة المعروضة للفاتورة — مربوطة بالفاتورة نفسها مش بالعميل */
+function csStatusOf(invId){
+  const c = csCaseOf(invId);
+  if(!c || !c.satisfaction) return { key:'none', label:'لسه ما اتسجلش رضا', cls:'tag-received' };
+  if(csActiveComplaint(c)) return { key:'unsatisfied', label:'😞 غير راضي — المشكلة لسه', cls:'tag-unpaid' };
+  if(c.satisfaction.viaResolve) return { key:'resolvedSat', label:'😊 راضي — بعد حل المشكلة', cls:'tag-paid' };
+  if(c.satisfaction.status==='satisfied') return { key:'satisfied', label:'😊 راضي', cls:'tag-paid' };
+  if(c.satisfaction.status==='neutral') return { key:'neutral', label:'😐 محايد', cls:'tag-working' };
+  return { key:'unsatisfied', label:'😞 غير راضي', cls:'tag-unpaid' };
+}
+/* سطر لكل شكوى مفتوحة — للبانل والقوائم */
+function csUnhappyList(){
+  const out = [];
+  DB.csCases.forEach(c=>{ const comp = csActiveComplaint(c); if(comp) out.push({ c, comp }); });
+  return out;
+}
+/* العدّاد الحي = عدد **العملاء** — عميل عنده شكوتين بيتحسب مرة واحدة (قرار سيف) */
+function csUnhappyCustomers(){ return [...new Set(csUnhappyList().map(x=>x.c.customerId))]; }
+function csLastFollowup(comp){ const f = comp.followups||[]; return f[f.length-1] || null; }
+function csResponsible(comp){ const lf = csLastFollowup(comp); return lf ? lf.by : (comp.openedBy||'—'); }
+function csInRange(d){
+  const r = repRangeOf(csFilter); if(!r) return true;
+  const x = new Date(d); return x>=r.from && x<=r.to;
+}
+function setCsFilter(k,v){
+  csFilter[k]=v;
+  if(k==='preset' && v!=='custom'){ csFilter.from=''; csFilter.to=''; }
+  refreshContent();
+}
+function setCsView(v){ csView = v; refreshContent(); }
+/* من مركز الإشعارات: «سجل العميل» — بيوديك لشاشة خدمة العملاء متفلترة عليه */
+function csFocusCustomer(customerId){
+  const cu = DB.customers.find(x=>x.id===customerId);
+  csSearch = cu ? (cu.phone || cu.name || '') : '';
+  csFilter = { preset:'all', from:'', to:'' };   // سجله كله مش آخر 30 يوم بس
+  csSatFilter=''; csCompFilter=''; csEmpFilter='';
+  csView = 'cases';
+  goTab('custservice');
+}
+/* المصدر الواحد لصفوف الشاشة — الفلاتر كلها بتعدي من هنا (زي м136) */
+function csRowsData(){
+  let out = DB.invoices
+    .filter(inv=>{ const c = csCaseOf(inv.id); return inv.cancelled ? !!c : true; })
+    .filter(inv=>csInRange(inv.date))
+    .map(inv=>{
+      const cse = csCaseOf(inv.id);
+      const cust = DB.customers.find(x=>x.id===inv.customerId)||{};
+      const job = inv.jobId ? DB.jobs.find(j=>j.id===inv.jobId) : null;
+      const car = job ? DB.cars.find(x=>x.id===job.carId) : null;
+      return { inv, cse, cust, job, car, st: csStatusOf(inv.id) };
+    });
+  if(csSatFilter) out = out.filter(r=>r.st.key===csSatFilter);
+  if(csCompFilter) out = out.filter(r=>{
+    const arr = r.cse ? csComplaints(r.cse) : [];
+    return arr.some(comp=>comp.status===csCompFilter);
+  });
+  if(csEmpFilter) out = out.filter(r=>{
+    const c = r.cse; if(!c) return false;
+    const names = [];
+    (c.satisfactionLog||[]).forEach(s=>names.push(s.by));
+    csComplaints(c).forEach(comp=>{ names.push(comp.openedBy); (comp.followups||[]).forEach(f=>names.push(f.by)); });
+    return names.filter(Boolean).includes(csEmpFilter);
+  });
+  /* سمارت سيرش: اسم · موبايل · فاتورة · أمر شغل · بيانات العربية */
+  const tokens = normSearch(csSearch).split(' ').filter(t=>t.length>=1);
+  if(tokens.length){
+    out = out.filter(r=>{
+      const hay = normSearch([r.cust.name, r.cust.phone, r.cust.phone2, r.inv.invNo,
+        r.job?r.job.jobNo:'', r.car?r.car.plate:'', r.car?carLabel(r.car):'']
+        .filter(x=>x!==undefined && x!==null && x!=='').join(' '));
+      return tokens.every(t=>hay.includes(t));
+    });
+  }
+  out.sort((a,b)=>new Date(b.inv.date)-new Date(a.inv.date));
+  return out;
+}
+/* المؤشرات — من نفس الصفوف المعروضة (مصدر واحد) */
+function csStats(rows){
+  const contacted = rows.filter(r=>r.cse && r.cse.satisfaction);
+  const sat = rows.filter(r=>r.st.key==='satisfied' || r.st.key==='resolvedSat');
+  const neu = rows.filter(r=>r.st.key==='neutral');
+  const unsat = rows.filter(r=>r.st.key==='unsatisfied');
+  const comps = rows.flatMap(r=>r.cse ? csComplaints(r.cse) : []);
+  const open = comps.filter(x=>CS_OPEN_STATUSES.includes(x.status) && x.status!=='inprogress');
+  const inprog = comps.filter(x=>x.status==='inprogress');
+  const resolved = comps.filter(x=>x.status==='resolved' || x.status==='closed');
+  const satRate = contacted.length ? Math.round(sat.length/contacted.length*100) : 0;
+  const resRate = comps.length ? Math.round(resolved.length/comps.length*100) : 0;
+  return { contacted:contacted.length, sat:sat.length, neu:neu.length, unsat:unsat.length,
+    open:open.length, inprog:inprog.length, resolved:resolved.length, satRate, resRate };
+}
+/* كل الشكاوى (مفتوحة أو منتهية) — مش متأثرة بفلتر التاريخ عشان المتابعة ماتضيعش */
+function csComplaintRows(openOnly){
+  const list = [];
+  DB.csCases.forEach(c=>{ csComplaints(c).forEach(comp=>{
+    const isOpen = CS_OPEN_STATUSES.includes(comp.status);
+    if(openOnly ? isOpen : !isOpen) list.push({ c, comp });
+  });});
+  list.sort((a,b)=>new Date(b.comp.openedAt)-new Date(a.comp.openedAt));
+  return list;
+}
+function csComplaintsTableHTML(list, openMode){
+  return `
+  <div class="card"><table><thead><tr><th>الشكوى</th><th>العميل</th><th>📞</th><th>الفاتورة</th><th>الأمر</th><th>العربية</th><th>تاريخ الشكوى</th><th>السبب</th><th>الحالة</th><th>آخر متابعة</th><th>المسؤول</th><th></th></tr></thead>
+  <tbody>${list.length? list.map(x=>{
+    const cust = DB.customers.find(cc=>cc.id===x.c.customerId)||{};
+    const inv = DB.invoices.find(i=>i.id===x.c.invoiceId)||{};
+    const job = x.c.jobId ? DB.jobs.find(j=>j.id===x.c.jobId) : null;
+    const car = job ? DB.cars.find(cc=>cc.id===job.carId) : null;
+    const lf = csLastFollowup(x.comp);
+    return `<tr>
+    <td>#${x.comp.complaintNo}</td>
+    <td style="font-weight:700">${cust.name||'—'}</td>
+    <td style="white-space:nowrap;direction:ltr">${cust.phone||'—'}</td>
+    <td>#${inv.invNo||'—'}</td><td>${job?'#'+job.jobNo:'—'}</td>
+    <td class="muted" style="font-size:11.5px">${car?car.plate:'—'}</td>
+    <td style="white-space:nowrap;font-size:12px">${fmtDate(x.comp.openedAt)}</td>
+    <td class="muted" style="font-size:12px;max-width:170px">${x.comp.reason}</td>
+    <td><span class="tag ${openMode?'tag-unpaid':'tag-paid'}" style="font-size:10.5px">${CS_COMPLAINT_STATUS[x.comp.status]||x.comp.status}</span></td>
+    <td class="muted" style="font-size:11.5px;max-width:150px">${lf?(lf.note+' — '+fmtDate(lf.at)):(openMode?'لسه مفيش':'—')}</td>
+    <td style="font-size:12px">${openMode?csResponsible(x.comp):(x.comp.resolvedBy||'—')}</td>
+    <td style="white-space:nowrap">
+      ${can('cs.complaint')?`<button class="btn btn-sm btn-accent" onclick="openCsComplaintModal('${x.c.id}')">📣 التفاصيل</button> `:''}
+      ${(!openMode && x.comp.status==='resolved' && can('cs.resolve'))?`<button class="btn btn-sm" onclick="saveCsClose('${x.c.id}')">🔒 إقفال نهائي</button>`:''}
+    </td></tr>`;
+  }).join('') : `<tr><td colspan="12" class="empty">${openMode?'مفيش شكاوى مفتوحة — تمام 👌':'مفيش شكاوى محلولة لسه'}</td></tr>`}</tbody></table>
+  ${openMode?'':'<div class="muted" style="font-size:11.5px;margin-top:6px">الشكوى المحلولة بتفضل بكل تاريخها (السبب الأصلي والمتابعات وتفاصيل الحل) — مفيش أي حذف.</div>'}</div>`;
+}
+function renderCustService(){
+  const rows = csRowsData();
+  const st = csStats(rows);
+  const openComps = csComplaintRows(true);
+  const doneComps = csComplaintRows(false);
+  const empNames = [...new Set(DB.csCases.flatMap(c=>{
+    const n = [];
+    (c.satisfactionLog||[]).forEach(s=>n.push(s.by));
+    csComplaints(c).forEach(comp=>{ n.push(comp.openedBy); (comp.followups||[]).forEach(f=>n.push(f.by)); });
+    return n;
+  }).filter(Boolean))].sort();
+  return `
+  <div class="muted" style="font-size:12.5px;margin-bottom:12px">🎧 متابعة العملاء بعد الفوترة — كل فاتورة صادرة بتظهر هنا تلقائياً: كلّم العميل، سجّل رضاه (بتعليق إجباري)، و«غير الراضي» بتتفتح له شكوى تلقائياً وبتفضل قدامك لحد ما تتحل رسمياً.</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+    <button class="btn btn-sm ${csView==='cases'?'btn-accent':''}" onclick="setCsView('cases')">📋 الفواتير والمتابعة (${rows.length})</button>
+    <button class="btn btn-sm ${csView==='complaints'?'btn-accent':''}" onclick="setCsView('complaints')">🚨 شكاوى مفتوحة (${openComps.length})</button>
+    <button class="btn btn-sm ${csView==='resolved'?'btn-accent':''}" onclick="setCsView('resolved')">✅ شكاوى محلولة (${doneComps.length})</button>
+  </div>
+  ${csView==='cases'?`
+  <div class="card" style="padding:8px 10px;margin-bottom:10px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span class="muted" style="font-size:12px">📅 فترة الفواتير:</span>
+      ${CS_PRESETS.map(([id,lbl])=>`<button class="btn btn-sm ${csFilter.preset===id?'btn-accent':''}" onclick="setCsFilter('preset','${id}')">${lbl}</button>`).join('')}
+    </div>
+    ${csFilter.preset==='custom'?`<div class="grid g2" style="max-width:420px;margin-top:8px">
+      <div class="form-row" style="margin:0"><label class="f-label">من تاريخ</label><input class="f" type="date" value="${csFilter.from}" onchange="setCsFilter('from',this.value)"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${csFilter.to}" onchange="setCsFilter('to',this.value)"></div>
+    </div>`:''}
+    <div class="grid g4" style="margin-top:8px">
+      <div class="form-row" style="margin:0"><label class="f-label">🔎 سمارت سيرش</label>
+        <input class="f" placeholder="اسم · موبايل · فاتورة · أمر شغل · عربية..." value="${csSearch.replace(/"/g,'&quot;')}" oninput="csSearch=this.value;refreshContent()"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">حالة الرضا</label>
+        <select class="f" onchange="csSatFilter=this.value;refreshContent()">
+          <option value="">الكل</option>
+          <option value="none" ${csSatFilter==='none'?'selected':''}>لسه ما اتسجلش</option>
+          <option value="satisfied" ${csSatFilter==='satisfied'?'selected':''}>😊 راضي</option>
+          <option value="neutral" ${csSatFilter==='neutral'?'selected':''}>😐 محايد</option>
+          <option value="unsatisfied" ${csSatFilter==='unsatisfied'?'selected':''}>😞 غير راضي</option>
+          <option value="resolvedSat" ${csSatFilter==='resolvedSat'?'selected':''}>😊 راضي — بعد حل المشكلة</option>
+        </select></div>
+      <div class="form-row" style="margin:0"><label class="f-label">حالة الشكوى</label>
+        <select class="f" onchange="csCompFilter=this.value;refreshContent()">
+          <option value="">الكل</option>
+          ${Object.entries(CS_COMPLAINT_STATUS).map(([k,v])=>`<option value="${k}" ${csCompFilter===k?'selected':''}>${v}</option>`).join('')}
+        </select></div>
+      <div class="form-row" style="margin:0"><label class="f-label">موظف خدمة العملاء</label>
+        <select class="f" onchange="csEmpFilter=this.value;refreshContent()">
+          <option value="">الكل</option>
+          ${empNames.map(n=>`<option value="${n.replace(/"/g,'&quot;')}" ${csEmpFilter===n?'selected':''}>${n}</option>`).join('')}
+        </select></div>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-bottom:10px">
+    ${stat(String(st.contacted),'📞 اتسجل لهم رضا')}
+    ${stat(st.satRate+'%','😊 نسبة الرضا')}
+    ${stat(st.resRate+'%','✅ نسبة حل الشكاوى')}
+  </div>
+  <div class="grid g3" style="margin-bottom:10px">
+    ${stat(String(st.sat),'😊 راضي')}
+    ${stat(String(st.neu),'😐 محايد')}
+    ${stat(String(st.unsat),'😞 غير راضي', st.unsat>0)}
+  </div>
+  <div class="grid g3" style="margin-bottom:14px">
+    ${stat(String(st.open),'🚨 شكاوى مفتوحة', st.open>0)}
+    ${stat(String(st.inprog),'🔧 جاري الحل')}
+    ${stat(String(st.resolved),'✅ شكاوى محلولة')}
+  </div>
+  <div class="card"><table><thead><tr><th>الفاتورة</th><th>العميل</th><th>📞</th><th>الأمر</th><th>العربية</th><th>التاريخ</th><th>الإجمالي</th><th>حالة الرضا</th><th>الشكوى</th><th></th></tr></thead>
+  <tbody>${rows.length? rows.map(r=>{
+    const c = r.cse;
+    const comp = c ? csActiveComplaint(c) : null;
+    const arr = c ? csComplaints(c) : [];
+    const lastComp = arr[arr.length-1] || null;
+    return `<tr>
+    <td>#${r.inv.invNo}${r.inv.cancelled?' <span class="tag tag-cancel" style="font-size:10px">🚫 ملغاة</span>':''}</td>
+    <td style="font-weight:700">${r.cust.name||'—'} <span class="muted" style="font-size:10.5px">${r.cust.custType||'فرد'}</span></td>
+    <td style="white-space:nowrap;direction:ltr">${r.cust.phone||'—'}</td>
+    <td>${r.job?'#'+r.job.jobNo:'—'}</td>
+    <td class="muted" style="font-size:11.5px;max-width:140px">${r.car?(r.car.plate+' — '+carLabel(r.car)):'—'}</td>
+    <td style="white-space:nowrap;font-size:12px">${fmtDate(r.inv.date)}</td>
+    <td>${money(r.inv.total)}</td>
+    <td><span class="tag ${r.st.cls}" style="font-size:10.5px">${r.st.label}</span></td>
+    <td>${lastComp?`<span class="tag ${CS_OPEN_STATUSES.includes(lastComp.status)?'tag-unpaid':'tag-paid'}" style="font-size:10.5px">${CS_COMPLAINT_STATUS[lastComp.status]}</span>`:'<span class="muted">—</span>'}</td>
+    <td style="white-space:nowrap">
+      ${can('cs.history')?`<button class="btn btn-sm" onclick="csOpenInvHistory('${r.inv.id}')">🕘 سجل الفاتورة</button> `:''}
+      ${(r.job && can('cs.report'))?`<button class="btn btn-sm" onclick="csOpenWOReport('${r.job.id}')">📋 تقرير الأمر</button> `:''}
+      ${(!r.inv.cancelled && can('cs.satisfy') && !comp)?`<button class="btn btn-sm btn-accent" onclick="openCsSatModal('${r.inv.id}')">${(c&&c.satisfaction)?'✏️ تعديل الرضا':'😊 تسجيل الرضا'}</button> `:''}
+      ${(lastComp && can('cs.complaint'))?`<button class="btn btn-sm ${comp?'btn-danger':''}" onclick="openCsComplaintModal('${c.id}')">📣 الشكوى</button>`:''}
+    </td></tr>`;
+  }).join('') : `<tr><td colspan="10" class="empty">مفيش فواتير في الفترة/الفلتر ده</td></tr>`}</tbody></table></div>
+  `:''}
+  ${csView==='complaints'? csComplaintsTableHTML(openComps, true) : ''}
+  ${csView==='resolved'? csComplaintsTableHTML(doneComps, false) : ''}`;
+}
+/* ---------- تقرير أمر الشغل من خدمة العملاء — دايماً النسخة بدون أرباح ---------- */
+function csOpenWOReport(jobId){
+  if(!can('cs.report')){ toast('مالكش صلاحية فتح تقرير أمر الشغل من خدمة العملاء', true); return; }
+  openModal(workOrderReportHTML(jobId, {csMode:true}), true);
+}
+/* ---------- تسجيل الرضا ---------- */
+function openCsSatModal(invId){
+  if(!can('cs.satisfy')){ toast('مالكش صلاحية تسجيل رضا العملاء', true); return; }
+  const inv = DB.invoices.find(i=>i.id===invId);
+  if(!inv){ toast('الفاتورة مش موجودة', true); return; }
+  if(inv.cancelled){ toast('الفاتورة ملغاة — مفيش تسجيل رضا عليها', true); return; }
+  const c = csCaseOf(invId);
+  if(c && csActiveComplaint(c)){ toast('في شكوى مفتوحة على الفاتورة دي — الرضا بيتغير بس عن طريق «حل الشكوى» (صلاحية منفصلة)', true); return; }
+  const cust = DB.customers.find(x=>x.id===inv.customerId)||{};
+  const cur = (c && c.satisfaction) ? c.satisfaction.status : '';
+  openModal(`
+    <h3>😊 رضا العميل — فاتورة #${inv.invNo}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px">${cust.name||'—'} · 📞 ${cust.phone||'—'} · ${money(inv.total)}
+      ${(c&&c.satisfaction)?'<br>آخر تسجيل: '+CS_SAT_LABEL[c.satisfaction.status]+' — '+fmtDateTime(c.satisfaction.at)+' ('+c.satisfaction.by+')':''}</div>
+    <div class="form-row"><label class="f-label">نتيجة المكالمة *</label>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+        ${Object.entries(CS_SAT_LABEL).map(([k,l])=>`
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:14px">
+          <input type="radio" id="csSat_${k}" name="csSat" value="${k}" ${cur===k?'checked':''} style="width:16px;height:16px"> ${l}</label>`).join('')}
+      </div></div>
+    <div class="form-row"><label class="f-label">التعليق / السبب * <span class="muted" style="font-size:11px">(إجباري في الحالات التلاتة)</span></label>
+      <textarea class="f" id="csSatComment" rows="3" placeholder="مثال: العميل راضي عن جودة الخدمة وسرعة التسليم..."></textarea></div>
+    <div class="muted" style="font-size:11.5px;margin-bottom:10px">⚠️ لو سجلت «غير راضي» — شكوى بتتفتح تلقائياً وبتظهر في «عملاء غير راضيين» في مركز الإشعارات لحد ما تتحل رسمياً.</div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveCsSatisfaction('${inv.id}')">حفظ نتيجة المكالمة</button>
+  `);
+}
+async function saveCsSatisfaction(invId){
+  if(!can('cs.satisfy')){ toast('مالكش صلاحية تسجيل رضا العملاء', true); return; }
+  const inv = DB.invoices.find(i=>i.id===invId);
+  if(!inv){ toast('الفاتورة مش موجودة', true); return; }
+  if(inv.cancelled){ toast('الفاتورة ملغاة — مفيش تسجيل رضا عليها', true); return; }
+  let c = csCaseOf(invId);
+  if(c && csActiveComplaint(c)){ toast('في شكوى مفتوحة — الرضا بيتغير بس عن طريق «حل الشكوى»', true); return; }
+  const sel = document.querySelector('input[name=csSat]:checked');
+  if(!sel){ toast('اختار الحالة الأول (راضي / محايد / غير راضي)', true); return; }
+  const comment = ((document.getElementById('csSatComment')||{}).value||'').trim();
+  if(!comment){ toast('التعليق إجباري — مفيش حفظ رضا من غير تعليق أو سبب', true); return; }
+  const status = sel.value;
+  const stamp = new Date().toISOString();
+  c = csEnsureCase(inv);
+  c.satisfaction = { status, comment, at:stamp, by:actorName() };
+  c.satisfactionLog.push(Object.assign({}, c.satisfaction));
+  csLog(c, 'satisfaction', CS_SAT_LABEL[status]+' — '+comment);
+  let msg = 'اتسجل رضا العميل ✔';
+  if(status==='unsatisfied'){
+    /* شكوى تلقائية — بنفس السبب وبحالة «جديدة» */
+    const allComps = DB.csCases.flatMap(x=>csComplaints(x));
+    const comp = { id:uid('csc'), complaintNo: nextNo(allComps,'complaintNo'), status:'new',
+      reason:comment, openedAt:stamp, openedBy:actorName(), followups:[],
+      resolvedAt:null, resolvedBy:null, resolveReason:'' };
+    c.complaints.push(comp);
+    csLog(c, 'complaint_open', 'شكوى #'+comp.complaintNo+' اتفتحت تلقائياً — '+comment);
+    msg = 'اتسجل «غير راضي» — واتفتحت شكوى تلقائياً 🚨';
+  }
+  await saveKey('csCases', DB.csCases);
+  const cust = DB.customers.find(x=>x.id===inv.customerId);
+  await logAction('🎧 خدمة العملاء: تسجيل رضا فاتورة #'+inv.invNo+' — '+CS_SAT_LABEL[status]+auditDetails([
+    ['العميل', cust?cust.name:'—'], ['التعليق', comment]]));
+  closeModal(); toast(msg); refreshContent();
+}
+/* ---------- الشكوى: التفاصيل والمتابعات ---------- */
+function openCsComplaintModal(caseId){
+  if(!can('cs.complaint')){ toast('مالكش صلاحية عرض وإدارة الشكاوى', true); return; }
+  const c = DB.csCases.find(x=>x.id===caseId);
+  if(!c){ toast('سجل خدمة العملاء مش موجود', true); return; }
+  const arr = csComplaints(c); const comp = arr[arr.length-1];
+  if(!comp){ toast('مفيش شكوى على الفاتورة دي', true); return; }
+  const inv = DB.invoices.find(i=>i.id===c.invoiceId)||{};
+  const cust = DB.customers.find(x=>x.id===c.customerId)||{};
+  const job = c.jobId ? DB.jobs.find(j=>j.id===c.jobId) : null;
+  const car = job ? DB.cars.find(x=>x.id===job.carId) : null;
+  const open = CS_OPEN_STATUSES.includes(comp.status);
+  openModal(`
+    <h3>📣 شكوى #${comp.complaintNo} — ${cust.name||'—'}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">📞 ${cust.phone||'—'} · فاتورة #${inv.invNo||'—'}${job?' · أمر #'+job.jobNo:''}${car?' · '+car.plate:''}</div>
+    <div class="grid g2" style="margin-bottom:10px">
+      <div class="card"><div class="muted" style="font-size:11.5px">تاريخ الفاتورة</div><div>${inv.date?fmtDate(inv.date):'—'}</div></div>
+      <div class="card"><div class="muted" style="font-size:11.5px">تاريخ الشكوى</div><div>${fmtDateTime(comp.openedAt)} <span class="muted" style="font-size:11px">— ${comp.openedBy||'—'}</span></div></div>
+    </div>
+    <div class="card" style="margin-bottom:10px;border-right:3px solid var(--danger)">
+      <label class="f-label" style="color:var(--danger)">سبب عدم الرضا</label>
+      <div style="white-space:pre-wrap;font-size:13px;margin-top:4px">${comp.reason}</div>
+    </div>
+    <div style="margin-bottom:10px">الحالة الحالية: <span class="tag ${open?'tag-unpaid':'tag-paid'}">${CS_COMPLAINT_STATUS[comp.status]||comp.status}</span></div>
+    ${comp.resolvedAt?`<div class="card" style="margin-bottom:10px;border-right:3px solid var(--accent)">
+      <label class="f-label" style="color:var(--accent)">✅ تفاصيل الحل</label>
+      <div style="white-space:pre-wrap;font-size:12.5px;margin-top:4px">${comp.resolveReason}</div>
+      <div class="muted" style="font-size:11.5px;margin-top:4px">${fmtDateTime(comp.resolvedAt)} — ${comp.resolvedBy||'—'}</div>
+    </div>`:''}
+    <label class="f-label">سجل المتابعات (${(comp.followups||[]).length}) <span class="muted" style="font-size:11px">— مفيش متابعة بتتمسح أبداً</span></label>
+    ${(comp.followups||[]).length? comp.followups.map(f=>`
+      <div class="card" style="padding:8px 10px;margin:6px 0">
+        <div class="flex-between" style="flex-wrap:wrap;gap:6px">
+          <span class="tag tag-inspect" style="font-size:10.5px">${CS_COMPLAINT_STATUS[f.status]||f.status}</span>
+          <span class="muted" style="font-size:11.5px">${f.by} · ${fmtDateTime(f.at)}</span>
+        </div>
+        <div style="font-size:12.5px;margin-top:5px;white-space:pre-wrap">${f.note}</div>
+      </div>`).join('') : '<div class="muted" style="font-size:12px;margin:6px 0">لسه مفيش متابعات</div>'}
+    ${(open && can('cs.followup'))?`
+    <div class="card" style="margin-top:10px">
+      <label class="f-label">➕ متابعة جديدة</label>
+      <div class="form-row"><label class="f-label">الملاحظة *</label>
+        <textarea class="f" id="csFuNote" rows="2" placeholder="مثال: اتصلت بالعميل ومفيش رد / العميل هيرجع المركز بكرة..."></textarea></div>
+      <div class="form-row"><label class="f-label">الحالة بعد المتابعة</label>
+        <select class="f" id="csFuStatus">${CS_OPEN_STATUSES.map(k=>`<option value="${k}" ${comp.status===k?'selected':''}>${CS_COMPLAINT_STATUS[k]}</option>`).join('')}</select></div>
+      <button class="btn btn-accent" style="width:100%" onclick="saveCsFollowup('${c.id}')">حفظ المتابعة</button>
+    </div>`:''}
+    ${open?(can('cs.resolve')
+      ?`<button class="btn btn-accent" style="width:100%;margin-top:10px" onclick="openCsResolveModal('${c.id}')">✅ حل الشكوى (بسبب حل إلزامي)</button>`
+      :`<div class="muted" style="font-size:12px;margin-top:10px">🔒 حل الشكوى صلاحية منفصلة — مش من صلاحياتك</div>`):''}
+    ${(!open && comp.status==='resolved' && can('cs.resolve'))?`<button class="btn" style="width:100%;margin-top:10px" onclick="saveCsClose('${c.id}')">🔒 إقفال نهائي</button>`:''}
+  `, true);
+}
+async function saveCsFollowup(caseId){
+  if(!can('cs.followup')){ toast('مالكش صلاحية إضافة متابعة على الشكاوى', true); return; }
+  const c = DB.csCases.find(x=>x.id===caseId); if(!c) return;
+  const comp = csActiveComplaint(c);
+  if(!comp){ toast('الشكوى مش مفتوحة — مفيش متابعات عليها', true); return; }
+  const note = ((document.getElementById('csFuNote')||{}).value||'').trim();
+  const status = ((document.getElementById('csFuStatus')||{}).value||comp.status);
+  if(!note){ toast('ملاحظة المتابعة إجبارية', true); return; }
+  if(!CS_OPEN_STATUSES.includes(status)){ toast('الحالة دي مش من حالات المتابعة', true); return; }
+  const stamp = new Date().toISOString();
+  comp.followups.push({ id:uid('csf'), at:stamp, by:actorName(), note, status });
+  const before = comp.status;
+  comp.status = status;
+  csLog(c, 'followup', note + (before!==status ? ' — الحالة: '+CS_COMPLAINT_STATUS[before]+' ← '+CS_COMPLAINT_STATUS[status] : ''));
+  await saveKey('csCases', DB.csCases);
+  await logAction('🎧 خدمة العملاء: متابعة على شكوى #'+comp.complaintNo+auditDetails([
+    ['الملاحظة', note], ['الحالة', CS_COMPLAINT_STATUS[before]+' ← '+CS_COMPLAINT_STATUS[status]]]));
+  toast('اتسجلت المتابعة ✔');
+  openCsComplaintModal(caseId);
+  refreshContent();
+}
+/* ---------- حل الشكوى — صلاحية منفصلة + سبب إلزامي ---------- */
+function openCsResolveModal(caseId){
+  if(!can('cs.resolve')){ toast('مالكش صلاحية حل الشكاوى', true); return; }
+  const c = DB.csCases.find(x=>x.id===caseId); if(!c) return;
+  const comp = csActiveComplaint(c);
+  if(!comp){ toast('الشكوى مش مفتوحة', true); return; }
+  const cust = DB.customers.find(x=>x.id===c.customerId)||{};
+  openModal(`
+    <h3>✅ حل شكوى #${comp.complaintNo} — ${cust.name||''}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">اكتب اتعمل إيه بالظبط عشان المشكلة اتحلت — التفاصيل دي بتتحفظ للأبد وبتظهر في سجل العميل.</div>
+    <div class="form-row"><label class="f-label">تفاصيل الحل *</label>
+      <textarea class="f" id="csResReason" rows="3" placeholder="مثال: العميل رجع للمركز والعطل اتصلح / القطعة اتغيرت / الخدمة اتعادت وأكد بالتليفون إن كله تمام..."></textarea></div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveCsResolve('${c.id}')">اعتماد الحل — العميل بقى «راضي بعد حل المشكلة»</button>
+  `);
+}
+async function saveCsResolve(caseId){
+  if(!can('cs.resolve')){ toast('مالكش صلاحية حل الشكاوى', true); return; }
+  const c = DB.csCases.find(x=>x.id===caseId); if(!c) return;
+  const comp = csActiveComplaint(c);
+  if(!comp){ toast('الشكوى مش مفتوحة', true); return; }
+  const reason = ((document.getElementById('csResReason')||{}).value||'').trim();
+  if(!reason){ toast('تفاصيل الحل إجبارية — مفيش حل من غير سبب موثق', true); return; }
+  const stamp = new Date().toISOString();
+  comp.status = 'resolved';
+  comp.resolvedAt = stamp; comp.resolvedBy = actorName(); comp.resolveReason = reason;
+  /* «راضي — بعد حل المشكلة» — وعدم الرضا الأصلي محفوظ للأبد في satisfactionLog والشكوى نفسها */
+  c.satisfaction = { status:'satisfied', comment:'اتحلت المشكلة: '+reason, at:stamp, by:actorName(), viaResolve:true };
+  c.satisfactionLog.push(Object.assign({}, c.satisfaction));
+  csLog(c, 'resolved', reason);
+  await saveKey('csCases', DB.csCases);
+  const inv = DB.invoices.find(i=>i.id===c.invoiceId);
+  await logAction('🎧 خدمة العملاء: ✅ حل شكوى #'+comp.complaintNo+' (فاتورة #'+(inv?inv.invNo:'—')+')'+auditDetails([
+    ['تفاصيل الحل', reason]]));
+  closeModal(); toast('الشكوى اتحلت — العميل بقى «راضي بعد حل المشكلة» ✅'); refreshContent();
+}
+/* إقفال نهائي لشكوى محلولة — نفس صلاحية الحل */
+async function saveCsClose(caseId){
+  if(!can('cs.resolve')){ toast('مالكش صلاحية إقفال الشكاوى', true); return; }
+  const c = DB.csCases.find(x=>x.id===caseId); if(!c) return;
+  const arr = csComplaints(c); const comp = arr[arr.length-1];
+  if(!comp || comp.status!=='resolved'){ toast('الإقفال النهائي للشكاوى المحلولة بس', true); return; }
+  comp.status = 'closed';
+  csLog(c, 'closed', 'إقفال نهائي بعد الحل');
+  await saveKey('csCases', DB.csCases);
+  await logAction('🎧 خدمة العملاء: 🔒 إقفال نهائي لشكوى #'+comp.complaintNo);
+  closeModal(); toast('اتقفلت الشكوى نهائياً'); refreshContent();
+}
+
 function liveAlertsCount(){
   const now = Date.now();
   if(now - _liveAlertsMemo.at < 5000) return _liveAlertsMemo.val;
   const val = debtReminders().length + pendingLeaveReqs().length + pendingPermits().length + damagedWaiting().length
     + highAdvanceEmployees().length + highAbsenceEmployees().length + stagnantParts().length + lowStockParts().length
-    + overdueCustodiesAlert().length;
+    + overdueCustodiesAlert().length + empcShortageByEmployee().length    /* م137 */
+    + csUnhappyCustomers().length;   /* م143: عملاء غير راضيين — بيعدّ العملاء مش الشكاوى */
   _liveAlertsMemo = { at: now, val };
   return val;
 }
@@ -14492,6 +15676,8 @@ const NOTIF_SECTIONS = [
   { id:'lowStk',    label:'قطع تحت حد الأمان',        def:'live',     live:true  },
   { id:'stagnant',  label:'قطع راكدة',                def:'live',     live:true  },
   { id:'wipMiss',   label:'إقفال WIP متأخر',          def:'live',     live:true  },
+  { id:'empcShort', label:'عجز عهد الموظفين',         def:'live',     live:true  },   /* م137 */
+  { id:'csUnhappy', label:'عملاء غير راضيين',          def:'live',     live:true  },   /* م143 */
 ];
 function notifSection(id){ return NOTIF_SECTIONS.find(s=>s.id===id) || null; }
 /* ⚠️⚠️ م121 — قرار سيف النهائي: النوع **ثابت في تصميم السيستم**.
@@ -14645,6 +15831,8 @@ function renderNotifications(){
   const early = pendingPermits('early');
   const errands = pendingPermits('errand');
   const damaged = damagedWaiting();
+  const empcShort = empcShortageByEmployee();   /* م137: عجز عهد الموظفين — Live */
+  const csUnhappy = csUnhappyList();            /* م143: عملاء غير راضيين — Live */
   /* م121: شاشات الـWorkflow — السطر اللي اتراجع أو راح المتابعة بيختفي
      من هنا (موجود في الأرشيف/المتابعة). الـLive مافيهاش إخفاء أصلاً. */
   const largeDiscInv = wfVisibleRows('largeDisc',
@@ -14716,6 +15904,8 @@ function renderNotifications(){
   </div>
   <div class="grid g4" style="margin-bottom:20px">
     ${widget('عهد متأخرة (+48 ساعة)', overCust.length, true, 'overCust')}
+    ${moneyWidget('عجز عهد الموظفين', money(empcShort.reduce((s,x)=>s+x.total,0)), empcShort.length>0, 'empcShort', empcShort.length)}
+    ${widget('😞 عملاء غير راضيين', csUnhappyCustomers().length, true, 'csUnhappy')}
     ${can('wip.create')?widget('إقفال WIP متأخر', wipMiss?1:0, true, 'wipMiss'):''}
     ${widget('سجل الإشعارات كامل', DB.notifications.length, false, 'log')}
   </div>
@@ -14833,6 +16023,44 @@ function renderNotifications(){
       ? `<button class="btn btn-accent btn-sm" onclick="openStagnantReport()">📊 فتح تقرير الرواكد</button>`
       : `<span class="muted" style="font-size:12px">شاشة تحليل حركة المخزون مش من صلاحياتك — كلّم صاحب المركز.</span>`}
   </div>`;})():''}
+  ${(P==='empcShort' && empcShort.length)?`
+  ${''/* م137: عجز عهد الموظفين — Live: قيمة حية بتنزل مع كل تسوية، مفيش مراجعة ولا أرشيف */}
+  <div class="section-head"><h3>🧰 عجز عهد الموظفين — إجمالي قائم: ${money(empcShort.reduce((s,x)=>s+x.total,0))}</h3>
+    ${canScreen('empcustody')?`<button class="btn btn-sm btn-accent" onclick="goTab('empcustody')">↗ فتح شاشة عهدة الموظفين</button>`:''}</div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الموظف</th><th>العجز القائم</th><th></th></tr></thead>
+  <tbody>${empcShort.map(x=>`<tr>
+    <td style="font-weight:700">${x.name}</td>
+    <td style="font-weight:800;color:var(--danger)">${money(x.total)}</td>
+    <td><button class="btn btn-sm" onclick="openEmpCustodyDetail('${x.custodyId}')">👁 عرض السجل</button></td>
+    </tr>`).join('')}</tbody></table>
+  <div class="muted" style="font-size:11.5px;margin-top:6px">القيمة دي حية — بتنزل تلقائياً مع كل تسوية لحد الصفر. التالف/الهالك مش داخل فيها (خسارة تشغيلية منفصلة).</div></div>`:''}
+  ${(P==='csUnhappy' && csUnhappy.length)?`
+  ${''/* م143: عملاء غير راضيين — Live: بيعدّ العملاء، وفتح الإشعار مش بيصفّر حاجة — الحل الرسمي بس */}
+  <div class="section-head"><h3>😞 عملاء غير راضيين (${csUnhappyCustomers().length} عميل · ${csUnhappy.length} شكوى مفتوحة)</h3>
+    ${canScreen('custservice')?`<button class="btn btn-sm btn-accent" onclick="goTab('custservice')">↗ فتح شاشة خدمة العملاء</button>`:''}</div>
+  <div class="card" style="margin-bottom:18px"><table><thead><tr><th>العميل</th><th>📞</th><th>الفاتورة</th><th>الأمر</th><th>العربية</th><th>تاريخ الفاتورة</th><th>سبب عدم الرضا</th><th>الحالة</th><th>آخر متابعة</th><th>المسؤول</th><th></th></tr></thead>
+  <tbody>${csUnhappy.map(x=>{
+    const cust143 = DB.customers.find(cc=>cc.id===x.c.customerId)||{};
+    const inv143 = DB.invoices.find(i=>i.id===x.c.invoiceId)||{};
+    const job143 = x.c.jobId ? DB.jobs.find(j=>j.id===x.c.jobId) : null;
+    const car143 = job143 ? DB.cars.find(cc=>cc.id===job143.carId) : null;
+    const lf143 = csLastFollowup(x.comp);
+    return `<tr>
+    <td style="font-weight:700">${cust143.name||'—'}</td>
+    <td style="white-space:nowrap;direction:ltr">${cust143.phone||'—'}</td>
+    <td>#${inv143.invNo||'—'}</td><td>${job143?'#'+job143.jobNo:'—'}</td>
+    <td class="muted" style="font-size:11.5px">${car143?car143.plate:'—'}</td>
+    <td style="white-space:nowrap;font-size:12px">${inv143.date?fmtDate(inv143.date):'—'}</td>
+    <td class="muted" style="font-size:12px;max-width:170px">${x.comp.reason}</td>
+    <td><span class="tag tag-unpaid" style="font-size:10.5px">${CS_COMPLAINT_STATUS[x.comp.status]||x.comp.status}</span></td>
+    <td class="muted" style="font-size:11.5px;max-width:150px">${lf143?(lf143.note+' — '+fmtDate(lf143.at)):'لسه مفيش'}</td>
+    <td style="font-size:12px">${csResponsible(x.comp)}</td>
+    <td style="white-space:nowrap">
+      ${can('cs.complaint')?`<button class="btn btn-sm" onclick="openCsComplaintModal('${x.c.id}')">📣 الشكوى</button> `:''}
+      ${canScreen('custservice')?`<button class="btn btn-sm btn-accent" onclick="csFocusCustomer('${x.c.customerId}')">👤 سجل العميل</button>`:''}
+    </td></tr>`;
+  }).join('')}</tbody></table>
+  <div class="muted" style="font-size:11.5px;margin-top:6px">🟢 Live — الرقم بيعدّ <b>العملاء</b> اللي لسه شكواهم ما اتحلتش، وبينزل لوحده مع كل حل رسمي. فتح الإشعار ده مش بيصفّر ولا بيأرشف حاجة.</div></div>`:''}
   ${(P==='debts' && debts.length)?`
   ${''/* م121: المديونيات Live — فتح التقرير بس، مفيش متابعة ولا مراجعة ولا أرشيف */}
   <div class="section-head"><h3>💰 مديونيات متأخرة (أفراد +${debtDaysFor('فرد')} يوم · شركات +${debtDaysFor('شركة')} يوم)</h3>
@@ -15764,6 +16992,9 @@ function setBusy(on){
     'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveWorkingDays',
     'saveNewTool','saveToolEdit','saveToolIssue','saveToolReturn',
     'saveDeposit','saveDepositRefund',   /* م127 */
+    'saveNewEmpCustody','saveEmpcItem','empcMarkItem','saveEmpcSettle',   /* م137 */
+    'saveEmpcEdit','saveEmpcDelete','saveEmpcTransfer',   /* م138 */
+    'saveCsSatisfaction','saveCsFollowup','saveCsResolve','saveCsClose',   /* م143 */
     'setNotifStatus','addNotifComment','saveNotifThresholds','saveCustody','saveSettleCustody'];
   opNames.forEach(name=>{
     const orig = window[name];
