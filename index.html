@@ -541,7 +541,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v169';
+const APP_VERSION = 'v170';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1896,7 +1896,10 @@ function renderDashboard(){
 }
 function renderNotifCenterWidget(){
   const unseen = unseenNotifCount(), debts = debtReminders(), leaves = pendingLeaveReqs().length, early = pendingPermits('early').length, dmg = damagedWaiting().length;
-  const highAdv = highAdvanceEmployees().length, highAbs = highAbsenceEmployees().length, stagnant = stagnantParts().length, lowStk = lowStockParts().length;
+  /* م154: نفس فلتر «اتراجع» بتاع القوايم — الرقم برا = القايمة جوا */
+  const highAdv = wfVisibleRows('highAdv', highAdvanceEmployees(), x=>x.e.id+'@'+payrollCycleTag()).length,
+        highAbs = wfVisibleRows('highAbs', highAbsenceEmployees(), x=>x.e.id+'@'+payrollCycleTag()).length,
+        stagnant = stagnantParts().length, lowStk = lowStockParts().length;
   const debtTot = debts.reduce((a,d)=>a+d.due,0);
   const totalAlerts = unseen + debts.length + leaves + early + dmg + highAdv + highAbs + stagnant + lowStk;
   if(totalAlerts===0) return '';
@@ -4493,7 +4496,7 @@ function openTransfersReport(keep){
       <div class="form-row" style="margin:0"><label class="f-label">من تاريخ</label><input class="f" type="date" value="${trRepFilter.from}" onchange="trRepSet('from',this.value)"></div>
       <div class="form-row" style="margin:0"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${trRepFilter.to}" onchange="trRepSet('to',this.value)"></div>
     </div>`:''}
-    <div class="form-row" style="margin:8px 0 0"><input class="f" placeholder="🔍 بحث: صنف · مخزن · اسم الموظف..." value="${trRepFilter.q}" oninput="trRepFilter.q=this.value;const b=document.getElementById('trRepBody');if(b)b.innerHTML=trRepTableHTML()"></div>
+    <div class="form-row" style="margin:8px 0 0"><input class="f" placeholder="🔍 بحث: صنف · مخزن · اسم الموظف..." value="${escAttr(trRepFilter.q)}" oninput="trRepFilter.q=this.value;const b=document.getElementById('trRepBody');if(b)b.innerHTML=trRepTableHTML()"></div>
     <div class="muted" style="font-size:11.5px;margin-top:6px">📋 تقرير للمراجعة والطباعة فقط.</div>
   </div>
   <div class="muted" style="font-size:12px;margin-bottom:8px">الفترة: <b>${trRepPeriodLabel()}</b> · ${rows.length} تحويل</div>
@@ -6301,13 +6304,8 @@ function workOrderReportHTML(jobId, opts){
     <label class="f-label" style="color:var(--accent)">📝 ملاحظات للعميل (المطبوعة على الفاتورة)</label>
     <div style="white-space:pre-wrap;font-size:12.5px;margin-top:6px">${job.externalNotes}</div>
   </div>`:''}
-  ${liveInternalNotes(job).length ? `
-  <div class="card" style="margin-top:12px;border-right:3px solid var(--accent-2)">
-    <label class="f-label" style="color:var(--accent-2)">📝 ملاحظات الورشة الداخلية (عرض داخلي فقط — لا تظهر للعميل)</label>
-    <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
-      ${liveInternalNotes(job).map(n=>`<div style="font-size:12.5px"><b>${n.byName||'—'}</b> <span class="muted">· ${n.dept||'—'} · ${fmtDateTime(n.date)}</span><div style="white-space:pre-wrap">${n.text}</div></div>`).join('')}
-    </div>
-  </div>`:''}
+  <!-- م154: ملاحظات الورشة الداخلية اتشالت من نسخة خدمة العملاء — الشاشة دي
+       ممكن تتعرض قدام العميل نفسه، والملاحظات دي «لا تظهر للعميل» بنص تعريفها -->
   <div class="muted" style="font-size:11.5px;margin-top:10px">🎧 نسخة خدمة العملاء — بأسعار البيع اللي على الفاتورة، ومن غير أي أرقام داخلية للمركز.</div>
   `;
   }
@@ -6484,7 +6482,58 @@ function isOpenJob(j){
   return !DB.invoices.some(i=>i.jobId===j.id && !i.cancelled);
 }
 let openJobsSearch = '';
-function setOpenJobsSearch(v){ openJobsSearch = v.trim().toLowerCase(); refreshContent(); }
+/* م154: البحث كان بيعيد رسم الشاشة كلها فمؤشر الكتابة بيقع من الخانة بعد كل
+   حرف — دلوقتي بنحدّث الإجماليات والعداد والجدول بس (زي باقي شاشات البحث). */
+function setOpenJobsSearch(v){
+  openJobsSearch = String(v||'').toLowerCase().replace(/^\s+/, '');
+  const tot = document.getElementById('ojTotals');
+  const cnt = document.getElementById('ojCount');
+  const body = document.getElementById('ojBody');
+  if(tot && body){
+    const filtered = openJobsDisplayed();
+    tot.innerHTML = openJobsTotalsHTML(filtered);
+    if(cnt) cnt.textContent = filtered.length;
+    body.innerHTML = openJobsRowsHTML(filtered);
+  } else refreshContent();
+}
+function openJobsTotalsHTML(filtered){
+  const tot = { inParts:0, extParts:0, extWork:0, paint:0, total:0, revenue:0 };
+  filtered.forEach(j=>{ const b = jobCostBreakdown(j); tot.inParts += b.inParts; tot.extParts += b.extParts; tot.extWork += b.extWork; tot.paint += b.paint; tot.total += b.total; tot.revenue += b.revenue; });
+  return `
+  <div class="grid g4" style="margin-bottom:14px">
+    ${stat(String(filtered.length),'عدد أوامر الشغل المفتوحة'+((openJobsDateFrom||openJobsDateTo)?' (بالفلتر)':''))}
+    ${stat(money(tot.inParts),'تكلفة قطع الغيار الداخلية')}
+    ${stat(money(tot.extParts),'تكلفة قطع الغيار الخارجية')}
+    ${stat(money(tot.paint),'تكلفة خامات الدهان')}
+  </div>
+  <div class="grid g4" style="margin-bottom:20px">
+    ${stat(money(tot.extWork),'تكلفة الأعمال الخارجية')}
+    ${stat(money(tot.total),'💰 إجمالي التكلفة الحالية للورشة', tot.total>0)}
+    ${stat(money(tot.revenue),'الإيراد المتوقع عند الفوترة')}
+    ${stat(money(tot.revenue-tot.total),'الربحية المتوقعة', (tot.revenue-tot.total)<0)}
+  </div>`;
+}
+function openJobsRowsHTML(filtered){
+  const t = openJobsSearch;
+  return filtered.length? filtered.map(j=>{
+    const car = DB.cars.find(c=>c.id===j.carId)||{};
+    const cust = DB.customers.find(c=>c.id===j.customerId)||{};
+    const b = jobCostBreakdown(j);
+    return `<tr onclick="openWorkOrderReport('${j.id}')" style="cursor:pointer">
+      <td style="font-weight:700;color:var(--accent)">#${j.jobNo}</td>
+      <td>${cust.name||'—'}<div class="muted" style="font-size:10.5px;direction:ltr;text-align:right">${cust.phone||''}</div></td>
+      <td>${car.plate||'—'}<div class="muted" style="font-size:10.5px">${carLabel(car)}</div></td>
+      <td style="white-space:nowrap;font-size:12.5px">${fmtDate(j.receivedAt)}</td>
+      <td><span class="tag ${STATUS_TAGCLASS[j.status]||''}">${j.status}</span></td>
+      <td>${money(b.inParts)}</td>
+      <td>${money(b.extParts)}</td>
+      <td>${money(b.extWork)}</td>
+      <td>${money(b.paint)}</td>
+      <td style="font-weight:800">${money(b.total)}</td>
+      <td style="font-weight:700;${b.profit<0?'color:var(--danger)':''}">${money(b.profit)}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="11" class="empty">${(t||openJobsDateFrom||openJobsDateTo)?'مفيش نتائج مطابقة للفلتر':'مفيش أوامر شغل مفتوحة حالياً — الورشة فاضية 🎉'}</td></tr>`;
+}
 /* ============================================================
    م136 — فلتر زمني بتاريخ الدخول + فصل تكلفة القطع (داخلية/خارجية)
    + Export to Excel لنفس النتائج المعروضة بالظبط.
@@ -6505,8 +6554,8 @@ function openJobsDisplayed(){
   return DB.jobs.filter(isOpenJob)
     .filter(j=>{
       const d = new Date(j.receivedAt);
-      if(openJobsDateFrom && d < new Date(openJobsDateFrom)) return false;
-      if(openJobsDateTo && d > new Date(new Date(openJobsDateTo).getTime()+86399999)) return false;
+      if(openJobsDateFrom && d < localDayStart(openJobsDateFrom)) return false;   /* م154: توقيت محلي */
+      if(openJobsDateTo && d > localDayEnd(openJobsDateTo)) return false;
       return true;
     })
     .filter(j=>{
@@ -6528,10 +6577,13 @@ function openJobsCSVContent(){
     const cust = DB.customers.find(c=>c.id===j.customerId)||{};
     const b = jobCostBreakdown(j);
     tot.inParts+=b.inParts; tot.extParts+=b.extParts; tot.paint+=b.paint; tot.extWork+=b.extWork; tot.total+=b.total;
+    /* م154: تقريب خانات التكاليف — كانت بتنزل في الملف بكسور فلوتنج طويلة */
+    const r2 = x => Math.round((x||0)*100)/100;
     rows.push(['#'+j.jobNo, cust.name||'', cust.phone||'', car.plate||'', carLabel(car)||'', fmtDate(j.receivedAt), j.status,
-      b.inParts, b.extParts, b.paint, b.extWork, b.total]);
+      r2(b.inParts), r2(b.extParts), r2(b.paint), r2(b.extWork), r2(b.total)]);
   });
-  rows.push(['الإجمالي','','','','','','', tot.inParts, tot.extParts, tot.paint, tot.extWork, tot.total]);
+  const r2t = x => Math.round((x||0)*100)/100;
+  rows.push(['الإجمالي','','','','','','', r2t(tot.inParts), r2t(tot.extParts), r2t(tot.paint), r2t(tot.extWork), r2t(tot.total)]);
   return '﻿' + rows.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
 }
 /* ============================================================
@@ -6566,8 +6618,9 @@ function jobsScreenCSVContent(){
     const cust = DB.customers.find(c=>c.id===j.customerId)||{};
     const b = jobCostBreakdown(j);
     tot.inParts+=b.inParts; tot.extParts+=b.extParts; tot.paint+=b.paint; tot.extWork+=b.extWork; tot.total+=b.total;
+    const r2 = x => Math.round((x||0)*100)/100;   /* م154: تقريب خانات الملف */
     rows.push(['#'+j.jobNo, cust.name||'', cust.phone||'', car.plate||'', carLabel(car)||'', fmtDate(j.receivedAt), j.status,
-      b.inParts, b.extParts, b.paint, b.extWork, b.total, jobSituationLabel(j)]);
+      r2(b.inParts), r2(b.extParts), r2(b.paint), r2(b.extWork), r2(b.total), jobSituationLabel(j)]);
   });
   rows.push(['الإجمالي','','','','','','', tot.inParts, tot.extParts, tot.paint, tot.extWork, tot.total, '']);
   return '﻿' + rows.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
@@ -6596,10 +6649,8 @@ function exportOpenJobsCSV(){
 }
 function renderOpenJobsReport(){
   const filtered = openJobsDisplayed();
-  /* م136: الإجماليات من النتائج المعروضة بالظبط — والقطع الداخلية والخارجية منفصلين */
-  const tot = { inParts:0, extParts:0, extWork:0, paint:0, total:0, revenue:0 };
-  filtered.forEach(j=>{ const b = jobCostBreakdown(j); tot.inParts += b.inParts; tot.extParts += b.extParts; tot.extWork += b.extWork; tot.paint += b.paint; tot.total += b.total; tot.revenue += b.revenue; });
-  const t = openJobsSearch;
+  /* م136: الإجماليات من النتائج المعروضة بالظبط — بتتبني في openJobsTotalsHTML
+     (م154: اتفصلت هي وصفوف الجدول عشان البحث يحدّثهم من غير إعادة رسم الشاشة) */
   /* م111: زراير الـSnapshot — إضافة واجهة بس، مفيش أي تغيير في أرقام الشاشة */
   const wipMiss = wipMissingLastMonth();
   return `
@@ -6614,22 +6665,11 @@ function renderOpenJobsReport(){
   ${(wipMiss && can('wip.create'))?`<div class="card" style="border:1px solid var(--accent-2);padding:9px 12px;margin-bottom:14px;font-size:12.5px">
     ⏰ لسه ماتعملش <b>WIP Snapshot</b> عن الشهر اللي فات — <b>${wipMiss.label}</b>.
     <span class="muted">تذكير بس، مايمنعش أي عملية.</span></div>`:''}`:''}
-  <div class="grid g4" style="margin-bottom:14px">
-    ${stat(String(filtered.length),'عدد أوامر الشغل المفتوحة'+((openJobsDateFrom||openJobsDateTo)?' (بالفلتر)':''))}
-    ${stat(money(tot.inParts),'تكلفة قطع الغيار الداخلية')}
-    ${stat(money(tot.extParts),'تكلفة قطع الغيار الخارجية')}
-    ${stat(money(tot.paint),'تكلفة خامات الدهان')}
-  </div>
-  <div class="grid g4" style="margin-bottom:20px">
-    ${stat(money(tot.extWork),'تكلفة الأعمال الخارجية')}
-    ${stat(money(tot.total),'💰 إجمالي التكلفة الحالية للورشة', tot.total>0)}
-    ${stat(money(tot.revenue),'الإيراد المتوقع عند الفوترة')}
-    ${stat(money(tot.revenue-tot.total),'الربحية المتوقعة', (tot.revenue-tot.total)<0)}
-  </div>
+  <div id="ojTotals">${openJobsTotalsHTML(filtered)}</div>
   <div class="card" style="margin-bottom:16px">
     <div class="search-box" style="max-width:100%">
       ${ICONS.search}
-      <input placeholder="بحث ذكي: رقم أمر الشغل، اسم العميل، الموبايل، الموديل، اللوحة، اسم الشركة..." value="${openJobsSearch}" oninput="setOpenJobsSearch(this.value)">
+      <input placeholder="بحث ذكي: رقم أمر الشغل، اسم العميل، الموبايل، الموديل، اللوحة، اسم الشركة..." value="${escAttr(openJobsSearch)}" oninput="setOpenJobsSearch(this.value)">
     </div>
     <!-- م136: فلتر تاريخ الدخول (receivedAt فقط) + التصدير -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
@@ -6640,27 +6680,10 @@ function renderOpenJobsReport(){
     </div>
     ${(openJobsDateFrom||openJobsDateTo)?`<div class="muted" style="font-size:11.5px;margin-top:6px">بيعرض الأوامر <b>المفتوحة حالياً</b> اللي تاريخ دخولها جوه الفترة — والإجماليات فوق بتحسب النتائج دي بس.</div>`:''}
   </div>
-  <div class="section-head"><h3>السيارات داخل الورشة (${filtered.length}) <span class="muted" style="font-size:11.5px;font-weight:400">— الأقدم دخولاً الأول</span></h3></div>
+  <div class="section-head"><h3>السيارات داخل الورشة (<span id="ojCount">${filtered.length}</span>) <span class="muted" style="font-size:11.5px;font-weight:400">— الأقدم دخولاً الأول</span></h3></div>
   <div class="card">
     <table><thead><tr><th>رقم</th><th>العميل</th><th>السيارة</th><th>تاريخ الدخول</th><th>الحالة</th><th>قطع داخلية</th><th>قطع خارجية</th><th>أعمال خارجية</th><th>خامات</th><th>إجمالي التكلفة</th><th>الربح المتوقع</th></tr></thead>
-    <tbody>${filtered.length? filtered.map(j=>{
-      const car = DB.cars.find(c=>c.id===j.carId)||{};
-      const cust = DB.customers.find(c=>c.id===j.customerId)||{};
-      const b = jobCostBreakdown(j);
-      return `<tr onclick="openWorkOrderReport('${j.id}')" style="cursor:pointer">
-        <td style="font-weight:700;color:var(--accent)">#${j.jobNo}</td>
-        <td>${cust.name||'—'}<div class="muted" style="font-size:10.5px;direction:ltr;text-align:right">${cust.phone||''}</div></td>
-        <td>${car.plate||'—'}<div class="muted" style="font-size:10.5px">${carLabel(car)}</div></td>
-        <td style="white-space:nowrap;font-size:12.5px">${fmtDate(j.receivedAt)}</td>
-        <td><span class="tag ${STATUS_TAGCLASS[j.status]||''}">${j.status}</span></td>
-        <td>${money(b.inParts)}</td>
-        <td>${money(b.extParts)}</td>
-        <td>${money(b.extWork)}</td>
-        <td>${money(b.paint)}</td>
-        <td style="font-weight:800">${money(b.total)}</td>
-        <td style="font-weight:700;${b.profit<0?'color:var(--danger)':''}">${money(b.profit)}</td>
-      </tr>`;
-    }).join('') : `<tr><td colspan="11" class="empty">${(t||openJobsDateFrom||openJobsDateTo)?'مفيش نتائج مطابقة للفلتر':'مفيش أوامر شغل مفتوحة حالياً — الورشة فاضية 🎉'}</td></tr>`}</tbody></table>
+    <tbody id="ojBody">${openJobsRowsHTML(filtered)}</tbody></table>
   </div>`;
 }
 
@@ -6967,6 +6990,10 @@ async function saveStockOut(){
   const qty = parseFloat(document.getElementById('mvQty').value)||0;
   const p = DB.inventory.find(x=>x.id===partId);
   const job = DB.jobs.find(j=>j.id===jobId);
+  /* م154: لو الأمر اتلغى/اتفوتر من جهاز تاني والشاشة لسه قديمة — نرفض بوضوح
+     بدل كراش صامت أو صرف على أمر مقفول (القطعة كانت بتخرج ومتتحاسبش) */
+  if(!job){ toast('اختار أمر الشغل الأول — أو حدّث الصفحة لو الأمر اتقفل من جهاز تاني', true); return; }
+  if(isJobClosed(job)){ toast('الأمر ده اتفوتر أو اتلغى — مفيش صرف عليه (المرتجع هو الطريق الوحيد لرجوع القطع)', true); return; }
   /* م126: الاختيار بقى بالكروت — لازم يكون فيه قطعة مختارة فعلاً (ومن مخزن محدد) */
   if(!p){ toast('اختار القطعة الأول من نتايج البحث', true); return; }
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
@@ -8150,14 +8177,24 @@ function supplierStatement(supplierId){
 let supRepFilter = { preset:'all', from:'', to:'' };
 let _supRepCtx = { kind:'', supplierId:'' };
 const SUP_REP_PRESETS = [['all','كل التعاملات'],['today','اليوم'],['7d','آخر 7 أيام'],['14d','آخر 14 يوم'],['30d','آخر شهر'],['custom','فترة مخصوصة']];
+/* ============ م154: تواريخ الفلاتر بالتوقيت المحلي (مصر) ============
+   new Date('YYYY-MM-DD') بتتفسر UTC منتصف الليل = الساعة 2-3 صباحاً بتوقيتنا،
+   فالسجلات اللي بين 12 و2 الفجر يوم البداية كانت بتقع برا الفلتر، وبتاعة
+   أول ساعتين من اليوم اللي بعد النهاية كانت بتدخل بالغلط. الدالتين دول
+   بيفسروا التاريخ بمنتصف الليل **المحلي** — لكل فلاتر التواريخ. */
+function localDayStart(s){ if(!s) return null; const p = String(s).split('-').map(Number); return new Date(p[0], (p[1]||1)-1, p[2]||1, 0, 0, 0, 0); }
+function localDayEnd(s){ if(!s) return null; const p = String(s).split('-').map(Number); return new Date(p[0], (p[1]||1)-1, p[2]||1, 23, 59, 59, 999); }
+/* م154: تأمين نص المستخدم جوه صفة value="..." — علامة " (زي مقاسات «طقم 22"»)
+   كانت بتقطع الخانة عند إعادة الرسم والباقي يضيع بصمت */
+function escAttr(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 /* م134: محرك الفترة عام — بيخدم تقارير المورد وتقرير التحويلات وأي تقرير جاي */
 function repRangeOf(f){
   if(f.preset==='all') return null;
   const end = new Date(); end.setHours(23,59,59,999);
   if(f.preset==='custom'){
     if(!f.from && !f.to) return null;
-    return { from: f.from ? new Date(f.from) : new Date('2000-01-01'),
-             to: f.to ? new Date(new Date(f.to).getTime()+86399999) : end };
+    return { from: f.from ? localDayStart(f.from) : new Date(2000, 0, 1),
+             to: f.to ? localDayEnd(f.to) : end };
   }
   const days = f.preset==='today' ? 0 : f.preset==='7d' ? 7 : f.preset==='14d' ? 14 : 30;
   const start = new Date(); start.setHours(0,0,0,0); start.setDate(start.getDate()-days);
@@ -8403,7 +8440,31 @@ async function restoreSupplier(supplierId){
 let supStatusFilter = 'active';   // active | archived | all
 let supSearchTerm = '';
 function setSupStatusFilter(v){ supStatusFilter = v; refreshContent(); }
-function setSupSearch(v){ supSearchTerm = v; const b=document.getElementById('supListBox'); if(b) b.innerHTML = supplierCardsHTML(); }
+/* م154: البحث بيحدّث الملخص المالي كمان — الأرقام كانت بتفضل بتاعة كل
+   الموردين رغم إن الكروت اتفلترت (والتعليق كان بيدّعي العكس) */
+function setSupSearch(v){
+  supSearchTerm = v;
+  const b = document.getElementById('supListBox'); if(b) b.innerHTML = supplierCardsHTML();
+  const g = document.getElementById('supFinSummary'); if(g) g.innerHTML = supFinSummaryHTML();
+}
+function supFinSummaryHTML(){
+  const hasF = supFinFilter.preset!=='all';
+  const vis = visibleSuppliers();
+  const g = { purchases:0, paid:0, periodOut:0, current:0 };
+  vis.forEach(sup=>{ const pf = supPeriodFin(sup.id); g.purchases+=pf.purchases; g.paid+=pf.paid; g.periodOut+=pf.periodOut; g.current+=supplierBalance(sup.id).balance; });
+  return hasF?`
+  <div class="grid g4" style="margin-bottom:12px">
+    ${stat(money(g.purchases),'مشتريات الفترة ('+supFinPeriodLabel()+')')}
+    ${stat(money(g.paid),'مدفوع الفترة')}
+    ${stat(money(g.periodOut),'مستحق الفترة (مشتريات − مدفوع)', g.periodOut>0)}
+    ${stat(money(g.current),'المستحق الحالي الفعلي (مايتأثرش بالفلتر)', g.current>0)}
+  </div>`:`
+  <div class="grid g3" style="margin-bottom:12px">
+    ${stat(money(g.purchases),'إجمالي المشتريات')}
+    ${stat(money(g.paid),'إجمالي المدفوع')}
+    ${stat(money(g.current),'المستحق الحالي', g.current>0)}
+  </div>`;
+}
 function supMatchesSearch(sup){
   /* م126: كلمات متعددة بأي ترتيب (كان بيدوّر بالجملة كاملة بس) */
   return smartMatch(supSearchTerm, [sup.name, sup.phone, sup.phone2, sup.contactPerson, sup.area, sup.city, sup.address, sup.note, sup.email]);
@@ -8557,9 +8618,17 @@ function supGlobalRepRows(){
   DB.supplierReturns.forEach(t=>{
     if(f.supplierId && t.supplierId!==f.supplierId) return;
     if(!inRange(t.date)) return;
-    if(f.warehouseId && t.warehouseId!==f.warehouseId) return;
+    /* م154: المرتجع الموثق مخزنه بيتفلتر هنا — والقديم من غير توثيق بيتفلتر
+       تحت بمخزن صنفه (نفس fallback التوريدات) بدل ما كان بيختفي خالص */
+    if(f.warehouseId && t.warehouseId && t.warehouseId!==f.warehouseId) return;
     const sup = DB.suppliers.find(s=>s.id===t.supplierId);
     const part = t.partId ? DB.inventory.find(x=>x.id===t.partId) : null;
+    /* م154: المرتجعات القديمة (قبل توثيق م113) ملهاش warehouseId — كانت بتختفي
+       من أي فلتر مخزن فصافي المشتريات يطلع أعلى من الحقيقة. نفس fallback التوريدات. */
+    if(f.warehouseId && !t.warehouseId){
+      const rwh = part ? partWhId(part) : null;
+      if(rwh !== f.warehouseId) return;
+    }
     rows.push({ kind:'ret', date:t.date, name:t.name||'—', sku:(part&&part.sku)||'—',
       qty:t.qty, unit:t.unitCost||0, total:(t.total!=null)?t.total:Math.round(t.qty*(t.unitCost||0)*100)/100,
       supName:sup?sup.name:'—', wh:t.warehouseName||(t.warehouseId?whName(t.warehouseId):'—'),
@@ -8659,7 +8728,7 @@ function openSupGlobalReport(keep){
           ${DB.warehouses.map(w=>`<option value="${w.id}" ${f.warehouseId===w.id?'selected':''}>${w.name}</option>`).join('')}
         </select></div>
       <div class="form-row" style="margin:0"><label class="f-label">بحث ذكي</label>
-        <input class="f" value="${f.search}" placeholder="صنف، كود، مورد، رقم فاتورة..." oninput="supGRepSearch(this.value)"></div>
+        <input class="f" value="${escAttr(f.search)}" placeholder="صنف، كود، مورد، رقم فاتورة..." oninput="supGRepSearch(this.value)"></div>
     </div>
     <div class="muted" style="font-size:11.5px;margin-top:6px">📋 تقرير للمراجعة فقط — الفترة: <b>${supGRepPeriodLabel()}</b> · 💡 اضغط على <b>اسم الصنف</b> لفتح كارت الصنف، وعلى <b>المستند</b> لفتح فاتورة الشراء أو مستند المرتجع.</div>
   </div>
@@ -8679,7 +8748,7 @@ function printSupGlobalReport(){
   const html = `
   <div style="direction:rtl;text-align:right;font-size:13px">
     <h2 style="text-align:center;margin:4px 0">${DB.settings.centerName||''} — تقرير الموردين (توريدات ومرتجعات)</h2>
-    <div style="text-align:center;margin-bottom:10px">الفترة: <b>${supGRepPeriodLabel()}</b> · المورد: <b>${supTxt}</b> · المخزن: <b>${whTxt}</b>${f.search?` · بحث: <b>${f.search}</b>`:''}</div>
+    <div style="text-align:center;margin-bottom:10px">الفترة: <b>${supGRepPeriodLabel()}</b> · المورد: <b>${supTxt}</b> · المخزن: <b>${whTxt}</b>${f.search?` · بحث: <b>${escAttr(f.search)}</b>`:''}</div>
     <table border="1" cellspacing="0" cellpadding="5" style="width:100%;border-collapse:collapse;font-size:11.5px">
       <thead><tr style="background:#eee"><th>التاريخ</th><th>الصنف</th><th>الكود</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th><th>النوع</th><th>المورد</th><th>المخزن</th><th>المستند</th><th>الدفع</th></tr></thead>
       <tbody>${[...rows].reverse().map(x=>`<tr>
@@ -8698,11 +8767,8 @@ function printSupGlobalReport(){
 function renderSuppliers(){
   const archivedCount = DB.suppliers.filter(s=>s.archived).length;
   const totalOwed = activeSuppliers().reduce((s,sup)=>s+supplierBalance(sup.id).balance,0);
-  const hasF = supFinFilter.preset!=='all';
-  /* م142: الملخص من الموردين المعروضين بالظبط (بحث + فلتر حالة) */
-  const vis = visibleSuppliers();
-  const g = { purchases:0, paid:0, periodOut:0, current:0 };
-  vis.forEach(sup=>{ const pf = supPeriodFin(sup.id); g.purchases+=pf.purchases; g.paid+=pf.paid; g.periodOut+=pf.periodOut; g.current+=supplierBalance(sup.id).balance; });
+  /* م142: الملخص من الموردين المعروضين بالظبط — م154: اتفصل في supFinSummaryHTML
+     عشان البحث الحي يحدّثه مع الكروت */
   return `
   <div class="section-head"><h3>الموردين (${activeSuppliers().length}${archivedCount?` + ${archivedCount} مؤرشف`:''}) — إجمالي المستحق ${money(totalOwed)}</h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -8720,20 +8786,9 @@ function renderSuppliers(){
       <div class="form-row" style="margin:0"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${supFinFilter.to}" onchange="setSupFinFilter('to',this.value)"></div>
     </div>`:''}
   </div>
-  ${hasF?`
-  <div class="grid g4" style="margin-bottom:12px">
-    ${stat(money(g.purchases),'مشتريات الفترة ('+supFinPeriodLabel()+')')}
-    ${stat(money(g.paid),'مدفوع الفترة')}
-    ${stat(money(g.periodOut),'مستحق الفترة (مشتريات − مدفوع)', g.periodOut>0)}
-    ${stat(money(g.current),'المستحق الحالي الفعلي (مايتأثرش بالفلتر)', g.current>0)}
-  </div>`:`
-  <div class="grid g3" style="margin-bottom:12px">
-    ${stat(money(g.purchases),'إجمالي المشتريات')}
-    ${stat(money(g.paid),'إجمالي المدفوع')}
-    ${stat(money(g.current),'المستحق الحالي', g.current>0)}
-  </div>`}
+  <div id="supFinSummary">${supFinSummaryHTML()}</div>
   <div class="grid g2" style="max-width:760px;margin-bottom:12px">
-    <div class="form-row" style="margin:0"><input class="f" placeholder="🔎 ابحث باسم المورد، تليفون، مسؤول التواصل، منطقة، ملاحظات..." value="${supSearchTerm}" oninput="setSupSearch(this.value)" autocomplete="off"></div>
+    <div class="form-row" style="margin:0"><input class="f" placeholder="🔎 ابحث باسم المورد، تليفون، مسؤول التواصل، منطقة، ملاحظات..." value="${escAttr(supSearchTerm)}" oninput="setSupSearch(this.value)" autocomplete="off"></div>
     <div class="form-row" style="margin:0"><select class="f" onchange="setSupStatusFilter(this.value)">
       ${[['active','✅ الموردين النشطين'],['archived','🗄️ الموردين المؤرشفين'],['all','الكل (نشط + مؤرشف)']]
         .map(([v,l])=>`<option value="${v}" ${supStatusFilter===v?'selected':''}>${l}</option>`).join('')}
@@ -8951,7 +9006,7 @@ function supplierDetailHTML(supplierId){
         ${(p.payments||[]).length?`<div class="muted" style="font-size:11px;margin-top:5px">الدفعات: ${p.payments.map(x=>money(x.amount)+' ('+fmtDate(x.date)+')').join(' · ')}</div>`:''}
         <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
           ${purStatus(p)==='pending' && !p.extKind && (can('pur.review')||can('pur.approve')||canEditPurchaseAny())?`<button class="btn btn-sm btn-accent" onclick="openPurReview('${p.id}')">🧾 مراجعة / اعتماد</button>`:''}
-          ${!purIsClosed(p) && !p.extKind && (can('pur.fin_approve')||can('pur.pay_method'))?`<button class="btn btn-sm" style="border-color:var(--accent)" onclick="openPurApprove('${p.id}')">💰 اعتماد مالي وإغلاق</button>`:''}
+          ${!purIsClosed(p) && !p.extKind && can('pur.fin_approve')?`<button class="btn btn-sm" style="border-color:var(--accent)" onclick="openPurApprove('${p.id}')">💰 اعتماد مالي وإغلاق</button>`:''}
           ${canEditPurchase(p).ok?`<button class="btn btn-sm" onclick="openEditPurchase('${p.id}')">✏️ الكميات/الأسعار</button>`:''}
           ${purStatus(p)==='approved' && can('pur.reopen')?`<button class="btn btn-sm" onclick="reopenPurchase('${p.id}')">🔄 إعادة فتح</button>`:''}
           <button class="btn btn-sm" onclick="openPurchaseHistory('${p.id}')">🕘 السجل</button>
@@ -11751,7 +11806,10 @@ function isOperatingExpense(e){ return expTxnDef(e).operating; }
 function operatingExpenses(list){ return (list||DB.expenses).filter(isOperatingExpense); }
 function expCatOptionsHTML(){
   let html = `<option value="">— اختر نوع المصروف —</option>`;
-  EXPENSE_GROUPS.forEach(g=>{
+  /* م154: المجموعات المخصوصة (م141) كانت أنواعها مش بتظهر هنا خالص —
+     كانت اللفة على المجموعات الثابتة بس، فأي نوع في مجموعة جديدة
+     كان مستحيل يتسجل بيه مصروف. */
+  allExpenseGroups().forEach(g=>{
     const cats = DB.expenseCategories.filter(c=>c.group===g).sort(cmpName);
     if(cats.length) html += `<optgroup label="${g}">`+cats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')+`</optgroup>`;
   });
@@ -15008,6 +15066,8 @@ async function saveEmpcItem(custodyId){
   if(!cat){ toast('اختار القسم أو اكتب اسم قسم جديد', true); return; }
   if(!name){ toast('اكتب اسم البند', true); return; }
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
+  /* م154: العهدة قطع كاملة — الكسور كانت بتعمل بند مستحيل يتعلم عليه عجز */
+  if(qty !== Math.round(qty)){ toast('كمية العهدة لازم تكون عدد صحيح (قطع كاملة)', true); return; }
   const it = { id:uid('eci'), category:cat, name, qty, unitPrice:price, status:'available' };
   c.items = c.items||[];
   c.items.push(it);
@@ -15161,6 +15221,7 @@ async function saveEmpcEdit(custodyId, itemId){
   const qty = parseFloat((document.getElementById('empcEdQty')||{}).value)||0;
   const price = parseFloat((document.getElementById('empcEdPrice')||{}).value)||0;
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
+  if(qty !== Math.round(qty)){ toast('كمية العهدة لازم تكون عدد صحيح (قطع كاملة)', true); return; }   /* م154 */
   const beforeQty = it.qty, beforePrice = it.unitPrice, beforeTotal = empcItemTotal(it);
   if(qty===beforeQty && price===beforePrice){ closeModal(); return; }
   it.qty = qty; it.unitPrice = price;
@@ -15373,7 +15434,9 @@ function stagnantParts(){
   // لفة واحدة: آخر تاريخ صرف لكل صنف
   const lastOutMap = new Map();
   for(const m of DB.stockMoves){
-    if(m.type!=='out' || !m.partId) continue;
+    /* م154: كل أنواع الخروج (صرف/هالك/تحويل/مرتجع) = حركة — نفس تعريف تقرير
+       تحليل المخزون بالظبط، عشان رقم الكارت يطابق القايمة اللي بتتفتح */
+    if(!INV_OUT_TYPES.has(m.type) || !m.partId) continue;
     const t = new Date(m.date).getTime();
     const cur = lastOutMap.get(m.partId);
     if(cur===undefined || t>cur) lastOutMap.set(m.partId, t);
@@ -15522,6 +15585,8 @@ async function cleanupArchivedNotifs(){
   const before = DB.notifications.length;
   DB.notifications = DB.notifications.filter(x=>{
     if(!isArchived(x)) return true;                 // المتابعة والمنتظر مايتلمسوش
+    if(x.srcKey) return true;                       /* م154: علامات «اتراجع» بتاعة شاشات الـWorkflow
+                                                       — لو اتمسحت السطر المراجَع يرجع يظهر تاني */
     const at = x.archivedAt || x.resolvedAt;        // العدّ من تاريخ الأرشفة فقط
     if(!at) return true;                            // مفيش تاريخ أرشفة ⇒ مانمسحش
     return new Date(at).getTime() >= cutoff;
@@ -15531,6 +15596,23 @@ async function cleanupArchivedNotifs(){
     await saveKey('notifications');
     await logAction('🧹 حذف تلقائي للأرشيف: '+removed+' إشعار عدّى عليه أكتر من '+days+' يوم من تاريخ الأرشفة');
   }
+  /* م154: بعد نافذة م150 (تحميل آخر 30 يوم بس) الحذف المحلي لوحده مابقاش يكفي —
+     الأرشيف الأقدم من النافذة عمره ما بيتحمّل فمكانش بيتمسح أبداً والإعداد كان
+     شغال بالاسم بس. دلوقتي بنجيب المؤرشف القديم من القاعدة ونمسحه بمعرفاته. */
+  try{
+    const cutISO = new Date(cutoff).toISOString();
+    const { data } = await sb.from('notifications').select('data').lte('data->>date', cutISO);
+    const oldIds = (data||[]).map(r=>r&&r.data).filter(Boolean)
+      .filter(n=>isArchived(n) && !n.srcKey && (n.archivedAt||n.resolvedAt)
+        && new Date(n.archivedAt||n.resolvedAt).getTime() < cutoff
+        && !DB.notifications.some(x=>x.id===n.id))
+      .map(n=>n.id);
+    for(let i=0; i<oldIds.length; i+=200){
+      await sb.from('notifications').delete().in('id', oldIds.slice(i, i+200));
+    }
+    if(oldIds.length) await logAction('🧹 حذف '+oldIds.length+' إشعار مؤرشف قديم من القاعدة (أقدم من نافذة التحميل)');
+    return removed + oldIds.length;
+  }catch(e){ /* النت وقع؟ المحاولة الجاية عند التشغيل */ }
   return removed;
 }
 /* ============================================================
@@ -16223,7 +16305,9 @@ function liveAlertsCount(){
   _liveAlertsMemo = { at: now, val };
   return val;
 }
-function unseenNotifCount(){ return DB.notifications.filter(n=>!n.seen).length; }
+/* م154: العد = نفس اللي بيظهر في قايمة «غير المقروءة» بالظبط — المتابعة
+   والمؤرشف ليهم قوايمهم، فمايتحسبوش هنا (نفس قاعدة توحيد م150). */
+function unseenNotifCount(){ return DB.notifications.filter(n=>!n.seen && n.status!=='followup' && n.status!=='approved' && n.status!=='rejected').length; }
 /* م150: رقم كارت «سجل الإشعارات كامل» = نفس القايمة اللي بتتفتح منه بالظبط
    (من غير المؤرشف والمتابعة — دول ليهم زرايرهم جواه). سيف شاف 1000 فوق
    و919 تحت واتلغبط — الرقمين بقوا واحد. */
@@ -16301,7 +16385,7 @@ let _notifOldRows = [];
 let _notifFetchState = { from:'', to:'', loading:false, error:false };
 function _notifNeedsFetch(){
   if(!notifDateFrom) return false;
-  if(new Date(notifDateFrom).getTime() >= Date.now() - NOTIF_WINDOW_DAYS*86400000) return false;
+  if(localDayStart(notifDateFrom).getTime() >= Date.now() - NOTIF_WINDOW_DAYS*86400000) return false;   /* م154 */
   const st = _notifFetchState;
   return !st.loading && (st.from !== notifDateFrom || st.to !== (notifDateTo||''));
 }
@@ -16309,18 +16393,31 @@ async function _fetchOldNotifs(){
   const from = notifDateFrom, to = notifDateTo||'';
   _notifFetchState = { from, to, loading:true, error:false };
   try{
-    const fromISO = new Date(from).toISOString();
-    const toISO = to ? new Date(new Date(to).getTime()+86399999).toISOString() : new Date().toISOString();
+    const fromISO = localDayStart(from).toISOString();   /* م154: حدود محلية */
+    const toISO = to ? localDayEnd(to).toISOString() : new Date().toISOString();
+    /* م154: order+limit — عشان مانتصادمش مع سقف الـ1000 صف الصامت بتاع السيرفر */
     const { data, error } = await sb.from('notifications').select('data')
-      .gte('data->>date', fromISO).lte('data->>date', toISO);
+      .gte('data->>date', fromISO).lte('data->>date', toISO)
+      .order('data->>date', { ascending:false }).limit(1000);
     if(error) throw error;
     const have = new Set(DB.notifications.map(n=>n.id));
     _notifOldRows = (data||[]).map(r=>r&&r.data).filter(n=>n && n.id && !have.has(n.id));
+    _notifFetchState.truncated = (data||[]).length >= 1000;
     _notifFetchState.loading = false;
   }catch(e){
     _notifFetchState = { from:'', to:'', loading:false, error:true };
   }
   refreshContent();
+}
+/* م154: التفاعل مع إشعار قديم متجاب من القاعدة — كانت أزرار المراجعة والتعليق
+   عليه شكلها شغال وفعلياً ميتة (البحث كان في المحمّل بس). دلوقتي بنضم القديم
+   لقايمة المحمّل أول ما حد يتفاعل معاه، فأي حفظ بيترفع للقاعدة عادي. */
+function notifById(id){
+  let n = DB.notifications.find(x=>x.id===id);
+  if(n) return n;
+  const i = _notifOldRows.findIndex(x=>x.id===id);
+  if(i >= 0){ n = _notifOldRows.splice(i, 1)[0]; DB.notifications.push(n); return n; }
+  return null;
 }
 function setNotifDate(which, v){
   if(which==='from') notifDateFrom = v; else notifDateTo = v;
@@ -16344,6 +16441,12 @@ function followUpNotifs(){ return DB.notifications.filter(n=>n.status==='followu
 /* المفتاح اللي بيربط سجل المتابعة بالسطر اللي اتعمل منه — عشان نعرف
    بعد كده إن السطر ده اتراجع خلاص (وده أساس «تختفي بعد المراجعة») */
 function followKey(section, key){ return String(section)+'::'+String(key); }
+/* م154: مفتاح دورة المرتبات — تنبيهات السلف/الغياب بتتراجع **لكل دورة لوحدها**.
+   قبل كده المراجعة كانت بتكتم الموظف للأبد: يتراجع في أغسطس، يسحب سلف تانية
+   في سبتمبر، ولا يظهر ولا يتعد في أي حتة تاني. */
+function payrollCycleTag(){
+  try{ return (typeof getPayrollPeriod==='function' ? (getPayrollPeriod().from||'') : ''); }catch(e){ return ''; }
+}
 function followRecord(section, key){
   const k = followKey(section, key);
   return DB.notifications.find(n=>n.kind==='followup' && n.srcKey===k) || null;
@@ -16469,8 +16572,8 @@ function renderNotifications(){
   const largeDiscInv = wfVisibleRows('largeDisc',
     DB.invoices.filter(i=>!i.cancelled && i.discount>0 && (i.subtotal>0) && (i.discount/i.subtotal*100) >= (s.largeDiscountPct||15)),
     i=>i.id);
-  const highAdv = wfVisibleRows('highAdv', highAdvanceEmployees(), x=>x.e.id);
-  const highAbs = wfVisibleRows('highAbs', highAbsenceEmployees(), x=>x.e.id);
+  const highAdv = wfVisibleRows('highAdv', highAdvanceEmployees(), x=>x.e.id+'@'+payrollCycleTag());   /* م154: لكل دورة */
+  const highAbs = wfVisibleRows('highAbs', highAbsenceEmployees(), x=>x.e.id+'@'+payrollCycleTag());
   const stagnant = stagnantParts();
   const lowStk = lowStockParts();
   const overCust = overdueCustodiesAlert();
@@ -16480,15 +16583,19 @@ function renderNotifications(){
   const isReviewed = n => n.status==='approved' || n.status==='rejected';
   const isFollow = n => n.status==='followup';
   const archivedCount = DB.notifications.filter(isReviewed).length;
-  /* م150: المحلي (آخر 30 يوم) + الأقدم المتجاب عند الطلب */
-  const notifSrc = _notifOldRows.length ? DB.notifications.concat(_notifOldRows) : DB.notifications;
+  /* م150: المحلي (آخر 30 يوم) + الأقدم المتجاب عند الطلب
+     م154: مع منع التكرار لو تحديث لحظي ضاف نسخة من صف قديم متجاب */
+  const notifSrc = _notifOldRows.length
+    ? (()=>{ const have = new Set(DB.notifications.map(n=>n.id));
+        return DB.notifications.concat(_notifOldRows.filter(n=>!have.has(n.id))); })()
+    : DB.notifications;
   let list = notifSrc.filter(n => notifShowFollow ? isFollow(n)
     : (notifShowArchived ? isReviewed(n) : (!isReviewed(n) && !isFollow(n))));
   const followCount = DB.notifications.filter(isFollow).length;
   if(notifFilter.category) list = list.filter(n=>n.category===notifFilter.category);
   if(notifFilter.priority) list = list.filter(n=>n.priority===notifFilter.priority);
-  if(notifDateFrom) list = list.filter(n=>new Date(n.date) >= new Date(notifDateFrom));
-  if(notifDateTo) list = list.filter(n=>new Date(n.date) <= new Date(new Date(notifDateTo).getTime()+86399999));
+  if(notifDateFrom) list = list.filter(n=>new Date(n.date) >= localDayStart(notifDateFrom));   /* م154 */
+  if(notifDateTo) list = list.filter(n=>new Date(n.date) <= localDayEnd(notifDateTo));
   list.sort((a,b)=>new Date(b.date)-new Date(a.date));
   /* ============ م91: المؤشرات بقت قابلة للضغط والأقسام بتفتح واحد واحد ============
      المشكلة اللي رصدها سيف: كل الأقسام كانت مفتوحة مع بعض (78 قطعة راكدة +
@@ -16497,7 +16604,9 @@ function renderNotifications(){
      مؤشر فيفتح قسمه هو لوحده تحته مباشرة — من غير ما تخرج من الشاشة. */
   const widget = (label, count, danger, panel)=>{
     const active = notifPanel===panel;
-    const clickable = !!panel && count>0;
+    /* م154: السجل وغير المقروءة بيتفتحوا حتى برقم صفر — جواهم زراير الأرشيف
+       والمتابعة وفلاتر التواريخ، وكانوا بيبقوا مقفولين خالص لما الشغل يخلص */
+    const clickable = !!panel && (count>0 || panel==='log' || panel==='unseen');
     return `<div class="stat-card" ${clickable?`onclick="setNotifPanel('${panel}')" style="cursor:pointer;${active?'outline:2px solid var(--accent);outline-offset:-2px':''}"`:'style="opacity:.6"'}>
       <div class="stat-value ${danger&&count>0?'low-stock':''}">${count}</div>
       <div class="stat-label">${label}${clickable?` <span class="muted" style="font-size:10px">${active?'▲ اقفل':'▼ افتح'}</span>`:''}</div>
@@ -16630,12 +16739,12 @@ function renderNotifications(){
   <div class="section-head"><h3>💸 موظفين سلفهم عالية (≥ ${s.highAdvancePct||50}% من الراتب هذه الدورة)</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الموظف</th><th>الراتب</th><th>إجمالي السلف</th><th>النسبة</th><th></th></tr></thead>
   <tbody>${highAdv.map(x=>`<tr><td style="font-weight:700">${x.e.name}</td><td>${money(x.e.salary)}</td><td style="color:var(--danger);font-weight:800">${money(x.adv)}</td><td style="color:var(--danger);font-weight:800">${x.ratio.toFixed(0)}%</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="goTab('hr')">↗ فتح السجل</button></td></tr>
-  <tr><td colspan="5" style="padding-top:0;border-bottom:2px solid var(--border)">${wfRowControls('highAdv', x.e.id, 'سلف عالية — '+x.e.name+' ('+x.ratio.toFixed(0)+'%)', Number(x.adv)||0, 'employee', x.e.id, '')}</td></tr>`).join('')}</tbody></table></div>`:''}
+  <tr><td colspan="5" style="padding-top:0;border-bottom:2px solid var(--border)">${wfRowControls('highAdv', x.e.id+'@'+payrollCycleTag(), 'سلف عالية — '+x.e.name+' ('+x.ratio.toFixed(0)+'%)', Number(x.adv)||0, 'employee', x.e.id, '')}</td></tr>`).join('')}</tbody></table></div>`:''}
   ${(P==='highAbs' && highAbs.length)?`
   <div class="section-head"><h3>🚫 موظفين غيابهم عالي (≥ ${s.highAbsenceDays||3} أيام هذه الدورة)</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الموظف</th><th>أيام الغياب</th><th></th></tr></thead>
   <tbody>${highAbs.map(x=>`<tr><td style="font-weight:700">${x.e.name}</td><td style="color:var(--danger);font-weight:800">${x.days} يوم</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="goTab('hr')">↗ فتح السجل</button></td></tr>
-  <tr><td colspan="3" style="padding-top:0;border-bottom:2px solid var(--border)">${wfRowControls('highAbs', x.e.id, 'غياب عالي — '+x.e.name+' ('+x.days+' يوم)', Number(x.days)||0, 'employee', x.e.id, '')}</td></tr>`).join('')}</tbody></table></div>`:''}
+  <tr><td colspan="3" style="padding-top:0;border-bottom:2px solid var(--border)">${wfRowControls('highAbs', x.e.id+'@'+payrollCycleTag(), 'غياب عالي — '+x.e.name+' ('+x.days+' يوم)', Number(x.days)||0, 'employee', x.e.id, '')}</td></tr>`).join('')}</tbody></table></div>`:''}
   ${(P==='stagnant' && stagnant.length)?(()=>{
     /* م114: إشعار واحد مجمّع — مش سطر لكل قطعة. والتفاصيل الكاملة
        في شاشة «تحليل حركة المخزون» بفلاتر المخازن والتصدير. */
@@ -16725,6 +16834,7 @@ function renderNotifications(){
     ولو حددت «من تاريخ» أقدم، السيستم بيجيب الفترة دي من القاعدة تلقائياً.
     ${_notifFetchState.loading?'<b>⏳ بجيب الإشعارات الأقدم من القاعدة...</b>':''}
     ${_notifFetchState.error?'<b style="color:var(--danger)">⚠️ تعذّر جلب الأقدم — اتأكد من النت</b> <button class="btn btn-sm" onclick="_fetchOldNotifs()">إعادة المحاولة</button>':''}
+    ${_notifFetchState.truncated?'<b style="color:var(--accent-2)">⚠️ الفترة دي فيها أكتر من 1000 إشعار — معروض أحدث 1000، ضيّق الفترة عشان تشوف الباقي.</b>':''}
   </div>
   <div class="card">
     <table><thead><tr><th>الأولوية</th><th>القسم</th><th>الإجراء</th><th>المستخدم</th><th>الوقت</th><th>الحالة</th><th></th></tr></thead>
@@ -16799,7 +16909,7 @@ function openNotifDetail(id){
 }
 async function addNotifComment(id){
   if(!(canScreen('notifications'))){ toast('مالكش صلاحية على مركز الإشعارات', true); return; }   /* حارس م65 */
-  const n = DB.notifications.find(x=>x.id===id); if(!n) return;
+  const n = notifById(id); if(!n) return;   /* م154: يشتغل على المتجاب القديم كمان */
   // الملاحظة 75: الحقل بقى تحت كل إشعار (بمعرّف خاص بيه) — والقديم للتوافق
   const el = document.getElementById('notifComment_'+id) || document.getElementById('notifComment');
   const t = (el?el.value:'').trim();
@@ -16857,13 +16967,15 @@ function followLiveLine(n){
   const was = (typeof n.srcValue==='number') ? n.srcValue : null;
   const now = liveValueOf(n);
   if(was===null || now===null) return '';
+  /* م154: الغياب أيام مش فلوس — «3 ج.م» كانت بتظهر بدل «3 يوم» */
+  const fmtV = (n.srcKey && String(n.srcKey).indexOf('highAbs')===0) ? (v=>v+' يوم') : money;
   const diff = Math.round((now - was)*100)/100;
   if(Math.abs(diff) <= 0.009)
-    return `<div class="muted" style="font-size:11.5px;margin-top:3px">📊 الرقم زي ما هو: <b>${money(was)}</b></div>`;
+    return `<div class="muted" style="font-size:11.5px;margin-top:3px">📊 الرقم زي ما هو: <b>${fmtV(was)}</b></div>`;
   const dir = diff < 0 ? '⬇ نزل' : '⬆ زاد';
   const col = diff < 0 ? 'var(--accent)' : 'var(--danger)';
   return `<div style="font-size:11.5px;margin-top:3px;background:var(--surface-2);padding:4px 8px;border-radius:6px">
-    📊 وقت التحويل: <b>${money(was)}</b> · دلوقتي: <b style="color:${col}">${money(now)}</b>
+    📊 وقت التحويل: <b>${fmtV(was)}</b> · دلوقتي: <b style="color:${col}">${fmtV(now)}</b>
     <span style="color:${col}">${dir} ${money(Math.abs(diff))}</span></div>`;
 }
 /* ---------- م117: تحويل سطر من قسم محسوب لحظياً إلى متابعة ----------
@@ -16903,7 +17015,7 @@ async function convertToFollowUp(section, key, text, amount, refType, refId, ref
 /* قفل المتابعة: تم الحل ⇒ أرشيف · لم يتم الحل ⇒ سبب إلزامي ثم أرشيف مرفوض */
 async function resolveFollowUp(id, done){
   if(!(canScreen('notifications'))){ toast('مالكش صلاحية على مركز الإشعارات', true); return; }
-  const n = DB.notifications.find(x=>x.id===id); if(!n) return;
+  const n = notifById(id); if(!n) return;   /* م154 */
   if(done){
     n.status = 'approved'; n.seen = true; n.resolvedAt = new Date().toISOString();
     n.archivedAt = n.resolvedAt;   // م121: العدّ للحذف التلقائي من هنا
@@ -16930,7 +17042,7 @@ async function resolveFollowUp(id, done){
 }
 async function setNotifStatus(id, status){
   if(!(canScreen('notifications'))){ toast('مالكش صلاحية على مركز الإشعارات', true); return; }   /* حارس م65 */
-  const n = DB.notifications.find(x=>x.id===id); if(!n) return;
+  const n = notifById(id); if(!n) return;   /* م154 */
   n.status = status; n.seen = true;
   /* م121: العدّ للحذف التلقائي بيبدأ من تاريخ الأرشفة — مش تاريخ الإنشاء */
   if(status==='approved' || status==='rejected') n.archivedAt = new Date().toISOString();
@@ -16939,6 +17051,7 @@ async function setNotifStatus(id, status){
   closeModal(); toast('تم التحديث'); refreshContent();
 }
 async function markAllNotifsSeen(){
+  if(!(canScreen('notifications'))){ toast('مالكش صلاحية على مركز الإشعارات', true); return; }   /* م154: حارس م65 */
   DB.notifications.forEach(n=>{ n.seen = true; });
   await saveKey('notifications');
   toast('اتحددوا كلهم كمقروء'); refreshContent();
@@ -16968,7 +17081,7 @@ function auditShowMore(){ auditShowLimit += 300; const b=document.getElementById
 function _auditNeedsFetch(){
   const f = auditFilters.dateFrom;
   if(!f) return false;
-  if(new Date(f).getTime() >= Date.now() - AUDIT_WINDOW_DAYS*86400000) return false;
+  if(localDayStart(f).getTime() >= Date.now() - AUDIT_WINDOW_DAYS*86400000) return false;   /* م154 */
   const st = _auditFetchState;
   return !st.loading && (st.from !== f || st.to !== (auditFilters.dateTo||''));
 }
@@ -16976,13 +17089,17 @@ async function _fetchOldAudit(){
   const from = auditFilters.dateFrom, to = auditFilters.dateTo||'';
   _auditFetchState = { from, to, loading:true, error:false };
   try{
-    const fromISO = new Date(from).toISOString();
-    const toISO = to ? new Date(new Date(to).getTime()+86399999).toISOString() : new Date().toISOString();
+    const fromISO = localDayStart(from).toISOString();   /* م154: حدود محلية */
+    const toISO = to ? localDayEnd(to).toISOString() : new Date().toISOString();
+    /* م154: من غير order+limit كان السيرفر بيقص على 1000 صف **عشوائيين** بصمت —
+       دلوقتي بنجيب الأحدث الأول وبنقول صراحةً لو النتيجة اتقصت. */
     const { data, error } = await sb.from('activity_log').select('data')
-      .gte('data->>date', fromISO).lte('data->>date', toISO);
+      .gte('data->>date', fromISO).lte('data->>date', toISO)
+      .order('data->>date', { ascending:false }).limit(1000);
     if(error) throw error;
     const have = new Set(DB.activityLog.map(l=>l.id));
     _auditOldRows = (data||[]).map(r=>r&&r.data).filter(l=>l && l.id && !have.has(l.id));
+    _auditFetchState.truncated = (data||[]).length >= 1000;
     _auditFetchState.loading = false;
   }catch(e){
     _auditFetchState = { from:'', to:'', loading:false, error:true };
@@ -17036,13 +17153,15 @@ function auditRowsHTML(){
     const actor = l.actor || l.role || '';
     if(f.actor && actor!==f.actor) return false;
     if(f.text && !smartMatch(f.text, [l.text, l.actor, l.role, l.device])) return false;   // م126: بحث ذكي
-    if(f.dateFrom && new Date(l.date) < new Date(f.dateFrom)) return false;
-    if(f.dateTo && new Date(l.date) > new Date(new Date(f.dateTo).getTime()+86399999)) return false;
+    if(f.dateFrom && new Date(l.date) < localDayStart(f.dateFrom)) return false;   /* م154: توقيت محلي */
+    if(f.dateTo && new Date(l.date) > localDayEnd(f.dateTo)) return false;
     if(f.refNo && !l.text.includes('#'+f.refNo.trim())) return false;
     return true;
   });
   const shown = list.slice(0, auditShowLimit);
   let extraRow = '';
+  if(_auditFetchState.truncated && !_auditFetchState.loading)
+    extraRow = `<tr><td colspan="4" class="empty">⚠️ الفترة دي فيها أكتر من 1000 سجل — معروض أحدث 1000، ضيّق الفترة عشان تشوف الباقي.</td></tr>`;
   if(_auditFetchState.loading)
     extraRow = `<tr><td colspan="4" class="empty">⏳ بجيب السجلات الأقدم من القاعدة...</td></tr>`;
   else if(_auditFetchState.error)
@@ -17540,8 +17659,13 @@ async function saveNotifThresholds(){
   toast('تم حفظ العتبات');
   // م124: لو سيف حدد مدة احتفاظ لسجل العمليات، تتطبق فوراً مش بس عند البدء
   cleanupOldActivityLog().catch(()=>{});
+  // م154: ونفس الحاجة لحذف أرشيف الإشعارات — كان بيستنى إعادة التشغيل
+  cleanupArchivedNotifs().catch(()=>{});
 }
 // بناء كائن النسخة الاحتياطية — كل أنواع البيانات (DATA_KEYS) + المستخدمين والإعدادات (KV_KEYS)
+/* م154 (توضيح مهم): بعد نوافذ م124/م150، الجهاز محمّل آخر 30 يوم بس من سجل
+   العمليات والإشعارات — فالنسخة دي بتشملهم لحد 30 يوم، والتاريخ الأقدم محفوظ
+   في قاعدة Supabase نفسها. الرسالة للمستخدم بتقول كده صراحةً. */
 function buildBackupObject(){
   const backup = { exportedAt: new Date().toISOString(), appVersion: APP_VERSION };
   DATA_KEYS.forEach(k=>{ backup[k] = DB[k]; });
