@@ -541,7 +541,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v170';
+const APP_VERSION = 'v178';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1082,14 +1082,18 @@ function moveActorFromLog(m){
 async function repairMissingStockMoves(){
   let created = 0;
   DB.jobs.forEach(job=>{
+    if(job.status==='ملغاة') return;   /* م155: الملغي برا الاستعادة التلقائية */
     const partItems = job.items.filter(it=>it.kind==='part' && it.partId);
     if(partItems.length===0) return;
     const byPart = {};
     partItems.forEach(it=>{ (byPart[it.partId] = byPart[it.partId]||[]).push(it); });
     Object.entries(byPart).forEach(([pid, items])=>{
       // نحسب الحركات الموجودة لنفس الأمر ونفس القطعة (بالمعرف أو برقم الأمر في الوصف للحركات القديمة)
+      /* م155: مطابقة رقم الأمر بحد كلمة — «#12» كان بيطابق «#123» فالعدّ يزيد
+         والحركة الناقصة فعلاً ماتترجعش */
+      const jobNoRe = new RegExp('#'+String(job.jobNo)+'(?![0-9])');
       const have = DB.stockMoves.filter(m=>m.type==='out' && m.partId===pid &&
-        (m.jobId===job.id || (m.note && m.note.includes('#'+job.jobNo)))).length;
+        (m.jobId===job.id || (m.note && jobNoRe.test(m.note)))).length;
       for(let i=have; i<items.length; i++){
         const it = items[i];
         const car = DB.cars.find(c=>c.id===job.carId);
@@ -3974,6 +3978,9 @@ function archiveInventoryItem(partId){
 async function restoreInventoryItem(partId){
   if(!isOwnerSession()){ toast('استرجاع الأصناف صلاحية صاحب المركز فقط', true); return; }
   const p = DB.inventory.find(x=>x.id===partId); if(!p) return;
+  /* م155: الصنف المدموج مالوش رجعة — رصيده وحركاته اتنقلوا للصنف الأساسي،
+     واسترجاعه كان بيعمل صف زومبي كواشف التكرار عمياء عنه */
+  if(p.merged){ toast('الصنف ده اتدمج في صنف تاني — رصيده وكل تاريخه اتنقلوا هناك، ومينفعش يرجع. دور على الصنف الأساسي في المخزون.', true); return; }
   p.archived = false; delete p.archivedAt; delete p.archivedBy;
   await saveKey('inventory', DB.inventory);
   await logAction('♻️ استرجاع صنف من الأرشيف: '+p.name);
@@ -4126,6 +4133,7 @@ function barcodeLabelHTML(p){
     ${p.category?`<div class="bc-cat">${p.category}</div>`:''}
     ${svg?`<div class="bc-bars">${svg}</div>`:''}
     <div class="bc-code">${p.sku||''}</div>
+    <div class="bc-date">${fmtDate(new Date().toISOString())}</div>
   </div>`;
 }
 function barcodeSheetHTML(entries){
@@ -4146,6 +4154,7 @@ function downloadBarcodeSheet(entries, filename){
   .bc-cat{font-size:8.5px;color:#444}
   .bc-bars{height:11mm}
   .bc-code{font-size:11.5px;font-weight:800;letter-spacing:1.5px;direction:ltr}
+  .bc-date{font-size:7.5px;color:#000;font-weight:800}
   </style></head><body>${barcodeSheetHTML(entries)}
   <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
   const blob = new Blob([full], {type:'text/html;charset=utf-8'});
@@ -4155,6 +4164,70 @@ function downloadBarcodeSheet(entries, filename){
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
   toast('اتحمّل ملف الباركودات — افتحه وهيطبع تلقائياً');
+}
+/* ============================================================
+   م156 — طباعة على مكينة الليبل الحرارية (Xprinter XP-246B)
+   ------------------------------------------------------------
+   سيف جاب مكينة ليبل رول — كل استيكر بيطلع على ليبل لوحده (مش شيت A4).
+   المقاس متخزن في الإعدادات (الافتراضي 55×40 مم — رول سيف الحالي) وقابل
+   للتغيير من نافذة الطباعة نفسها لو جاب رول تاني.
+   كل ليبل = صفحة مستقلة بمقاس الليبل بالظبط ⇒ المكينة بتطبع وتقف على
+   أول الليبل اللي بعده. وضع شيتات A4 (م145) زي ما هو من غير أي تغيير.
+   ============================================================ */
+function rollW(){ return Math.min(120, Math.max(20, parseFloat(DB.settings.labelRollW)||55)); }
+function rollH(){ return Math.min(120, Math.max(15, parseFloat(DB.settings.labelRollH)||40)); }
+/* م157: إزاحة أفقية بالمللي (موجب = يزُق المحتوى يمين) — علاج ميلان مكينة
+   الليبل لما رأس الطباعة مش متطابق مع مكان الليبل على الشريط */
+function rollOffX(){ const v = parseFloat(DB.settings.labelRollOffX); return isFinite(v) ? Math.min(20, Math.max(-20, v)) : 0; }
+async function saveRollSize(w, h, offX){
+  const nw = Math.min(120, Math.max(20, parseFloat(w)||55));
+  const nh = Math.min(120, Math.max(15, parseFloat(h)||40));
+  const nx = (offX===undefined || offX==='') ? rollOffX() : Math.min(20, Math.max(-20, parseFloat(offX)||0));
+  if(nw !== DB.settings.labelRollW || nh !== DB.settings.labelRollH || nx !== DB.settings.labelRollOffX){
+    DB.settings.labelRollW = nw; DB.settings.labelRollH = nh; DB.settings.labelRollOffX = nx;
+    await saveKey('settings');
+  }
+}
+function rollLabelHTML(p){
+  const svg = barcodeSVG(p.sku, 46);
+  return `<div class="roll-label">
+    <div class="rl-brand"><img src="${LOGO}" alt="">${(DB.settings&&DB.settings.centerName)||'مركز ماسترز أوتو سيرفس'}</div>
+    <div class="rl-name">${p.name}</div>
+    ${svg?`<div class="rl-bars">${svg}</div>`:''}
+    <div class="rl-code">${p.sku||''} <span class="rl-date">· ${fmtDate(new Date().toISOString())}</span></div>
+  </div>`;
+}
+function downloadRollSheet(entries, filename){
+  const W = rollW(), H = rollH();
+  const labels = [];
+  entries.forEach(e=>{ for(let i=0;i<e.count;i++) labels.push(rollLabelHTML(e.p)); });
+  const full = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${filename}</title>
+  <style>
+  @page{size:${W}mm ${H}mm;margin:0}
+  html,body{margin:0;padding:0;background:#fff;color:#000;font-family:Tahoma,Arial,sans-serif}
+  /* م159ب: عرض المحتوى بيتقص بمقدار الإزاحة — قبل كده الزحزحة كانت بتطلّع
+     أول السطر العربي (يمين) برا حدود الطباعة فأول حرف بيضيع («طنابير»→«نابير») */
+  .roll-label{width:${W - Math.abs(rollOffX())}mm;height:${H}mm;box-sizing:border-box;padding:1.2mm 2mm;transform:translateX(${Math.max(rollOffX(),0)}mm);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:0.6mm;text-align:center;overflow:hidden;page-break-after:always}
+  .roll-label:last-child{page-break-after:auto}
+  .rl-brand{display:flex;align-items:center;justify-content:center;gap:1.2mm;font-size:8px;font-weight:800;white-space:nowrap;overflow:hidden;max-width:100%}
+  .rl-brand img{width:4.5mm;height:4.5mm;border-radius:1mm;flex-shrink:0}
+  .rl-name{font-size:9.5px;font-weight:800;line-height:1.25;max-height:8mm;overflow:hidden}
+  .rl-bars{width:100%;display:flex;justify-content:center}
+  .rl-bars svg{width:${Math.max(W-8-Math.abs(rollOffX()),30)}mm;height:10mm}
+  .rl-code{font-size:10px;font-weight:800;letter-spacing:1.2px;direction:ltr}
+  .rl-date{font-size:7.5px;font-weight:800;color:#000;letter-spacing:0}
+  @media screen{ body{padding:5mm;background:#eee} .roll-label{background:#fff;border:1px dashed #aaa;margin:0 auto 3mm}
+    .scr-note{display:block;text-align:center;font-size:12px;color:#666;padding:6px;background:#fffbe6;border:1px solid #e6d87a;border-radius:6px;margin:0 auto 8px;max-width:400px} }
+  @media print{ .scr-note{display:none} }
+  </style></head><body><div class="scr-note">👁 المعاينة دي تقريبية وبتتأثر بزوم المتصفح — العبرة بالطباعة الفعلية على المكينة</div>${labels.join('')}
+  <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
+  const blob = new Blob([full], {type:'text/html;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename+'.html';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast('اتحمّل ملف الليبلات — افتحه وهيطبع على مكينة الليبل (اختار Xprinter XP-246B)');
 }
 /* توليد كود تلقائي بسيط للأصناف اللي ملهاش: أرقام مسلسلة من 1001 وطالع
    (بعيد عن الأكواد القصيرة اللي سيف بيكتبها بإيده) — وقابل للتغيير بعدين. */
@@ -4212,14 +4285,62 @@ function openBarcodePrintModal(partId){
     </div>
     <div class="form-row"><label class="f-label">عدد الاستيكرات</label>
       <input class="f" id="bcCount" type="number" min="1" value="1"></div>
-    <button class="btn btn-accent" style="width:100%" onclick="printItemBarcode('${p.id}')">🖨 طباعة</button>
+    <div class="grid g2" style="gap:8px">
+      <button class="btn btn-accent" onclick="printItemBarcodeRoll('${p.id}')">🏷 مكينة الليبل (رول)</button>
+      <button class="btn" onclick="printItemBarcode('${p.id}')">📄 شيت A4 (لاصق)</button>
+    </div>
+    <div class="grid g3" style="gap:8px;margin-top:8px;max-width:400px">
+      <div class="form-row" style="margin:0"><label class="f-label">عرض الليبل (مم)</label><input class="f" id="bcRollW" type="number" min="20" value="${rollW()}"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">ارتفاعه (مم)</label><input class="f" id="bcRollH" type="number" min="15" value="${rollH()}"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">إزاحة يمين (مم)</label><input class="f" id="bcRollX" type="number" step="0.5" value="${rollOffX()}"></div>
+    </div>
+    <div class="muted" style="font-size:11px;margin-top:4px">المقاس والإزاحة محفوظين (${rollW()}×${rollH()} مم · إزاحة ${rollOffX()}) — الطباعة مايلة؟
+      <a style="cursor:pointer;color:var(--accent)" onclick="printRollCalib()">🎯 اطبع ليبل المعايرة</a> وقول لكلود الرقمين اللي عند طرفي الليبل.</div>
   `);
+}
+/* م157: ليبل معايرة — مسطرة مطبوعة كل 5مم. سيف بيقرا الرقم اللي عند أول
+   الليبل الفعلي وآخره، ومنهم بنحسب الإزاحة بالظبط بدل التخمين. */
+function printRollCalib(){
+  const W = rollW(), H = rollH();
+  const ticks = [];
+  for(let x=0; x<=W; x+=5){
+    ticks.push(`<div style="position:absolute;left:${x}mm;top:0;width:0.3mm;height:${x%10===0?6:3.5}mm;background:#000"></div>`);
+    if(x%10===0) ticks.push(`<div style="position:absolute;left:${Math.max(x-3,0)}mm;top:6.5mm;width:7mm;text-align:center;font-size:7.5px;font-weight:800">${x}</div>`);
+  }
+  const full = `<!DOCTYPE html><html dir="ltr"><head><meta charset="UTF-8"><title>معايرة</title>
+  <style>@page{size:${W}mm ${H}mm;margin:0}html,body{margin:0;padding:0;background:#fff;color:#000;font-family:Tahoma,Arial}
+  .cal{position:relative;width:${W}mm;height:${H}mm;overflow:hidden}
+  </style></head><body>
+  <div class="cal">
+    ${ticks.join('')}
+    <div style="position:absolute;left:0;right:0;top:12mm;text-align:center;font-size:9px;font-weight:800">🎯 قول لكلود: أول رقم باين عند طرف الليبل الشمال وآخر رقم عند اليمين</div>
+    <div style="position:absolute;left:${W/2}mm;top:16mm;width:0.5mm;height:8mm;background:#000"></div>
+    <div style="position:absolute;left:${W/2-8}mm;top:24.5mm;width:16mm;text-align:center;font-size:8px;font-weight:800">النص (${W/2})</div>
+    <div style="position:absolute;left:0;top:0;width:100%;height:100%;border:0.4mm solid #000;box-sizing:border-box"></div>
+  </div>
+  <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
+  const blob = new Blob([full], {type:'text/html;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'ليبل-معايرة.html';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast('اتحمّل ليبل المعايرة — اطبعه بنفس إعدادات الطباعة (Margins: None · Scale: 100)');
 }
 function printItemBarcode(partId){
   const p = DB.inventory.find(x=>x.id===partId); if(!p) return;
   const n = Math.max(1, parseInt((document.getElementById('bcCount')||{}).value)||1);
   downloadBarcodeSheet([{ p, count:n }], 'باركود-'+(p.sku||p.name).replace(/[\\/:*?"<>|]/g,'-'));
   logAction('🏷️ طباعة باركود صنف: '+p.name+' ('+n+' استيكر)');
+  closeModal();
+}
+/* م156: نفس الصنف والعدد — بس على رول مكينة الليبل */
+async function printItemBarcodeRoll(partId){
+  const p = DB.inventory.find(x=>x.id===partId); if(!p) return;
+  const n = Math.max(1, parseInt((document.getElementById('bcCount')||{}).value)||1);
+  await saveRollSize((document.getElementById('bcRollW')||{}).value, (document.getElementById('bcRollH')||{}).value, (document.getElementById('bcRollX')||{}).value);
+  downloadRollSheet([{ p, count:n }], 'ليبل-'+(p.sku||p.name).replace(/[\\/:*?"<>|]/g,'-'));
+  logAction('🏷️ طباعة ليبل رول: '+p.name+' ('+n+' ليبل — '+rollW()+'×'+rollH()+'مم)');
   closeModal();
 }
 async function bcGenOne(partId){
@@ -4259,7 +4380,17 @@ function openBarcodeBulkModal(){
       </div>`).join('')}
     </div>
     <div class="muted" style="font-size:11.5px;margin-bottom:10px">صنف مش عايز تطبعله؟ خلّي عدده <b>صفر</b> وهيتعدى.</div>
-    <button class="btn btn-accent" style="width:100%" onclick="printBulkBarcodes()">🖨 طباعة</button>`:''}
+    ${''/* م158: نفس خانات كارت الصنف بالظبط — المقاس والإزاحة قدامك هنا برضه */}
+    <div class="grid g3" style="gap:8px;max-width:400px;margin-bottom:8px">
+      <div class="form-row" style="margin:0"><label class="f-label">عرض الليبل (مم)</label><input class="f" id="bcRollW" type="number" min="20" value="${rollW()}"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">ارتفاعه (مم)</label><input class="f" id="bcRollH" type="number" min="15" value="${rollH()}"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">إزاحة يمين (مم)</label><input class="f" id="bcRollX" type="number" step="0.5" value="${rollOffX()}"></div>
+    </div>
+    <div class="muted" style="font-size:11px;margin-bottom:8px">الطباعة مايلة؟ <a style="cursor:pointer;color:var(--accent)" onclick="printRollCalib()">🎯 اطبع ليبل المعايرة</a></div>
+    <div class="grid g2" style="gap:8px">
+      <button class="btn btn-accent" onclick="printBulkBarcodesRoll()">🏷 مكينة الليبل (رول)</button>
+      <button class="btn" onclick="printBulkBarcodes()">📄 شيت A4 (لاصق)</button>
+    </div>`:''}
   `, true);
 }
 function bcApplyAll(){
@@ -4284,11 +4415,119 @@ function printBulkBarcodes(){
   logAction('🏷️ طباعة باركودات المخزون: '+entries.length+' صنف ('+entries.reduce((s,e)=>s+e.count,0)+' استيكر)');
   closeModal();
 }
+/* م156: نفس القايمة والأعداد — على رول مكينة الليبل
+   م158: بيحفظ المقاس والإزاحة من الخانات زي كارت الصنف بالظبط */
+async function printBulkBarcodesRoll(){
+  const entries = bcBulkEntries();
+  if(!entries.length){ toast('كل الأعداد صفر — حدد عدد ليبلات لصنف واحد على الأقل', true); return; }
+  await saveRollSize((document.getElementById('bcRollW')||{}).value, (document.getElementById('bcRollH')||{}).value, (document.getElementById('bcRollX')||{}).value);
+  downloadRollSheet(entries, 'ليبلات-المخزون');
+  logAction('🏷️ طباعة ليبلات رول للمخزون: '+entries.length+' صنف ('+entries.reduce((s,e)=>s+e.count,0)+' ليبل — '+rollW()+'×'+rollH()+'مم)');
+  closeModal();
+}
 async function bcGenBulk(){
   const ids = visibleInventory().filter(p=>!p.archived && !String(p.sku||'').trim()).map(p=>p.id);
   const n = await saveAutoSkus(ids);
   if(n) toast('اتولّد كود لـ'+n+' صنف ✔');
   openBarcodeBulkModal();
+}
+/* ============================================================
+   م158 — طباعة ملاحظة حرة على الليبل 📝
+   ------------------------------------------------------------
+   طلب سيف: قطعة جاية لعربية معينة («القطعة دي لعربية النترا بتاعة أحمد»)
+   أو ترتيب الأرفف («رف 1A» «رف 2B») — نافذة بنفس workflow طباعة الباركود:
+   اكتب الملاحظة + العدد ← مكينة الرول أو شيت A4. نفس مقاس وإزاحة الليبل
+   المحفوظين. النص بيتأمّن (escape) لأنه إدخال حر.
+   ============================================================ */
+function escNote(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function openNotePrintModal(){
+  openModal(`
+    <h3>📝 طباعة ملاحظة على ليبل</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">اكتب أي ملاحظة وهتتطبع بخط كبير واضح — «القطعة دي لعربية...» · «رف 1A» · أي حاجة.</div>
+    <div class="form-row"><label class="f-label">الملاحظة *</label>
+      <textarea class="f" id="npText" rows="3" placeholder="مثال: رف 2B — فلاتر زيت هيونداي"></textarea></div>
+    <div class="form-row" style="max-width:160px"><label class="f-label">عدد النسخ</label>
+      <input class="f" id="npCount" type="number" min="1" value="1"></div>
+    <div class="grid g3" style="gap:8px;max-width:400px;margin-bottom:8px">
+      <div class="form-row" style="margin:0"><label class="f-label">عرض الليبل (مم)</label><input class="f" id="bcRollW" type="number" min="20" value="${rollW()}"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">ارتفاعه (مم)</label><input class="f" id="bcRollH" type="number" min="15" value="${rollH()}"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">إزاحة يمين (مم)</label><input class="f" id="bcRollX" type="number" step="0.5" value="${rollOffX()}"></div>
+    </div>
+    <div class="grid g2" style="gap:8px">
+      <button class="btn btn-accent" onclick="printNoteRoll()">🏷 مكينة الليبل (رول)</button>
+      <button class="btn" onclick="printNoteA4()">📄 شيت A4 (لاصق)</button>
+    </div>
+  `);
+}
+function noteLabelRollHTML(text){
+  return `<div class="roll-label">
+    <div class="rl-brand"><img src="${LOGO}" alt="">${(DB.settings&&DB.settings.centerName)||'مركز ماسترز أوتو سيرفس'}</div>
+    <div class="rl-note">${escNote(text)}</div>
+    <div class="rl-date">${fmtDate(new Date().toISOString())}</div>
+  </div>`;
+}
+function _npRead(){
+  const text = ((document.getElementById('npText')||{}).value||'').trim();
+  const n = Math.max(1, parseInt((document.getElementById('npCount')||{}).value)||1);
+  if(!text){ toast('اكتب الملاحظة الأول', true); return null; }
+  return { text, n };
+}
+async function printNoteRoll(){
+  const v = _npRead(); if(!v) return;
+  await saveRollSize((document.getElementById('bcRollW')||{}).value, (document.getElementById('bcRollH')||{}).value, (document.getElementById('bcRollX')||{}).value);
+  const W = rollW(), H = rollH();
+  const labels = []; for(let i=0;i<v.n;i++) labels.push(noteLabelRollHTML(v.text));
+  const full = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>ملاحظة</title>
+  <style>
+  @page{size:${W}mm ${H}mm;margin:0}
+  html,body{margin:0;padding:0;background:#fff;color:#000;font-family:Tahoma,Arial,sans-serif}
+  .roll-label{width:${W - Math.abs(rollOffX())}mm;height:${H}mm;box-sizing:border-box;padding:1.5mm 2.5mm;transform:translateX(${Math.max(rollOffX(),0)}mm);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1mm;text-align:center;overflow:hidden;page-break-after:always}
+  .roll-label:last-child{page-break-after:auto}
+  .rl-brand{display:flex;align-items:center;justify-content:center;gap:1.2mm;font-size:7.5px;font-weight:800;white-space:nowrap;overflow:hidden;max-width:100%}
+  .rl-brand img{width:4mm;height:4mm;border-radius:1mm;flex-shrink:0}
+  .rl-note{font-size:14px;font-weight:900;line-height:1.4;white-space:pre-wrap;overflow:hidden;max-height:${H-12}mm;word-break:break-word}
+  .rl-date{font-size:7.5px;color:#000;font-weight:800}
+  @media screen{ body{padding:5mm;background:#eee} .roll-label{background:#fff;border:1px dashed #aaa;margin:0 auto 3mm} }
+  </style></head><body>${labels.join('')}
+  <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
+  const blob = new Blob([full], {type:'text/html;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'ملاحظة-ليبل.html';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  logAction('📝 طباعة ملاحظة على ليبل الرول ('+v.n+' نسخة): '+v.text.slice(0,60));
+  toast('اتحمّل ملف الملاحظة — افتحه وهيطبع على مكينة الليبل');
+  closeModal();
+}
+function printNoteA4(){
+  const v = _npRead(); if(!v) return;
+  const cells = []; for(let i=0;i<v.n;i++) cells.push(`<div class="bc-label">
+    <div class="bc-brand"><img src="${LOGO}" alt="">${(DB.settings&&DB.settings.centerName)||'مركز ماسترز أوتو سيرفس'}</div>
+    <div class="np-note">${escNote(v.text)}</div>
+    <div class="np-date">${fmtDate(new Date().toISOString())}</div>
+  </div>`);
+  const full = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>ملاحظات</title>
+  <style>
+  @page{size:A4;margin:8mm}
+  body{font-family:Tahoma,Arial,sans-serif;color:#000;background:#fff;margin:0;padding:4mm}
+  .bc-sheet{display:grid;grid-template-columns:repeat(3,1fr);gap:2mm}
+  .bc-label{border:1px dashed #999;border-radius:2mm;padding:1.5mm 2mm;text-align:center;height:33mm;display:flex;flex-direction:column;justify-content:center;gap:1mm;page-break-inside:avoid;overflow:hidden}
+  .bc-brand{display:flex;align-items:center;justify-content:center;gap:1.5mm;font-size:8.5px;font-weight:800;color:#000}
+  .bc-brand img{width:6mm;height:6mm;border-radius:1.2mm}
+  .np-note{font-size:13px;font-weight:900;line-height:1.35;white-space:pre-wrap;overflow:hidden;word-break:break-word}
+  .np-date{font-size:7.5px;color:#000;font-weight:800}
+  </style></head><body><div class="bc-sheet">${cells.join('')}</div>
+  <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
+  const blob = new Blob([full], {type:'text/html;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'ملاحظات-A4.html';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  logAction('📝 طباعة ملاحظة على شيت A4 ('+v.n+' نسخة): '+v.text.slice(0,60));
+  toast('اتحمّل شيت الملاحظات — افتحه وهيطبع');
+  closeModal();
 }
 /* ---------- بعد حفظ فاتورة شراء: «تطبع باركود أصناف الفاتورة؟» ---------- */
 let _bcPurchaseId = null;
@@ -4354,6 +4593,7 @@ function renderInventory(){
       ${can('inv.transfer')?`<button class="btn" onclick="openTransferModal()">⇄ تحويل بين المخازن</button>`:''}
       <button class="btn" onclick="openInventoryCount()">📋 جرد المخزن</button>
       <button class="btn" onclick="openBarcodeBulkModal()">🏷️ طباعة باركودات</button>
+      <button class="btn" onclick="openNotePrintModal()">📝 طباعة ملاحظة</button>
       ${can('inv.receive')?`<button class="btn" onclick="openNewPurchaseInvoicePage()">🧾 فاتورة شراء مورد</button>`:''}
       ${can('inv.item_create')?`<button class="btn btn-accent" onclick="openNewPartModal()">${ICONS.plus} صنف جديد</button>`:''}
     </div></div>
@@ -4631,8 +4871,22 @@ function findDuplicatePart(name, sku, warehouseId, excludeId){
    المحذوف من أمر الشغل) — فلازم يتحسب وارد هنا زي ما الرصيد الجاري في كارت
    الصنف بيحسبه بالظبط. من غيره كل صنف اترجّعت منه قطعة كان بيظهر «رصيده مش
    مطابق لحركاته» — إنذار كاذب على عملية سليمة. */
-const STOCK_IN_TYPES = new Set(['in','transfer_in','customer_return']);
-const STOCK_OUT_TYPES = new Set(['out','transfer_out','scrap','paint_out','return']);
+/* ============================================================
+   م155 — جدول إشارات الحركات الموحّد (MOVE_SIGN)
+   ------------------------------------------------------------
+   كان فيه 4 قوايم أنواع منفصلة (moveDelta · STOCK_IN/OUT_TYPES ·
+   INV_OUT_TYPES) وأي نوع جديد لازم يتسجل فيهم كلهم — والغلطة حصلت
+   فعلاً: internal_use اتسجل في 3 ونسي الرابع فمحركين الأرصدة اختلفوا.
+   دلوقتي: جدول واحد هو مصدر الحقيقة، والقوايم بتتولد منه.
+   +1 = بيزود المخزون · -1 = بيخصم · 0 = حركة توثيقية (مش بترصد) */
+const MOVE_SIGN = {
+  in:+1, customer_return:+1, transfer_in:+1,
+  out:-1, return:-1, scrap:-1, internal_use:-1, transfer_out:-1,
+  paint_out:-1,   /* خامات الدهان partId=null دايماً — مش بتلمس رصيد صنف */
+  ext_part:0, ext_work:0, adjustment:0 /* التسوية بالـdelta المخزن عليها */
+};
+const STOCK_IN_TYPES = new Set(Object.keys(MOVE_SIGN).filter(t=>MOVE_SIGN[t]===+1));
+const STOCK_OUT_TYPES = new Set(Object.keys(MOVE_SIGN).filter(t=>MOVE_SIGN[t]===-1));
 function partMovementBalance(partId){
   let bal = 0, ins = 0, outs = 0, adj = 0;
   DB.stockMoves.forEach(m=>{
@@ -4640,7 +4894,9 @@ function partMovementBalance(partId){
     const q = Number(m.qty||0);
     if(STOCK_IN_TYPES.has(m.type)){ bal += q; ins += q; }
     else if(STOCK_OUT_TYPES.has(m.type)){ bal -= q; outs += q; }
-    else if(m.type==='adjustment'){ const d = Number(m.delta||0); bal += d; adj += d; }
+    /* م155: التسوية القديمة (من غير delta رقمي) بتتحسب بنفس منطق moveDelta —
+       المحركين كانوا بيختلفوا عليها فبتطلع «غير مطابقة» وهي سليمة */
+    else if(m.type==='adjustment'){ const d = (typeof m.delta==='number') ? m.delta : moveDelta(m); bal += d; adj += d; }
   });
   return { balance: Math.round(bal*100)/100, ins, outs, adj };
 }
@@ -4687,6 +4943,11 @@ async function doMergeParts(srcId, dstId, reason){
   const src = DB.inventory.find(p=>p.id===srcId), dst = DB.inventory.find(p=>p.id===dstId);
   if(!src || !dst){ toast('الصنف مش موجود', true); return; }
   if(partWhId(src)!==partWhId(dst)){ toast('مينفعش تدمج صنفين في مخازن مختلفة — استخدم التحويل المخزني', true); return; }
+  /* م155: دمج أثناء جرد مفتوح كان بيسيب سطرين بنفس الصنف والاعتماد يطبّق
+     آخرهم بس — كمية بتضيع بحركة شكلها موثق. الجرد الأول ثم الدمج. */
+  const openCnt155 = DB.inventoryCounts.find(ic=>ic.status!=='approved' && ic.status!=='cancelled'
+    && (ic.lines||[]).some(l=>l.partId===srcId || l.partId===dstId));
+  if(openCnt155){ toast('فيه جلسة جرد مفتوحة (#'+openCnt155.countNo+') شاملة الصنف ده — اعتمدها أو ألغيها الأول وبعدين ادمج', true); return; }
   const moved = { moves:0, jobItems:0, purItems:0, countLines:0, returns:0, qty:src.qty||0 };
   // 1) حركات المخزن
   DB.stockMoves.forEach(m=>{ if(m.partId===srcId){ m.partId=dstId; moved.moves++; } });
@@ -4830,7 +5091,9 @@ async function saveStockIn(partId){
   if(supplierId){
     purchaseId = uid('pur');
   }
-  pushStockMove({id:uid('mv'), partId, type:'in', qty, unitCost:cost, warehouseId:partWhId(p), date:new Date().toISOString(), note:(note?note+' — ':'')+'مخزن: '+whName(partWhId(p)), supplierId: supplierId||null, purchaseId});
+  /* م155: توريد من غير سعر يتسجل null مش صفر — الصفر كان بيعدي فلتر م103
+     ويسمم متوسط الشراء و«آخر سعر» وتكلفة م128 اللي بتتختم على البنود */
+  pushStockMove({id:uid('mv'), partId, type:'in', qty, unitCost: cost>0 ? cost : null, warehouseId:partWhId(p), date:new Date().toISOString(), note:(note?note+' — ':'')+'مخزن: '+whName(partWhId(p)), supplierId: supplierId||null, purchaseId});
   await saveKey('inventory', DB.inventory);
   await saveKey('stockMoves', DB.stockMoves);
 
@@ -4948,6 +5211,7 @@ function renderStockMoves(){
     ${can('inv.adjust')?`<button class="btn" onclick="openStockAdjustmentModal()">⚖ تسوية مخزون</button>`:''}
     ${can('inv.return')?`<button class="btn" onclick="openCustomerReturnModal()">↩ مرتجع عميل</button>`:''}
     ${can('inv.scrap')?`<button class="btn btn-danger" onclick="openScrapModal()">🗑 تسجيل هالك / تالف</button>`:''}
+    ${can('inv.scrap')?`<button class="btn" style="border-color:var(--accent-2)" onclick="openInternalUseModal()">🏍 استهلاك داخلي</button>`:''}
     ${can('inv.scrap')?`<button class="btn" onclick="openScrapReport()">📉 تقرير الهالك</button>`:''}
     <button class="btn btn-accent" onclick="openStockStatsModal()">📊 التقارير والإحصائيات</button>
   </div>
@@ -4971,6 +5235,7 @@ function renderStockMoves(){
           <option value="return" ${mvFilters.type==='return'?'selected':''}>مرتجع مورد</option>
           <option value="adjustment" ${mvFilters.type==='adjustment'?'selected':''}>تسوية مخزون</option>
           <option value="scrap" ${mvFilters.type==='scrap'?'selected':''}>هالك / تالف</option>
+          <option value="internal_use" ${mvFilters.type==='internal_use'?'selected':''}>🏍 استهلاك داخلي</option>
           <option value="ext_part" ${mvFilters.type==='ext_part'?'selected':''}>قطعة غيار خارجية</option>
           <option value="ext_work" ${mvFilters.type==='ext_work'?'selected':''}>أعمال خارجية</option>
           <option value="paint_out" ${mvFilters.type==='paint_out'?'selected':''}>صرف خامات دهان</option>
@@ -5135,6 +5400,7 @@ function mvRowsHTML(){
     customer_return: '<span class="tag tag-inspect">مرتجع عميل</span>',
     return: '<span class="tag tag-partial">مرتجع لمورد</span>',
     adjustment: '<span class="tag tag-working">تسوية</span>',
+    internal_use: '<span class="tag tag-inspect">🏍 استهلاك داخلي</span>',
     scrap: '<span class="tag tag-cancel">هالك/تالف</span>',
     ext_part: '<span class="tag tag-inspect">قطعة خارجية</span>',
     ext_work: '<span class="tag tag-working">أعمال خارجية</span>',
@@ -5156,9 +5422,18 @@ function mvRowsHTML(){
     const refCell = `<a onclick="${ref.act}" style="cursor:pointer;color:var(--accent-2);font-weight:600" title="افتح المستند المصدر">${ref.icon} ${ref.text} <span style="font-size:10px">↗</span></a>`
       + (sub ? `<div class="muted" style="font-size:11px;margin-top:2px">${sub}</div>` : '');
     // الكمية بإشارة الاتجاه (+ توريد/مرتجع · − صرف/هالك)
+    // م155: التسوية بتتعرض برقم المستخدم (من/إلى) — وتوفيق السجل سطر صغير تحته
     const dir = moveDelta(m);
-    const qtyTxt = dir>0 ? '+'+dir : (dir<0 ? '−'+Math.abs(dir) : m.qty);
-    const qtyColor = dir>0 ? 'color:#1a7f37' : (dir<0 ? 'color:var(--danger)' : '');
+    let qtyTxt, qtyColor;
+    if(m.type==='adjustment' && typeof m.qtyBefore==='number' && typeof m.qtyAfter==='number'){
+      const ud = Math.round((m.qtyAfter - m.qtyBefore)*100)/100;
+      qtyTxt = (ud>0?'+'+ud:(ud<0?'−'+Math.abs(ud):'0'))
+        + ((Math.abs(dir - ud) > 0.001) ? `<div class="muted" style="font-size:10px" title="فرق قديم بين الرصيد المسجل وسجل الحركات اتوفق هنا">توفيق سجل: ${dir>0?'+':''}${dir}</div>` : '');
+      qtyColor = ud>0 ? 'color:#1a7f37' : (ud<0 ? 'color:var(--danger)' : '');
+    } else {
+      qtyTxt = dir>0 ? '+'+dir : (dir<0 ? '−'+Math.abs(dir) : m.qty);
+      qtyColor = dir>0 ? 'color:#1a7f37' : (dir<0 ? 'color:var(--danger)' : '');
+    }
     return `<tr>
       <td style="white-space:nowrap">${fmtDateTime(m.date)}</td>
       <td>${nameCell}</td>
@@ -5189,6 +5464,8 @@ function moveReference(m){
       return { icon:'⚖', text:'تسوية مخزون', act:`openMoveDetails('${m.id}')` };
     case 'scrap':
       return { icon:'🗑', text:'هالك/تالف', act:`openMoveDetails('${m.id}')` };
+    case 'internal_use':
+      return { icon:'🏍', text:'استهلاك داخلي', act:`openMoveDetails('${m.id}')` };
     case 'transfer_in': case 'transfer_out':
       return { icon:'🔄', text:'تحويل: '+whName(m.fromWhId)+' ← '+whName(m.toWhId), act:`openMoveDetails('${m.id}')` };
   }
@@ -5210,7 +5487,8 @@ function moveRefSub(m){
 /* نافذة تفاصيل الحركة الكاملة (الملاحظة 55، البند 13) — وبتعمل كـ«مستند» للتسوية/المرتجع/التحويل/الهالك */
 const MOVE_TYPE_LABEL = {
   in:'توريد / إضافة مخزون', out:'صرف لأمر شغل', customer_return:'مرتجع عميل', return:'مرتجع لمورد',
-  adjustment:'تسوية مخزون', scrap:'هالك / تالف', ext_part:'قطعة غيار خارجية', ext_work:'أعمال خارجية',
+  adjustment:'تسوية مخزون', scrap:'هالك / تالف', internal_use:'استهلاك داخلي (معدات المركز)',
+  ext_part:'قطعة غيار خارجية', ext_work:'أعمال خارجية',
   paint_out:'صرف خامات دهان', transfer_in:'تحويل وارد', transfer_out:'تحويل صادر'
 };
 function openMoveDetails(moveId){
@@ -5588,10 +5866,16 @@ async function saveEditPurchase(purchaseId){
     if(Math.abs((it.qty||0) - l.qty) > 0.001){
       const dq = l.qty - it.qty;
       const oldQ = it.qty;
-      changes.push({ field:'كمية «'+it.name+'»', before:it.qty, after:l.qty });
       // الكمية بتتعدّل على المخزون بالفرق بس (استلام زيادة أو نقص)
       const part = it.partId ? DB.inventory.find(x=>x.id===it.partId) : null;
-      if(part) part.qty = Math.max((part.qty||0) + dq, 0);
+      /* م155: تقليل كمية الفاتورة أقل من المصروف فعلاً كان بيتقص على صفر
+         بس الحركة بتتظبط بالكامل ⇒ رصيد وهمي وسجل سالب. دلوقتي بنرفض صريح. */
+      if(part && dq < 0 && (part.qty||0) + dq < 0){
+        toast('مينفعش تقليل كمية «'+it.name+'» لـ'+l.qty+' — اتصرف منها بالفعل أكتر من كده (المتاح حالياً: '+part.qty+'). اعمل مرتجع مورد لو القطع رجعت فعلاً.', true);
+        return;
+      }
+      changes.push({ field:'كمية «'+it.name+'»', before:it.qty, after:l.qty });
+      if(part) part.qty = (part.qty||0) + dq;
       it.qty = l.qty;
       /* ⚠️⚠️ م120 — البق اللي رصده سيف من فاتورة #10395:
          تعديل الكمية كان بيظبّط **الرصيد الفعلي** بس، ومابيلمسش **حركة
@@ -5984,16 +6268,19 @@ async function saveStockAdjustment(){
      زي الأول — فمفيش أي تغيير على الشغل العادي. */
   const mvBal = partMovementBalance(partId).balance;
   const ledgerDelta = Math.round((newQty - mvBal)*100)/100;
-  if(diff===0 && Math.abs(ledgerDelta)<=0.001){
+  if(Math.abs(diff)<=0.001 && Math.abs(ledgerDelta)<=0.001){   /* م155: مقارنة كسور آمنة */
     toast('الكمية زي الموجودة بالظبط، مفيش تغيير', true); return; }
   p.qty = newQty;
   // الملاحظة 54: نخزّن اتجاه التسوية وقيمها الفعلية عشان الرصيد الجاري يتحسب صح
   const mismatched = Math.abs(ledgerDelta - diff) > 0.001;
+  /* م155: النص بيوصف اللي المستخدم عمله (من X إلى Y) الأول — وتوفيق السجل
+     الداخلي بيتوثق كسطر ثانوي. قبل كده كان بيتكتب «نقص بالتسوية 0» أو
+     «زيادة 26» والمستخدم عامل «-1» — فسيف حس إن في غلط وهو مفيش. */
   pushStockMove({id:uid('mv'), partId, type:'adjustment', qty:Math.abs(ledgerDelta), delta:ledgerDelta,
     warehouseId: partWhId(p),
     qtyBefore, qtyAfter:newQty, date:new Date().toISOString(), actor:actorName(),
-    note:(ledgerDelta>0?'زيادة':'نقص')+' بالتسوية '+Math.abs(ledgerDelta)+(reason?' — '+reason:'')+(notes?' — '+notes:'')
-      +(mismatched?' — (تصحيح فرق بين الرصيد المسجّل ('+qtyBefore+') ورصيد الحركات ('+mvBal+') — الجرد الفعلي: '+newQty+')':'')});
+    note:'تسوية جرد: من '+qtyBefore+' إلى '+newQty+' (فرق '+(diff>0?'+':'')+diff+')'+(reason?' — '+reason:'')+(notes?' — '+notes:'')
+      +(mismatched?' — (توفيق سجل الحركات: '+(ledgerDelta>0?'+':'')+ledgerDelta+' — رصيد الحركات كان '+mvBal+')':'')});
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
   await logAction('تسوية مخزون: '+p.name+' من '+qtyBefore+' إلى '+newQty+' (فرق '+(diff>0?'+':'')+diff+')'
     +(mismatched?' — وتصحيح السجل بـ'+(ledgerDelta>0?'+':'')+ledgerDelta+' (رصيد الحركات كان '+mvBal+')':'')
@@ -6070,7 +6357,10 @@ function crShowJobs(){
   if(confirmArea) confirmArea.innerHTML = '';
   if(!area) return;
   if(!partId){ area.innerHTML=''; return; }
-  const jobsWithPart = DB.jobs.filter(j=>j.status!=='ملغاة' && crRemainingQty(j, partId)>0)
+  /* م155: الأمر الملغي بيظهر برضه لو لسه عليه قطع مصروفة — المرتجع هو
+     الطريق **الوحيد** لرجوع القطعة للمخزن (القاعدة الحديدية)، وإقصاء
+     الملغي كان بيقفل الطريق ده ويجبر الناس على تسويات */
+  const jobsWithPart = DB.jobs.filter(j=>crRemainingQty(j, partId)>0)
     .sort((a,b)=>new Date(b.receivedAt)-new Date(a.receivedAt));
   area.innerHTML = jobsWithPart.length ? `
     <label class="f-label">أوامر الشغل اللي اتصرفت عليها القطعة (${jobsWithPart.length}) — اختار الأمر</label>
@@ -7036,7 +7326,17 @@ async function saveStockOut(){
     refreshContent();
     return;
   }
-  await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
+  /* م155: فشل المرحلة التانية مالوش دعوة بـ«جرّب تاني» — البند اتسجل على
+     الأمر خلاص، وإعادة المحاولة = صرف مكرر وخصم مكرر. رسالة صادقة بدل
+     الرسالة العامة اللي كانت بتظهر. */
+  try{
+    await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
+  }catch(e){
+    toast('⚠️ البند اتسجل على أمر الشغل — بس تحديث المخزون معلّق بسبب النت. متعملش الصرف تاني: هيتظبط تلقائياً عند فتح السيستم تاني، ولو الرصيد باين غلط اعمل تسوية جرد.', true);
+    await logAction('⚠️ صرف #'+job.jobNo+' — البند اتحفظ والمخزون/الحركة معلقين (فشل شبكة بعد المرحلة الأولى)').catch(()=>{});
+    refreshContent();
+    return;
+  }
   toast('تم صرف القطعة لأمر الشغل #'+job.jobNo); refreshContent();
   await logAction('صرف '+qty+' من '+p.name+' لأمر الشغل #'+job.jobNo);
 }
@@ -7124,8 +7424,16 @@ async function saveEditItem(partId){
     }
   }
   const wasName = p.name, wasSell = p.sellPrice, wasMin = p.minQty, wasWh = p.warehouseId;   // للمراقبة (م61)
+  /* م155: تغيير المخزن من «تعديل الصنف» كان نقل صامت — من غير صلاحية التحويل
+     ومن غير حركة ولا ظهور في تقرير التحويلات، والحركات التاريخية كلها بتقلب
+     على المخزن الجديد. دلوقتي: الصنف اللي عليه رصيد بيتنقل من شاشة التحويل بس. */
+  const newWh155 = document.getElementById('eiWh').value || defaultWhId();
+  if(newWh155 !== partWhId(p)){
+    if(!can('inv.transfer')){ toast('نقل الصنف بين المخازن محتاج صلاحية «التحويل بين المخازن»', true); return; }
+    if((p.qty||0) > 0){ toast('الصنف عليه رصيد ('+p.qty+') — انقله من شاشة «التحويل بين المخازن» عشان الحركة تتسجل وتظهر في التقارير', true); return; }
+  }
   p.name = name;
-  p.warehouseId = document.getElementById('eiWh').value || defaultWhId();
+  p.warehouseId = newWh155;
   p.sku = document.getElementById('eiSku').value.trim();
   p.category = document.getElementById('eiCategory').value.trim();
   p.brand = document.getElementById('eiBrand').value.trim();
@@ -7240,8 +7548,7 @@ function refreshItemLedger(partId){
    التسوية بتحدد الرصيد مباشرة (qtyAfter) أو بفرقها (delta)؛ والسجلات القديمة
    بنستنتج اتجاهها من النص عشان الرصيد التاريخي يفضل صح. */
 function moveDelta(m){
-  if(m.type==='in' || m.type==='customer_return' || m.type==='transfer_in') return (m.qty||0);
-  if(m.type==='out' || m.type==='return' || m.type==='scrap' || m.type==='paint_out' || m.type==='transfer_out') return -(m.qty||0);
+  /* م155: من جدول MOVE_SIGN الموحّد — مفيش قايمة أنواع تانية */
   if(m.type==='adjustment'){
     if(typeof m.delta === 'number') return m.delta;
     // توافق مع الحركات القديمة: "نقص/عجز" = سالب، وإلا موجب
@@ -7249,7 +7556,7 @@ function moveDelta(m){
     const negative = /نقص|عجز/.test(note);
     return negative ? -(m.qty||0) : (m.qty||0);
   }
-  return 0;
+  return (MOVE_SIGN[m.type]||0) * (m.qty||0);
 }
 function itemLedgerRowsHTML(partId){
   const all = itemMoves(partId);
@@ -7278,7 +7585,7 @@ function itemLedgerRowsHTML(partId){
   const typeTagMap = {
     in: '<span class="tag tag-ready">شراء</span>', out: '<span class="tag tag-cancel">صرف</span>',
     customer_return: '<span class="tag tag-inspect">مرتجع عميل</span>', return: '<span class="tag tag-partial">مرتجع مورد</span>',
-    adjustment: '<span class="tag tag-working">تسوية</span>', scrap: '<span class="tag tag-cancel">هالك/تالف</span>', paint_out: '<span class="tag tag-partial">خامات دهان</span>',
+    adjustment: '<span class="tag tag-working">تسوية</span>', internal_use: '<span class="tag tag-inspect">🏍 استهلاك داخلي</span>', scrap: '<span class="tag tag-cancel">هالك/تالف</span>', paint_out: '<span class="tag tag-partial">خامات دهان</span>',
     transfer_in: '<span class="tag tag-ready">تحويل وارد</span>',
     transfer_out: '<span class="tag tag-working">تحويل صادر</span>'
   };
@@ -7310,7 +7617,15 @@ function itemLedgerRowsHTML(partId){
     const clickable = job ? `onclick="openWorkOrderReport('${job.id}')" style="cursor:pointer"` : '';
     return `<tr ${clickable}><td>${fmtDateTime(m.date)}</td><td>${typeTagMap[m.type]||m.type}</td>
       <td class="muted" style="max-width:220px">${details.join(' · ')||'—'}</td>
-      <td>${(()=>{ const dl=moveDelta(m); return dl>0?('+ '+Math.abs(dl)):(dl<0?('− '+Math.abs(dl)):m.qty); })()}</td><td>${price}</td><td style="font-weight:800">${m.balanceAfter}</td></tr>`;
+      <td>${(()=>{
+        /* م155: التسوية بتتعرض برقم المستخدم (من/إلى) — مش برقم توفيق السجل الداخلي */
+        if(m.type==='adjustment' && typeof m.qtyBefore==='number' && typeof m.qtyAfter==='number'){
+          const ud = Math.round((m.qtyAfter - m.qtyBefore)*100)/100;
+          const dl = moveDelta(m);
+          const fix = (Math.abs(dl - ud) > 0.001) ? `<div class="muted" style="font-size:10px" title="فرق قديم بين الرصيد المسجل وسجل الحركات اتوفق في التسوية دي">توفيق سجل: ${dl>0?'+':''}${dl}</div>` : '';
+          return (ud>0?('+ '+Math.abs(ud)):(ud<0?('− '+Math.abs(ud)):'0')) + fix;
+        }
+        const dl=moveDelta(m); return dl>0?('+ '+Math.abs(dl)):(dl<0?('− '+Math.abs(dl)):m.qty); })()}</td><td>${price}</td><td style="font-weight:800">${m.balanceAfter}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -7394,8 +7709,8 @@ async function saveExtItem(jobId, kind){
 /* ======================= INVENTORY COUNT (جرد المخزن) ======================= */
 let currentCountId = null;
 function openInventoryCount(){
-  // لو فيه جرد مفتوح (غير معتمد) نكمل عليه
-  const open = DB.inventoryCounts.find(ic=>ic.status!=='approved');
+  // لو فيه جرد مفتوح (غير معتمد وغير ملغي) نكمل عليه — م155: الملغي مش بيتستأنف
+  const open = DB.inventoryCounts.find(ic=>ic.status!=='approved' && ic.status!=='cancelled');
   if(open){ currentCountId = open.id; currentTab='inventoryCount'; render(); return; }
   if(activeInventory().length===0){ toast('مفيش أصناف في المخزون للجرد', true); return; }
   // اختيار المخزن المراد جرده
@@ -7511,7 +7826,8 @@ function renderInventoryCount(){
     <button class="btn" onclick="printCountSheet('${ic.id}')">🖨 طباعة كشف الجرد</button>
     <button class="btn" onclick="downloadCountSheet('${ic.id}')">⬇ تحميل للطباعة / PDF</button>
     <button class="btn" onclick="exportCountCSV('${ic.id}')">⬇ تصدير Excel</button>
-    ${editable && can('inv.count_approve') && withDiff.length>0 ? `<button class="btn btn-danger" onclick="approveCount('${ic.id}')">✔ اعتماد التسوية النهائية</button>` : ''}
+    ${editable && can('inv.count_approve') ? `<button class="btn btn-danger" onclick="approveCount('${ic.id}')">✔ ${withDiff.length>0?'اعتماد التسوية النهائية':'قفل الجرد (مطابق — مفيش فروقات)'}</button>` : ''}
+    ${editable && can('inv.count_approve') ? `<button class="btn" onclick="cancelInventoryCount('${ic.id}')">🚫 إلغاء الجلسة</button>` : ''}
     ${editable && !can('inv.count_approve') && ic.status==='draft' && filled>0 ? `<button class="btn" onclick="submitCountForApproval('${ic.id}')">📤 إرسال للاعتماد</button>` : ''}
   </div>
   ${editable && !can('inv.count_approve') ? `<div class="muted" style="font-size:12px;margin-bottom:12px">صلاحيتك: تعبئة الكميات الفعلية وعرض الفروقات — اعتماد التسوية النهائية لأصحاب الصلاحية.</div>`:''}
@@ -7550,6 +7866,10 @@ function setCountQty(idx, val){
   const ic = DB.inventoryCounts.find(x=>x.id===currentCountId);
   const l = ic.lines[idx];
   l.physicalQty = val==='' ? null : (parseFloat(val)||0);
+  /* م155: إدخال العدّ بيثبّت خط الأساس لحظة الكتابة — العداد بيقارن باللي
+     على الشاشة دلوقتي. لو الرصيد اتحرك **بعد** الإدخال ده، الاعتماد هيستثني
+     السطر ويطلب إعادة عدّه (حماية «اتصرفت ماترجعش غير بمرتجع»). */
+  if(l.physicalQty !== null) l.systemQty = countLiveQty(l);
   const [dLbl,dCls] = countDiffLabel(l);
   const cell = document.getElementById('cdiff_'+idx);
   if(cell) cell.innerHTML = dCls?`<span class="tag ${dCls}">${dLbl}</span>`:dLbl;
@@ -7577,35 +7897,86 @@ function approveCount(icId){
      وقت بدء الجرد، والتسوية بتتنفّذ على الرصيد الحالي. فصنف اتحرك أثناء
      الجرد كان يا إما يتشال من التسوية خالص، يا إما يتسوّى برقم غلط. */
   const withDiff = countLinesWithDiff(ic);
-  if(withDiff.length===0){ toast('لا توجد فروقات للتسوية', true); return; }
-  askConfirm('اعتماد التسوية النهائية لجرد #'+ic.countNo+'؟ سيتم تعديل رصيد '+withDiff.length+' صنف في المخزون ليطابق الجرد الفعلي، وتسجيل حركة تسوية موثقة لكل صنف. هذا الإجراء نهائي.', async ()=>{
+  /* ============ م155: جرد مطابق 100% بيتقفل معتمد ============
+     قبل كده كان بيترفض («لا توجد فروقات») ويفضل مفتوح للأبد ويمنع
+     بدء أي جرد جديد — الحالة الممتازة كانت بتقفل الميزة كلها! */
+  if(withDiff.length===0){
+    askConfirm('الجرد #'+ic.countNo+' مطابق بالكامل — مفيش أي فروقات 🎉 يتقفل كمعتمد من غير تسويات؟', async ()=>{
+      ic.status = 'approved'; ic.approvedAt = new Date().toISOString(); ic.approvedBy = actorName(); ic.cleanClose = true;
+      await saveKey('inventoryCounts', DB.inventoryCounts);
+      await logAction('✅ اعتماد جرد #'+ic.countNo+' — مطابق بالكامل من غير أي تسويات');
+      toast('اتقفل الجرد — مطابق 100%'); refreshContent();
+    });
+    return;
+  }
+  /* ============ م155: حماية القاعدة الحديدية «اتصرفت ماترجعش غير بمرتجع» ============
+     الصنف اللي اتحرك **بعد بدء الجرد** عدّه بقى قديم — لو اتسوى بالرقم القديم،
+     القطع اللي اتصرفت في النص بترجع المخزن بتسوية صامتة. بنستثنيه ونطلب
+     إعادة عدّه. والمؤرشف أثناء الجلسة بيتستثنى برضه (المؤرشف رصيده صفر دايماً). */
+  const safe154 = [], skipped154 = [];
+  withDiff.forEach(l=>{
+    const p = DB.inventory.find(x=>x.id===l.partId);
+    if(!p) return;
+    if(p.archived){ skipped154.push(l.name+' (اتأرشف أثناء الجرد)'); return; }
+    if(countLiveQty(l) !== Number(l.systemQty||0)){ skipped154.push(l.name+' (اتحرك بعد العد — راجع عدّه وحدّثه)'); return; }
+    safe154.push(l);
+  });
+  if(safe154.length===0){
+    toast('كل الأصناف اللي فيها فروقات اتحركت أثناء الجرد — حدّث عدّها الأول (خانة «الرصيد الفعلي») وبعدين اعتمد', true); return;
+  }
+  askConfirm('اعتماد التسوية النهائية لجرد #'+ic.countNo+'؟ سيتم تعديل رصيد '+safe154.length+' صنف ليطابق الجرد الفعلي وتسجيل حركة تسوية موثقة لكل صنف.'
+    +(skipped154.length?'<br><span style="font-size:12px;color:var(--danger)">⚠️ '+skipped154.length+' صنف هيتستثنى (اتحرك أثناء الجرد أو اتأرشف): '+skipped154.slice(0,3).join(' · ')+(skipped154.length>3?' وغيرهم':'')+' — راجع عدّهم في جرد جاي.</span>':'')
+    +' هذا الإجراء نهائي.', async ()=>{
     const enteredBy = ic.submittedBy || ic.createdBy;
-    for(const l of withDiff){
+    for(const l of safe154){
       const p = DB.inventory.find(x=>x.id===l.partId);
       if(!p) continue;
       const before = p.qty;
       const after = l.physicalQty;
       const diff = after - before;
+      /* م155: نفس فلسفة تسوية م108 بالظبط — delta الحركة بيتحسب على **رصيد
+         الحركات** مش الرصيد المسجل، عشان الجرد الكامل يقفل أي فجوة قديمة
+         بين الاتنين بدل ما كانت بتفضل «غير مطابقة» للأبد بعد الاعتماد. */
+      const mvBal = partMovementBalance(p.id).balance;
+      const ledgerDelta = Math.round((after - mvBal)*100)/100;
       p.qty = after;
+      l.systemQty = before;   /* م155: الكشف المعتمد يوثق الرصيد وقت التسوية فعلاً */
       pushStockMove({
-        id: uid('mv'), partId: p.id, type:'adjustment', qty: Math.abs(diff), delta: diff,
+        id: uid('mv'), partId: p.id, type:'adjustment', qty: Math.abs(ledgerDelta), delta: ledgerDelta,
         warehouseId: partWhId(p),
         qtyBefore: before, qtyAfter: after, unitCost: p.costPrice, countId: ic.id,
         date: new Date().toISOString(),
         note: (diff<0?'تسوية مخزون - عجز جرد':'تسوية مخزون - زيادة جرد')
           +' #'+ic.countNo+' — قبل: '+before+' بعد: '+after+' (فرق '+(diff>0?'+':'')+diff+')'
+          +(Math.abs(ledgerDelta-diff)>0.001?' — (توفيق سجل الحركات: '+(ledgerDelta>0?'+':'')+ledgerDelta+' — رصيد الحركات كان '+mvBal+')':'')
           +' — أدخل الجرد: '+enteredBy+' — اعتمده: '+actorName()
       });
     }
     ic.status = 'approved';
     ic.approvedAt = new Date().toISOString();
     ic.approvedBy = actorName();
+    if(skipped154.length) ic.skippedLines = skipped154;
     await saveKey('inventory', DB.inventory);
     await saveKey('stockMoves', DB.stockMoves);
     await saveKey('inventoryCounts', DB.inventoryCounts);
-    await logAction('اعتماد تسوية جرد المخزن #'+ic.countNo+' — تعديل '+withDiff.length+' صنف');
-    toast('تم اعتماد التسوية وتحديث أرصدة المخزون');
+    await logAction('اعتماد تسوية جرد المخزن #'+ic.countNo+' — تعديل '+safe154.length+' صنف'
+      +(skipped154.length?' — واستثناء '+skipped154.length+' (اتحركوا أثناء الجرد/مؤرشفين)':''));
+    toast('تم اعتماد التسوية وتحديث أرصدة المخزون'+(skipped154.length?' — '+skipped154.length+' صنف اتستثنى (شوف السجل)':''));
     refreshContent();
+  });
+}
+/* م155: إلغاء جلسة جرد — قبل كده مكانش فيه أي طريق يقفل جرد غلطان/قديم،
+   وجرد واحد مفتوح كان بيمنع بدء أي جرد جديد لأي مخزن. */
+async function cancelInventoryCount(icId){
+  if(!can('inv.count_approve')){ toast('إلغاء الجرد لصاحب صلاحية اعتماد الجرد', true); return; }
+  const ic = DB.inventoryCounts.find(x=>x.id===icId); if(!ic) return;
+  if(ic.status==='approved'){ toast('الجرد ده معتمد خلاص — مينفعش يتلغي', true); return; }
+  askConfirmReason('إلغاء جلسة الجرد #'+ic.countNo+'؟<br><span class="muted" style="font-size:12px">مفيش أي أرصدة هتتغير — الجلسة هتتعلم «ملغاة» وتقدر تبدأ جرد جديد.</span>', async (reason)=>{
+    ic.status = 'cancelled'; ic.cancelledAt = new Date().toISOString(); ic.cancelledBy = actorName(); ic.cancelReason = reason||'';
+    await saveKey('inventoryCounts', DB.inventoryCounts);
+    await logAction('🚫 إلغاء جلسة جرد #'+ic.countNo+' — السبب: '+(reason||'—'));
+    currentCountId = null; currentTab = 'stockmoves'; render();
+    toast('اتلغت جلسة الجرد');
   });
 }
 function countSheetHTML(ic, forHandCount){
@@ -7661,6 +8032,109 @@ function exportCountCSV(icId){
 /* ======================= SCRAP & DAMAGE (الهالك والتالف) ======================= */
 const SCRAP_KINDS = ['هالك','تالف','فاقد تشغيل'];
 const SCRAP_REASONS = ['تركيب خاطئ من الفني','كسر أثناء التركيب','انتهاء صلاحية','تلف بالمخزن','أخرى'];
+/* ============================================================
+   م155 — استهلاك داخلي: صرف قطع من المخزون على معدات المركز نفسه
+   ------------------------------------------------------------
+   طلب سيف بعد ما لقينا 4 تسويات في يوم واحد سببها «موتوسكل المركز»
+   و«الورشة»: التسوية مش المكان الصح للاستهلاك الداخلي — بتضيع التكلفة.
+   هنا: القطعة بتتخصم من المخزون بتكلفتها + صف مصروف تشغيلي «غير نقدي»
+   في السجل المالي الموحد (مفيش فلوس بتخرج من الخزنة — التكلفة اتدفعت
+   وقت الشراء أصلاً) — فتكلفة صيانة معدات المركز تبان في المصاريف.
+   القاعدة الذهبية محفوظة: خصم p.qty ↔ حركة internal_use — واحد لواحد.
+   الصلاحية: نفس صلاحية الهالك (inv.scrap) — نفس مستوى الحساسية.
+   ============================================================ */
+const IU_TARGETS = ['موتوسكل المركز','عربية المركز','معدات الورشة','مكتب الاستقبال','أخرى (اكتب في الملاحظات)'];
+function openInternalUseModal(){
+  if(!can('inv.scrap')){ toast('الاستهلاك الداخلي بنفس صلاحية الهالك — مالكش الصلاحية دي', true); return; }
+  if(activeInventory().length===0){ toast('مفيش أصناف في المخزون', true); return; }
+  openModal(`
+    <h3>🏍 استهلاك داخلي — صرف على معدات المركز</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:12px">للقطع اللي بتتركب في معدات المركز نفسه (الموتوسكل، عربية المركز، الورشة...).
+      القطعة هتتخصم من المخزون <b>بتكلفتها</b> وهتتسجل <b>مصروف تشغيلي غير نقدي</b> في سجل المصروفات — من غير أي فلوس تخرج من الخزنة، ومن غير ما تلجأ للتسوية.</div>
+    <div class="form-row"><label class="f-label">🔎 دوّر على الصنف (اسم · كود · باركود)</label>
+      <input class="f" id="iuSearch" autocomplete="off" placeholder="ابدأ اكتب..." oninput="iuSearchParts(this.value)">
+      <input type="hidden" id="iuPart" value="">
+    </div>
+    <div id="iuResults" style="max-height:200px;overflow-y:auto"></div>
+    <div id="iuForm" style="display:none">
+      <div class="muted" style="font-size:12.5px;margin:4px 0 10px">المتاح حالياً: <b><span id="iuAvail">0</span></b> · التكلفة المسجلة: <b><span id="iuCost">0</span></b></div>
+      <div class="grid g2">
+        <div class="form-row"><label class="f-label">الكمية</label><input class="f" id="iuQty" type="number" min="1" value="1"></div>
+        <div class="form-row"><label class="f-label">اتصرفت على *</label>
+          <select class="f" id="iuTarget">${IU_TARGETS.map(t=>`<option>${t}</option>`).join('')}</select></div>
+      </div>
+      <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="iuNote" placeholder="مثال: تغيير زيت الموتوسكل الشهري"></div>
+      <button class="btn" style="width:100%;background:var(--accent-2);color:#fff;border:none" onclick="saveInternalUse()">تأكيد الاستهلاك الداخلي</button>
+    </div>
+  `);
+  iuSearchParts('');
+}
+function iuSearchParts(term){
+  const box = document.getElementById('iuResults'); if(!box) return;
+  const t = String(term||'').trim();
+  const list = t ? smartSearchParts(t, 10).map(r=>r.part) : activeInventory().slice(0,6);
+  box.innerHTML = list.length ? list.map(p=>`
+    <div class="card" style="padding:8px 10px;margin-bottom:6px;cursor:pointer" onclick="iuPickPart('${p.id}')">
+      <div style="font-weight:700;font-size:12.5px">${p.sku?`<span class="muted" style="font-size:11px">${p.sku}</span> · `:''}${p.name}</div>
+      <div class="muted" style="font-size:11.5px">متاح: ${p.qty} ${p.unit||''} · 📦 ${whName(partWhId(p))} · التكلفة: ${money(p.costPrice||0)}</div>
+    </div>`).join('') : `<div class="muted" style="font-size:12.5px">مفيش صنف مطابق</div>`;
+}
+function iuPickPart(partId){
+  const p = DB.inventory.find(x=>x.id===partId); if(!p) return;
+  document.getElementById('iuPart').value = partId;
+  document.getElementById('iuSearch').value = p.name;
+  document.getElementById('iuResults').innerHTML = '';
+  document.getElementById('iuForm').style.display = 'block';
+  document.getElementById('iuAvail').textContent = p.qty;
+  document.getElementById('iuCost').textContent = money(p.costPrice||0);
+}
+async function saveInternalUse(){
+  if(!can('inv.scrap')){ toast('الاستهلاك الداخلي بنفس صلاحية الهالك — مالكش الصلاحية دي', true); return; }
+  const partId = (document.getElementById('iuPart')||{}).value;
+  if(!partId){ toast('دوّر على الصنف واختاره الأول', true); return; }
+  const p = DB.inventory.find(x=>x.id===partId);
+  if(!p){ toast('الصنف غير موجود', true); return; }
+  const qty = parseFloat((document.getElementById('iuQty')||{}).value)||0;
+  const target = (document.getElementById('iuTarget')||{}).value || 'معدات المركز';
+  const note = ((document.getElementById('iuNote')||{}).value||'').trim();
+  if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
+  if(qty>p.qty){ toast('الكمية أكبر من المتاح في المخزون ('+p.qty+')', true); return; }
+  const cost = p.costPrice||0;
+  const total = Math.round(qty*cost*100)/100;
+  p.qty -= qty;
+  const mv = {id:uid('mv'), partId, type:'internal_use', qty, unitCost:cost, warehouseId:partWhId(p),
+    actor:actorName(), date:new Date().toISOString(),
+    note:'استهلاك داخلي — '+target+(note?' — '+note:'')};
+  pushStockMove(mv);
+  /* صف مصروف تشغيلي غير نقدي في السجل المالي الموحد — مربوط بالحركة */
+  DB.expenses.push({ id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'internal_use',
+    category:'استهلاك داخلي', description:'استهلاك داخلي: '+qty+' × '+p.name+' — '+target+(note?' — '+note:''),
+    amount: total, date:new Date().toISOString(), payAccount:'غير نقدي — من المخزون',
+    partId, moveId:mv.id, recordedBy:actorName(), system:true });
+  try{
+    await saveKey('inventory', DB.inventory);
+  }catch(e){
+    p.qty += qty;
+    DB.stockMoves = DB.stockMoves.filter(x=>x.id!==mv.id);
+    DB.expenses = DB.expenses.filter(x=>x.moveId!==mv.id);
+    toast('الحفظ فشل — العملية اترجعت بالكامل، اتأكد من النت وجرّب تاني', true); return;
+  }
+  /* م155: فشل المرحلة التانية = محاولة ترجيع فورية للخصم (عكس تعويضي) —
+     الخصم من غير حركة موثقة أسوأ من إلغاء العملية كلها */
+  try{
+    await Promise.all([saveKey('stockMoves', DB.stockMoves), saveKey('expenses', DB.expenses)]);
+  }catch(e){
+    p.qty += qty;
+    DB.stockMoves = DB.stockMoves.filter(x=>x.id!==mv.id);
+    DB.expenses = DB.expenses.filter(x=>x.moveId!==mv.id);
+    try{ await saveKey('inventory', DB.inventory); }catch(e2){ /* هيتوفق مع أول تحميل */ }
+    toast('الحفظ فشل — العملية اترجعت بالكامل، اتأكد من النت وجرّب تاني', true); return;
+  }
+  await logAction('🏍 استهلاك داخلي: '+qty+' × '+p.name+' على '+target+' (تكلفة '+money(total)+')'+(note?' — '+note:''));
+  pushNotif({ category:'inventory', type:'internal_use', priority:'high', amount:total,
+    action:'استهلاك داخلي: '+qty+' × '+p.name+' — '+target, refType:'inventory' });
+  closeModal(); toast('اتخصمت من المخزون واتسجلت مصروف تشغيلي'); refreshContent();
+}
 function openScrapModal(){
   if(!can('inv.scrap')){ toast('مالكش صلاحية تسجيل الهالك', true); return; }
   if(activeInventory().length===0){ toast('مفيش أصناف في المخزون', true); return; }
@@ -8912,7 +9386,7 @@ function supplierDetailHTML(supplierId){
       <button class="btn btn-sm" onclick="openEditSupplierModal('${supplierId}')">✏️ تعديل</button>
       ${b.liability>0 && can('sup.pay') ? `<button class="btn btn-sm btn-accent" onclick="openSupplierPaymentModal('${supplierId}')">💵 تسديد</button>`:''}
       ${b.creditBalance>0 && can('sup.refund') ? `<button class="btn btn-sm" onclick="openSupplierRefundModal('${supplierId}')">↩️ استرداد (${money(b.creditBalance)})</button>`:''}
-      <button class="btn btn-sm" onclick="openSupplierReturnModal('${supplierId}')">${ICONS.plus} مرتجع</button>
+      ${can('inv.receive')?`<button class="btn btn-sm" onclick="openSupplierReturnModal('${supplierId}')">${ICONS.plus} مرتجع</button>`:''}
       ${isOwnerSession()?`<button class="btn btn-sm" onclick="openSupplierAdjustModal('${supplierId}')">⚖️ تسوية</button>`:''}
     </div>
   </div>
@@ -10232,7 +10706,7 @@ async function savePurchaseInvoice(){
             DB.inventory.push(np); return np; })();
       }
       part.qty += line.qty;
-      part.costPrice = line.costPrice;
+      if(line.costPrice>0) part.costPrice = line.costPrice;   /* م155: بند هدية بسعر 0 مايمسحش التكلفة */
       if(line.sellPrice) part.sellPrice = line.sellPrice;
     } else {
       /* م84: حارس أخير قبل إنشاء أي صنف. لو الصنف اتعمل في الوقت ده من جهاز
@@ -10242,7 +10716,7 @@ async function savePurchaseInvoice(){
       if(dup){
         part = dup;
         part.qty += line.qty;
-        part.costPrice = line.costPrice;
+        if(line.costPrice>0) part.costPrice = line.costPrice;   /* م155 */
         if(line.sellPrice) part.sellPrice = line.sellPrice;
         dupMergedOnSave.push(part.name);
       } else {
@@ -10923,10 +11397,19 @@ async function savePayment(invId){
   refreshContent();
 }
 
+/* ============ م159: ختم تاريخ الطباعة على كل مطبوعات السيستم ============
+   طلب سيف: أي ورقة بتطلع من السيستم يبان عليها اتطبعت امتى — للرقابة
+   والمراجعة (تفرق بين نسخة قديمة ونسخة حديثة من نفس التقرير).
+   الختم بيتضاف هنا مركزياً فبيغطي كل مطبوعات printHTML وdownloadHTML
+   تلقائياً — والليبلات الصغيرة ليها ختمها المصغر جواها. */
+function printStampHTML(){
+  return `<div style="text-align:center;font-size:10px;color:#555;margin-top:6mm;border-top:1px dashed #aaa;padding-top:2mm">
+    🖨 تاريخ الطباعة: ${fmtDateTime(new Date().toISOString())} — ${(DB.settings&&DB.settings.centerName)||''}</div>`;
+}
 function printHTML(html){
   let area = document.getElementById('printArea');
   if(!area){ area = document.createElement('div'); area.id='printArea'; document.body.appendChild(area); }
-  area.innerHTML = html;
+  area.innerHTML = html + printStampHTML();   /* م159 */
   setTimeout(()=>{ try{ window.print(); }catch(e){ toast('الطباعة المباشرة متقفلة هنا — استخدم زرار "تحميل" واطبع الملف من المتصفح', true); } }, 150);
 }
 function downloadHTML(html, filename){
@@ -10934,7 +11417,7 @@ function downloadHTML(html, filename){
   <style>
   body{font-family:Tahoma,Arial,sans-serif;color:#111;background:#fff;margin:0;padding:28px;}
   ${brandedInvoiceCSS()}
-  </style></head><body>${html}
+  </style></head><body>${html}${printStampHTML()}
   <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
   const blob = new Blob([full], {type:'text/html;charset=utf-8'});
   const url = URL.createObjectURL(blob);
@@ -11795,6 +12278,7 @@ const EXP_TXN_TYPES = {
   supplier_payment: { label:'سداد مورد (دفعة)',   icon:'🏭', locked:true,  operating:false },
   advance:          { label:'سلفة موظف',          icon:'💰', locked:true,  operating:false },
   deposit_refund:   { label:'استرداد عربون',       icon:'↩️', locked:true,  operating:false },   // م127
+  internal_use:     { label:'استهلاك داخلي (من المخزون)', icon:'🏍', locked:true, operating:true },   // م155: غير نقدي
 };
 function expTxnType(e){
   if(e.txnType && EXP_TXN_TYPES[e.txnType]) return e.txnType;
@@ -15462,7 +15946,8 @@ function lowStockParts(){ return activeInventory().filter(p=>(p.qty||0) <= (p.mi
    المستقلة. يعني «فلتر زيت هونداي» في الرئيسي و«فلتر زيت هونداي» في
    الخارجي **سجلين مختلفين**، فممكن يطلع راكد في واحد وسريع في التاني.
    ============================================================ */
-const INV_OUT_TYPES = new Set(['out','scrap','transfer_out','return']);
+/* م155: من جدول MOVE_SIGN الموحّد — تحليل الحركة بيعتبر كل أنواع الخروج نشاطاً */
+const INV_OUT_TYPES = STOCK_OUT_TYPES;
 /* كل حركات الصرف لصنف (من مخزنه هو — لأن partId بيحدد المخزن أصلاً) */
 function partOutMoves(partId){
   return DB.stockMoves.filter(m=>m.partId===partId && INV_OUT_TYPES.has(m.type))
@@ -17763,6 +18248,7 @@ function setBusy(on){
     'saveEmpcEdit','saveEmpcDelete','saveEmpcTransfer',   /* م138 */
     'saveCsSatisfaction','saveCsFollowup','saveCsResolve','saveCsClose',   /* م143 */
     'saveAutoSkus',   /* م145 */
+    'saveInternalUse',   /* م155 */
     'setNotifStatus','addNotifComment','saveNotifThresholds','saveCustody','saveSettleCustody'];
   opNames.forEach(name=>{
     const orig = window[name];
