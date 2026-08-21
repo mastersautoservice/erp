@@ -541,7 +541,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v178';
+const APP_VERSION = 'v182';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -623,6 +623,7 @@ const ACTION_GROUPS = [
     ['inv.transfer','تحويل بين المخازن'],
     ['inv.adjust','تسوية المخزون'],
     ['inv.scrap','تسجيل هالك وتالف'],
+    ['inv.internal_use','استهلاك داخلي (صرف على معدات المركز)'],   /* م161 */
     ['inv.count_approve','اعتماد الجرد'],
   ]],
   ['العدد الخاصة', [
@@ -725,6 +726,7 @@ const PERM_INFO = {
   'inv.transfer':'تحويل كميات بين المخازن.',
   'inv.adjust':'تسوية كمية صنف يدوياً بعد جرد أو خطأ. حساسة — بتغير الأرصدة مباشرة.',
   'inv.scrap':'تسجيل هالك وتالف. بيخصم من الرصيد وبيتسجل كخسارة.',
+  'inv.internal_use':'صرف قطع من المخزون على معدات المركز نفسه (الموتوسكل، الورشة...) — بيخصم بالتكلفة وبيتسجل مصروف تشغيلي غير نقدي. <b>صلاحية مستقلة عن الهالك</b> — إدّيها للي تثق فيه بس.',
   'inv.count_approve':'اعتماد نتيجة الجرد وتطبيق التسويات النهائية.',
   'tools.issue':'صرف واستلام العدد الخاصة للفنيين.',
   'tools.manage':'إضافة وتعديل وحذف العدد الخاصة نفسها.',
@@ -799,7 +801,7 @@ const ROLE_TEMPLATES = {
     actions:['inv.issue','inv.receive','inv.return','inv.item_create','tools.issue'] },
   warehouse_manager: { label:'مدير مخزن', dept:'warehouse',
     screens:['dashboard','inventory','stockmoves','tools','suppliers','jobs'],
-    actions:['inv.issue','inv.receive','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.adjust','inv.scrap','inv.count_approve','tools.issue','tools.manage','jobs.print'] },
+    actions:['inv.issue','inv.receive','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.adjust','inv.scrap','inv.internal_use','inv.count_approve','tools.issue','tools.manage','jobs.print'] },
   workshop_manager: { label:'مدير ورشة', dept:'warehouse',
     screens:['dashboard','jobs','inventory','stockmoves','tools'],
     actions:['jobs.edit','jobs.status','jobs.item_delete','jobs.print','inv.issue','tools.issue'] },
@@ -821,7 +823,7 @@ const ROLE_TEMPLATES = {
    إدارة العدد/الجزاءات/حذف نهائي/إدارة المستخدمين) تفضل لصاحب المركز فقط. */
 const DEPT_DEFAULT_ACTIONS = {
   reception: ['jobs.create','jobs.edit','jobs.status','jobs.item_delete','jobs.print','jobs.cancel','customers.create','customers.archive'],
-  warehouse: ['inv.issue','inv.receive','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.scrap','tools.issue','jobs.print'],
+  warehouse: ['inv.issue','inv.receive','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.scrap','inv.internal_use','tools.issue','jobs.print'],
   accounts: ['bill.create','bill.collect','bill.discount','bill.cancel','bill.print','jobs.print','fin.expenses','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.payroll'],
   hr: ['hr.employees','hr.approve','hr.payroll','hr.penalties'],
 };
@@ -1923,6 +1925,7 @@ function renderNotifCenterWidget(){
         ${chip('قطع راكدة',stagnant,'notifications')}
         ${chip('قطع تحت حد الأمان',lowStk,'inventory')}
         ${chip('عهد متأخرة',overdueCustodiesAlert().length,'expenses')}
+        ${canScreen('custservice')?chip('🔔 عربيات مستحقة تذكير صيانة',dueReminders().length,'custservice'):''}
       </div>
     </div>`;
 }
@@ -4552,23 +4555,46 @@ function openBarcodeAfterPurchase(purchaseId){
       ⚠️ ${noCode.length} صنف من غير كود مش هيتطبعوا: ${noCode.map(p=>p.name).join('، ')}
       ${can('inv.item_edit')&&noCode.some(p=>!String(p.sku||'').trim())?`<div style="margin-top:8px"><button class="btn btn-sm btn-accent" onclick="bcGenPurchase()">⚙️ ولّدلهم أكواد وارجع اسألني تاني</button></div>`:''}
     </div>`:''}
-    <div style="display:flex;gap:8px">
-      ${entries.length?`<button class="btn btn-accent" style="flex:1" onclick="printPurchaseBarcodes()">🖨 آه — اطبع (${total} استيكر)</button>`:''}
-      <button class="btn" style="flex:1" onclick="closeModal()">لا</button>
+    ${''/* م160: نفس زرارين وخانات كل شاشات الباركود — كل صنف بكميته على المكينة */}
+    ${entries.length?`
+    <div class="grid g3" style="gap:8px;max-width:400px;margin-bottom:8px">
+      <div class="form-row" style="margin:0"><label class="f-label">عرض الليبل (مم)</label><input class="f" id="bcRollW" type="number" min="20" value="${rollW()}"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">ارتفاعه (مم)</label><input class="f" id="bcRollH" type="number" min="15" value="${rollH()}"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">إزاحة يمين (مم)</label><input class="f" id="bcRollX" type="number" step="0.5" value="${rollOffX()}"></div>
+    </div>`:''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${entries.length?`<button class="btn btn-accent" style="flex:1;min-width:170px" onclick="printPurchaseBarcodesRoll()">🏷 مكينة الليبل (${total} ليبل — كل صنف بكميته)</button>`:''}
+      ${entries.length?`<button class="btn" style="flex:1;min-width:120px" onclick="printPurchaseBarcodes()">📄 شيت A4 (${total} استيكر)</button>`:''}
+      <button class="btn" style="flex:1;min-width:80px" onclick="closeModal()">لا</button>
     </div>
   `);
 }
-function printPurchaseBarcodes(){
-  const pur = DB.purchases.find(x=>x.id===_bcPurchaseId); if(!pur){ closeModal(); return; }
+/* البنود بكمياتها — مشتركة بين الرول والـA4 (كمية 10 = عشر ليبلات) */
+function _purBcEntries(pur){
   const entries = [];
   (pur.items||[]).forEach(it=>{
     const p = it.partId ? DB.inventory.find(x=>x.id===it.partId) : null;
     if(p && code128Widths(p.sku)) entries.push({ p, count: Math.max(1, Math.round(it.qty)||1) });
   });
+  return entries;
+}
+function printPurchaseBarcodes(){
+  const pur = DB.purchases.find(x=>x.id===_bcPurchaseId); if(!pur){ closeModal(); return; }
+  const entries = _purBcEntries(pur);
   if(entries.length){
     downloadBarcodeSheet(entries, 'باركود-فاتورة-'+pur.purchaseNo);
-    logAction('🏷️ طباعة باركود أصناف فاتورة شراء #'+pur.purchaseNo);
+    logAction('🏷️ طباعة باركود أصناف فاتورة شراء #'+pur.purchaseNo+' (شيت A4)');
   }
+  closeModal();
+}
+/* م160: طباعة أصناف الفاتورة على مكينة الليبل — كل صنف بعدد كميته، ليبل ليبل */
+async function printPurchaseBarcodesRoll(){
+  const pur = DB.purchases.find(x=>x.id===_bcPurchaseId); if(!pur){ closeModal(); return; }
+  const entries = _purBcEntries(pur);
+  if(!entries.length){ closeModal(); return; }
+  await saveRollSize((document.getElementById('bcRollW')||{}).value, (document.getElementById('bcRollH')||{}).value, (document.getElementById('bcRollX')||{}).value);
+  downloadRollSheet(entries, 'ليبل-فاتورة-'+pur.purchaseNo);
+  logAction('🏷️ طباعة ليبلات رول لفاتورة شراء #'+pur.purchaseNo+' — '+entries.length+' صنف ('+entries.reduce((s,e)=>s+e.count,0)+' ليبل)');
   closeModal();
 }
 async function bcGenPurchase(){
@@ -5211,7 +5237,7 @@ function renderStockMoves(){
     ${can('inv.adjust')?`<button class="btn" onclick="openStockAdjustmentModal()">⚖ تسوية مخزون</button>`:''}
     ${can('inv.return')?`<button class="btn" onclick="openCustomerReturnModal()">↩ مرتجع عميل</button>`:''}
     ${can('inv.scrap')?`<button class="btn btn-danger" onclick="openScrapModal()">🗑 تسجيل هالك / تالف</button>`:''}
-    ${can('inv.scrap')?`<button class="btn" style="border-color:var(--accent-2)" onclick="openInternalUseModal()">🏍 استهلاك داخلي</button>`:''}
+    ${can('inv.internal_use')?`<button class="btn" style="border-color:var(--accent-2)" onclick="openInternalUseModal()">🏍 استهلاك داخلي</button>`:''}
     ${can('inv.scrap')?`<button class="btn" onclick="openScrapReport()">📉 تقرير الهالك</button>`:''}
     <button class="btn btn-accent" onclick="openStockStatsModal()">📊 التقارير والإحصائيات</button>
   </div>
@@ -8045,7 +8071,8 @@ const SCRAP_REASONS = ['تركيب خاطئ من الفني','كسر أثناء 
    ============================================================ */
 const IU_TARGETS = ['موتوسكل المركز','عربية المركز','معدات الورشة','مكتب الاستقبال','أخرى (اكتب في الملاحظات)'];
 function openInternalUseModal(){
-  if(!can('inv.scrap')){ toast('الاستهلاك الداخلي بنفس صلاحية الهالك — مالكش الصلاحية دي', true); return; }
+  /* م161: صلاحية مستقلة — سيف بيوزعها بمعرفته لموظفين محددين */
+  if(!can('inv.internal_use')){ toast('مالكش صلاحية الاستهلاك الداخلي', true); return; }
   if(activeInventory().length===0){ toast('مفيش أصناف في المخزون', true); return; }
   openModal(`
     <h3>🏍 استهلاك داخلي — صرف على معدات المركز</h3>
@@ -8089,7 +8116,7 @@ function iuPickPart(partId){
   document.getElementById('iuCost').textContent = money(p.costPrice||0);
 }
 async function saveInternalUse(){
-  if(!can('inv.scrap')){ toast('الاستهلاك الداخلي بنفس صلاحية الهالك — مالكش الصلاحية دي', true); return; }
+  if(!can('inv.internal_use')){ toast('مالكش صلاحية الاستهلاك الداخلي', true); return; }   /* م161 */
   const partId = (document.getElementById('iuPart')||{}).value;
   if(!partId){ toast('دوّر على الصنف واختاره الأول', true); return; }
   const p = DB.inventory.find(x=>x.id===partId);
@@ -8465,6 +8492,16 @@ function supOpeningSigned(sup){
    عشان مفيش ازدواج مالي أبداً. الدفعة التلقائية (auto) بتمثّل «مدفوع كاش وقت الشراء». */
 function supName(id){ const s=DB.suppliers.find(x=>x.id===id); return s?s.name:'—'; }
 function purIsCredit(p){ return p.paymentMethod === 'آجل'; }
+/* ============ م162: قاعدة احتساب الفاتورة في مديونية المورد ============
+   جدول سيف: كاش في Level 1 = صفر أثر لحد الاعتماد — والآجل بيتحسب من الإدخال.
+   الفاتورة بتدخل الحساب لو: آجل · أو عليها دفعات · أو معتمدة ومقفولة.
+   ⇒ فاتورة الكاش المنتظرة (أو المعاد فتحها) مستثناة تماماً — والمعادلة
+   محسوبة كل مرة فمفيش أي احتمال ازدواج (لا زيادة مرتين ولا خصم مرتين). */
+function purCountsInDebt(p){
+  /* الاستثناء الوحيد: كاش ولسه بانتظار الاعتماد — أي فاتورة معتمدة (حتى
+     القديمة اللي من غير نوع دفع مسجل) بتتحسب عادي زي ما كانت */
+  return purStatus(p)!=='pending' || purIsCredit(p) || (p.payments||[]).some(x=>(x.amount||0)>0.001);
+}
 function purManualPaid(p){ return (p.payments||[]).filter(x=>!x.auto).reduce((s,x)=>s+x.amount,0); }
 function purAutoPayment(p){ return (p.payments||[]).find(x=>x.auto); }
 /* يعكس الأثر المالي الحالي لطريقة الدفع (الدفعة التلقائية + حركتها المالية لو موجودة) */
@@ -8512,10 +8549,15 @@ function purApplyMethodChange(p, newMethod, accountId){
 function supplierBalance(supplierId){
   const sup = DB.suppliers.find(s=>s.id===supplierId);
   const purchases = DB.purchases.filter(p=>p.supplierId===supplierId);
-  const totalPurchased = purchases.reduce((s,p)=>s+p.total,0);
-  const totalPaid = purchases.reduce((s,p)=>s+(p.payments||[]).reduce((a,x)=>a+x.amount,0),0);
+  /* م162: فواتير الكاش المنتظرة مستثناة من المديونية (قاعدة سيف — جدول L1/L3) */
+  const counted = purchases.filter(purCountsInDebt);
+  const countedIds = new Set(counted.map(p=>p.id));
+  const totalPurchased = counted.reduce((s,p)=>s+p.total,0);
+  const totalPaid = counted.reduce((s,p)=>s+(p.payments||[]).reduce((a,x)=>a+x.amount,0),0);
   const returns = DB.supplierReturns.filter(r=>r.supplierId===supplierId);
-  const totalReturns = returns.reduce((s,r)=>s+r.total,0);
+  /* مرتجع مربوط بفاتورة مستثناة بيتستثنى معاها — عشان الاتجاهين يفضلوا متوازنين */
+  const totalReturns = returns.filter(r=>!r.invoiceId || countedIds.has(r.invoiceId) || !purchases.some(p=>p.id===r.invoiceId))
+    .reduce((s,r)=>s+r.total,0);
   const led = supLedger(sup);
   const totalDiscounts = led.filter(e=>e.kind==='discount').reduce((s,e)=>s+(e.amount||0),0);
   const totalAdjust = led.filter(e=>e.kind==='adjustment').reduce((s,e)=>s+(e.amount||0),0);
@@ -8615,11 +8657,22 @@ function supplierStatement(supplierId){
   const op = supOpeningSigned(sup);
   if(op !== 0) rows.push({ date: sup.createdAt||'2000-01-01', type:'رصيد افتتاحي', desc: sup.openingType==='debit'?'له عندنا':'علينا له', amount: op });
   DB.purchases.filter(p=>p.supplierId===supplierId).forEach(p=>{
-    rows.push({ date:p.date, type:'فاتورة شراء', desc:'#'+p.purchaseNo, amount:p.total });
-    (p.payments||[]).forEach(pay=>rows.push({ date:pay.date, type:'سداد', desc:'على فاتورة #'+p.purchaseNo, amount:-pay.amount }));
+    /* م162: الكاش المنتظر بيظهر في الكشف للعلم بس — بأثر صفر لحد الاعتماد،
+       عشان الكشف يفضل مطابق لرقم المديونية في الملخص مليم بمليم */
+    if(purCountsInDebt(p)){
+      rows.push({ date:p.date, type:'فاتورة شراء', desc:'#'+p.purchaseNo, amount:p.total });
+      (p.payments||[]).forEach(pay=>rows.push({ date:pay.date, type:'سداد', desc:'على فاتورة #'+p.purchaseNo, amount:-pay.amount }));
+    } else {
+      rows.push({ date:p.date, type:'فاتورة شراء', desc:'#'+p.purchaseNo+' — ⏳ كاش بانتظار الاعتماد المالي (قيمتها '+money(p.total)+') — غير محسوبة في المديونية', amount:0 });
+    }
   });
   DB.supplierReturns.filter(r=>r.supplierId===supplierId).forEach(r=>{
-    rows.push({ date:r.date, type:'مرتجع للمورد', desc:r.name||'—', amount:-(r.total||0) });
+    const src = r.invoiceId ? DB.purchases.find(p=>p.id===r.invoiceId) : null;
+    if(src && !purCountsInDebt(src)){
+      rows.push({ date:r.date, type:'مرتجع للمورد', desc:(r.name||'—')+' — ⏳ على فاتورة كاش منتظرة — غير محسوب', amount:0 });
+    } else {
+      rows.push({ date:r.date, type:'مرتجع للمورد', desc:r.name||'—', amount:-(r.total||0) });
+    }
   });
   supLedger(sup).forEach(e=>{
     // م80: السداد على حساب المورد بيظهر كسداد وبيقلّل الرصيد
@@ -9856,9 +9909,13 @@ async function purFinApprove(purchaseId){
     : 'تمت المراجعة'+(p.approvedBy?' بواسطة '+p.approvedBy:'')+' — بانتظار الاعتماد المالي (Level 2)',
     after:'معتمدة مالياً ومقفولة (Level 3)' });
   p.status = 'approved'; p.finApproved = true; p.finApprovedBy = actorName(); p.finApprovedAt = new Date().toISOString();
+  /* م162: أثر المديونية بيتوثق جوه سجل الفاتورة نفسه — قبل/بعد وقيمة الفرق */
+  const afterBal = supplierBalance(p.supplierId).balance;
+  const debtImpact = Math.round((afterBal - beforeBal)*100)/100;
+  changes.push({ field:'مديونية المورد', before:money(beforeBal),
+    after:money(afterBal)+(Math.abs(debtImpact)>0.009?' ('+(debtImpact>0?'+':'−')+money(Math.abs(debtImpact))+')':' (بدون تغيير)') });
   purLog(p, 'fin_approved', changes, reason);
   await Promise.all([saveKey('purchases', DB.purchases), saveKey('finMoves', DB.finMoves), saveKey('expenses', DB.expenses)]);
-  const afterBal = supplierBalance(p.supplierId).balance;
   await logAction('🟢 اعتماد مالي لفاتورة شراء #'+p.purchaseNo+auditDetails([
     ['المورد', supName(p.supplierId)], ['طريقة الدفع', wantMethod+(methodChanged?' (كانت '+oldMethod+')':'')],
     ['مديونية المورد', money(beforeBal)+' ← '+money(afterBal)], ['السبب', reason||'—']
@@ -16350,7 +16407,99 @@ let csSearch = '';
 let csSatFilter = '';
 let csCompFilter = '';
 let csEmpFilter = '';
-let csView = 'cases';   /* cases | complaints | resolved */
+let csView = 'cases';   /* cases | complaints | resolved | reminders (م163) */
+
+/* ============================================================
+   م163 — تذكير الصيانة الدورية (توصية 4 من مقارنة السوق)
+   ------------------------------------------------------------
+   العربية اللي خلصت صيانة وعدت المدة (الافتراضي 120 يوم) من غير ما ترجع
+   بتظهر في قايمة «مستحقين تذكير» جوه خدمة العملاء — والاستقبال يبعت
+   واتساب برسالة جاهزة بضغطة (wa.me — من غير أي API مدفوع).
+   بعد الإرسال بتختفي لدورة كاملة، وأي زيارة جديدة بتصفّر العداد.
+   الاستبعادات: اللي جوه المركز حالياً · المؤرشفين · المتجاهَلين للدورة.
+   ============================================================ */
+function reminderDays(){ return Math.max(15, parseFloat(DB.settings.reminderDays)||120); }
+function reminderMsgTemplate(){
+  return DB.settings.reminderMsg ||
+    'مساء الخير يا [العميل] 🌟 عربيتك [العربية] عدى عليها [المدة] من آخر صيانة عندنا في '
+    +((DB.settings&&DB.settings.centerName)||'المركز')+' — نتشرف بيك في أي وقت لاطمئنان سريع عليها 🚗';
+}
+function reminderDurTxt(days){ return days>=60 ? Math.round(days/30)+' شهور' : days+' يوم'; }
+function dueReminders(){
+  const period = reminderDays()*86400000;
+  const now = Date.now();
+  const out = [];
+  DB.cars.filter(c=>!c.archived).forEach(car=>{
+    const cust = DB.customers.find(x=>x.id===car.customerId);
+    if(!cust || cust.archived) return;
+    if(!cust.phone) return;   // من غير موبايل مفيش واتساب
+    const jobs = DB.jobs.filter(j=>j.carId===car.id && j.status!=='ملغاة');
+    if(!jobs.length) return;
+    if(jobs.some(j=>!isJobClosed(j))) return;   // جوه المركز حالياً — هي عندك أهو
+    let lastT = 0, lastJob = null;
+    jobs.forEach(j=>{ const t = new Date(j.deliveredAt||j.receivedAt).getTime(); if(t>lastT){ lastT=t; lastJob=j; } });
+    if(!lastJob || (now-lastT) < period) return;   // لسه في المدة
+    if(car.lastRemindedAt && (now - new Date(car.lastRemindedAt).getTime()) < period) return;   // اتبعت للدورة دي
+    if(car.reminderDismissedAt && new Date(car.reminderDismissedAt).getTime() >= lastT) return;   // متجاهلة لحد زيارة جديدة
+    out.push({ car, cust, lastJob, lastVisit:new Date(lastT).toISOString(),
+      daysSince: Math.floor((now-lastT)/86400000) });
+  });
+  return out.sort((a,b)=>b.daysSince-a.daysSince);
+}
+function reminderWaLink(carId){
+  const r = dueReminders().find(x=>x.car.id===carId);
+  const car = DB.cars.find(c=>c.id===carId);
+  const cust = car ? DB.customers.find(x=>x.id===car.customerId) : null;
+  if(!car || !cust) return '#';
+  const days = r ? r.daysSince : reminderDays();
+  const msg = reminderMsgTemplate()
+    .split('[العميل]').join(cust.name||'')
+    .split('[العربية]').join(((carLabel(car)||'')+' '+(car.plate||'')).trim())
+    .split('[المدة]').join(reminderDurTxt(days));
+  const digits = String(cust.phone||'').replace(/[^0-9]/g,'');
+  const intl = digits.indexOf('0')===0 ? '2'+digits : digits;   // مصر: 010… → 2010…
+  return 'https://wa.me/'+intl+'?text='+encodeURIComponent(msg);
+}
+async function markReminderSent(carId){
+  if(!canScreen('custservice')){ toast('مالكش صلاحية على شاشة خدمة العملاء', true); return; }   /* حارس م65 */
+  const car = DB.cars.find(c=>c.id===carId); if(!car) return;
+  const cust = DB.customers.find(x=>x.id===car.customerId)||{};
+  car.lastRemindedAt = new Date().toISOString();
+  car.lastRemindedBy = actorName();
+  delete car.reminderDismissedAt;
+  await saveKey('cars', DB.cars);
+  await logAction('🔔 تذكير صيانة واتساب — '+(cust.name||'')+' ('+(car.plate||'')+' '+(carLabel(car)||'')+')');
+  toast('اتسجل التذكير — العربية هتختفي من القايمة لحد الدورة الجاية');
+  refreshContent();
+}
+async function dismissReminderCycle(carId){
+  if(!canScreen('custservice')){ toast('مالكش صلاحية على شاشة خدمة العملاء', true); return; }   /* حارس م65 */
+  const car = DB.cars.find(c=>c.id===carId); if(!car) return;
+  const cust = DB.customers.find(x=>x.id===car.customerId)||{};
+  car.reminderDismissedAt = new Date().toISOString();
+  await saveKey('cars', DB.cars);
+  await logAction('🔕 تجاهل تذكير صيانة — '+(cust.name||'')+' ('+(car.plate||'')+') لحد ما تيجي زيارة جديدة');
+  toast('اتجاهلنا العربية دي — هترجع تظهر بعد أول زيارة جديدة ليها');
+  refreshContent();
+}
+function remindersSectionHTML(){
+  const list = dueReminders();
+  return `
+  <div class="muted" style="font-size:12.5px;margin-bottom:10px">🔔 العربيات اللي عدّت <b>${reminderDays()} يوم</b> من آخر زيارة مقفولة ولسه مرجعتش — دوس زرار الواتساب وابعت التذكير الجاهز. (المدة ونص الرسالة من الإعدادات ← عتبات الإشعارات)</div>
+  <div class="card"><table><thead><tr><th>العميل</th><th>العربية</th><th>آخر زيارة</th><th>بقالها</th><th></th></tr></thead>
+  <tbody>${list.length? list.map(r=>`
+    <tr>
+      <td style="font-weight:700">${r.cust.name}<div class="muted" style="font-size:10.5px;direction:ltr;text-align:right">${r.cust.phone||''}</div></td>
+      <td>${r.car.plate||'—'}<div class="muted" style="font-size:10.5px">${carLabel(r.car)}</div></td>
+      <td style="white-space:nowrap;font-size:12.5px">${fmtDate(r.lastVisit)}<div class="muted" style="font-size:10.5px">أمر #${r.lastJob.jobNo}${(r.lastJob.items&&r.lastJob.items[0])?' · '+r.lastJob.items[0].name:''}</div></td>
+      <td style="font-weight:800;color:var(--accent-2)">${reminderDurTxt(r.daysSince)}</td>
+      <td style="white-space:nowrap">
+        <a class="btn btn-sm btn-accent" href="${reminderWaLink(r.car.id)}" target="_blank" onclick="markReminderSent('${r.car.id}')">📱 ابعت تذكير واتساب</a>
+        <button class="btn btn-sm" onclick="dismissReminderCycle('${r.car.id}')" title="مش هتظهر تاني غير بعد زيارة جديدة">🔕 تجاهل</button>
+      </td>
+    </tr>`).join('') : `<tr><td colspan="5" class="empty">مفيش عربيات مستحقة تذكير دلوقتي — كله متطمن عليه 🎉</td></tr>`}
+  </tbody></table></div>`;
+}
 
 function csCaseOf(invoiceId){ return DB.csCases.find(c=>c.invoiceId===invoiceId) || null; }
 function csEnsureCase(inv){
@@ -16516,7 +16665,9 @@ function renderCustService(){
     <button class="btn btn-sm ${csView==='cases'?'btn-accent':''}" onclick="setCsView('cases')">📋 الفواتير والمتابعة (${rows.length})</button>
     <button class="btn btn-sm ${csView==='complaints'?'btn-accent':''}" onclick="setCsView('complaints')">🚨 شكاوى مفتوحة (${openComps.length})</button>
     <button class="btn btn-sm ${csView==='resolved'?'btn-accent':''}" onclick="setCsView('resolved')">✅ شكاوى محلولة (${doneComps.length})</button>
+    <button class="btn btn-sm ${csView==='reminders'?'btn-accent':''}" onclick="setCsView('reminders')">🔔 تذكير الصيانة (${dueReminders().length})</button>
   </div>
+  ${csView==='reminders'? remindersSectionHTML() : ''}
   ${csView==='cases'?`
   <div class="card" style="padding:8px 10px;margin-bottom:10px">
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -17767,6 +17918,16 @@ function renderSettings(){
       <div class="form-row"><label class="f-label">مهلة الشركات (يوم)</label>
         <input class="f" id="setDebtComp" type="number" min="0" value="${debtDaysFor('شركة')}"></div>
     </div>
+    <!-- م163: تذكير الصيانة الدورية -->
+    <div class="muted" style="font-size:12px;margin:12px 0 6px;font-weight:700">🔔 تذكير الصيانة الدورية (واتساب)</div>
+    <div class="muted" style="font-size:11.5px;line-height:1.7;margin-bottom:8px">
+      العربية اللي تعدي المدة دي من آخر زيارة من غير ما ترجع بتظهر في «خدمة العملاء ← تذكير الصيانة».
+      الرسالة فيها وسوم بتتبدل تلقائياً: <b>[العميل]</b> · <b>[العربية]</b> · <b>[المدة]</b>
+    </div>
+    <div class="form-row" style="max-width:260px"><label class="f-label">المدة (يوم من آخر زيارة)</label>
+      <input class="f" id="setReminderDays" type="number" min="15" value="${reminderDays()}"></div>
+    <div class="form-row"><label class="f-label">نص رسالة الواتساب</label>
+      <textarea class="f" id="setReminderMsg" rows="3">${escAttr(reminderMsgTemplate())}</textarea></div>
     <button class="btn btn-accent" onclick="saveNotifThresholds()">حفظ العتبات</button>
   </div>`}
   ${!canUsers?'':`
@@ -18121,6 +18282,10 @@ async function saveNotifThresholds(){
   DB.settings.notifArchiveDays = Math.max(parseFloat((document.getElementById('setArchiveDays')||{}).value)||0, 0);
   /* م124: مدة الاحتفاظ بسجل العمليات — 0 = للأبد (الافتراضي) */
   DB.settings.auditKeepDays = Math.max(parseFloat((document.getElementById('setAuditKeep')||{}).value)||0, 0);
+  /* م163: تذكير الصيانة الدورية */
+  DB.settings.reminderDays = Math.max(parseFloat((document.getElementById('setReminderDays')||{}).value)||120, 15);
+  const remMsg163 = ((document.getElementById('setReminderMsg')||{}).value||'').trim();
+  if(remMsg163) DB.settings.reminderMsg = remMsg163;
   /* م121: أنواع شاشات مركز الإشعارات بقت **ثابتة في تصميم السيستم** —
      مفيش حفظ ولا قراءة لأي notifTypes، وأي قيمة قديمة بتتجاهل. */
   delete DB.settings.notifTypes;
