@@ -392,6 +392,13 @@ function saveKey(key){
 }
 async function _persistKey(key){
   if(KV_KEYS.includes(key)){
+    /* م165: الحارس الأخير — القيم الافتراضية البِكر (أرقام سرية/إعدادات المصنع)
+       عمرها ما تتكتب فوق القاعدة إلا بإعداد أول-تشغيل مؤكد صراحةً بالكتابة.
+       أي مسار تاني بيوصل هنا بالافتراضيات يبقى غلطة منطق — بنرفض بصمت. */
+    if(!window._setupConfirmed && JSON.stringify(DB[key]) === JSON.stringify(keyDefault(key))){
+      console.warn('م165: رفض كتابة القيم الافتراضية فوق القاعدة —', key);
+      return true;
+    }
     const { error } = await sb.from('kv_store').upsert({ key, data: DB[key], updated_by:_actor() });
     if(error) throw error;
     return true;
@@ -541,7 +548,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v182';
+const APP_VERSION = 'v185';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -662,6 +669,7 @@ const ACTION_GROUPS = [
   ]],
   ['المالية', [
     ['fin.expenses','تسجيل مصروفات'],
+    ['exp.advance','سلفة الموظفين من شاشة المصروفات (تسجيل + تقارير)'],   /* م166 */
     ['fin.manage','إدارة الخزنة والحسابات والتحويلات'],
     ['fin.adjust','تسوية رصيد حساب مالي'],
     ['fin.archive','أرشفة/استرجاع حساب مالي'],
@@ -743,6 +751,7 @@ const PERM_INFO = {
   'bill.history':'عرض سجل الفاتورة الكامل (كل تعديل: مين وإمتى والقيمة قبل وبعد). عرض فقط.',
   'bill.print':'طباعة الفاتورة وتحميلها كملف. عرض فقط.',
   'fin.expenses':'تسجيل مصروفات المركز. بتتخصم من الحساب المختار.',
+  'exp.advance':'تسجيل سلف الموظفين من شاشة المصروفات (للمكودين وغير المكودين) وعرض تقارير السلفة. صلاحية مستقلة تماماً عن «الرواتب» — وworkflow السلف في الموارد البشرية زي ما هو مش بيتأثر.',   /* م166 */
   'fin.manage':'إنشاء الحسابات والخزن والتحويلات والإيداعات بينها. <b>مابتديش</b> حق تسوية الأرصدة ولا أرشفة الحسابات — دول صلاحيتين منفصلتين.',
   'fin.adjust':'تسوية رصيد حساب مالي: تكتب الرصيد الصحيح بعد الجرد والسيستم يسجّل حركة موثقة بالفرق. بتشمل كمان تعديل الرصيد الافتتاحي. <b>بتغيّر أرقام مالية مباشرة — إدّيها لمين تثق فيه بس.</b>',
   'fin.archive':'أرشفة حساب مالي مش هيتستخدم تاني (بيختفي من كل قوائم الاختيار وحركاته القديمة تفضل زي ما هي)، واسترجاعه من الأرشيف.',
@@ -810,7 +819,7 @@ const ROLE_TEMPLATES = {
     actions:['bill.create','bill.collect','bill.print','jobs.print'] },
   senior_accountant: { label:'محاسب أول', dept:'accounts',
     screens:['dashboard','jobs','openjobs','invoices','receivables','finance','expenses','suppliers','services','reports','hr','tools'],
-    actions:['bill.create','bill.collect','bill.discount','bill.cancel','bill.print','jobs.print','fin.expenses','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.payroll'] },
+    actions:['bill.create','bill.collect','bill.discount','bill.cancel','bill.print','jobs.print','fin.expenses','exp.advance','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.payroll'] },
   hr_officer: { label:'موظف موارد بشرية', dept:'hr',
     screens:['dashboard','hr'], actions:['hr.employees'] },
   hr_manager: { label:'مدير موارد بشرية', dept:'hr',
@@ -824,7 +833,7 @@ const ROLE_TEMPLATES = {
 const DEPT_DEFAULT_ACTIONS = {
   reception: ['jobs.create','jobs.edit','jobs.status','jobs.item_delete','jobs.print','jobs.cancel','customers.create','customers.archive'],
   warehouse: ['inv.issue','inv.receive','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.scrap','inv.internal_use','tools.issue','jobs.print'],
-  accounts: ['bill.create','bill.collect','bill.discount','bill.cancel','bill.print','jobs.print','fin.expenses','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.payroll'],
+  accounts: ['bill.create','bill.collect','bill.discount','bill.cancel','bill.print','jobs.print','fin.expenses','exp.advance','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.payroll'],
   hr: ['hr.employees','hr.approve','hr.payroll','hr.penalties'],
 };
 function fullDeptPerms(dept){
@@ -885,6 +894,34 @@ function nextNo(list, field){
   let mx = 0;
   list.forEach(x=>{ const n = parseInt(x[field],10); if(!isNaN(n) && n>mx) mx = n; });
   return String(mx+1).padStart(4,'0');
+}
+/* ============ م164: قفل الترقيم من القاعدة — منع تكرار الأرقام بين الأجهزة ============
+   المشكلة (سيف اكتشفها بنفسه): جهازين قفلوا فاتورتين في نفس الثواني، كل جهاز
+   شاف «آخر رقم» في نسخته المحلية فطلع رقمين متطابقين (#0365 مرتين).
+   الحل: عدّاد مركزي جوه القاعدة (جدول counters + دالة next_no الذرّية) —
+   الجهاز «بيحجز» الرقم من السيرفر لحظة الإصدار، وبيبعت أكبر رقم شايفه محلياً
+   (floor) فالعدّاد بيصحّح نفسه لقدّام دايماً حتى لو لسه متسجّلش فيه حاجة.
+   لو الاتصال وقع: بنرجع للطريقة المحلية القديمة (مش أسوأ من قبل م164)
+   وكاشف التكرار (alertDupNos تحت) هو صمام الأمان اللي بينبّه فوراً. */
+async function reserveNoRaw(counter, floor){
+  try{
+    const { data, error } = await sb.rpc('next_no', { p_name: counter, p_floor: floor });
+    const n = parseInt(data,10);
+    if(!error && !isNaN(n) && n>0) return n;
+  }catch(e){}
+  return null;
+}
+async function reserveNo(counter, list, field){
+  let mx = 0;
+  (list||[]).forEach(x=>{ const n = parseInt(x[field],10); if(!isNaN(n) && n>mx) mx = n; });
+  const n = await reserveNoRaw(counter, mx);
+  return String(n || (mx+1)).padStart(4,'0');
+}
+/* أرقام إيصالات العربون أرقام صحيحة (مش نص متصفّر) — نسخة رقمية */
+async function reserveDepositNo(){
+  const local = nextDepositNo();
+  const n = await reserveNoRaw('depNo', local - 1);
+  return n || local;
 }
 function defaultWhId(){ return DB.warehouses.length ? DB.warehouses[0].id : null; }
 function partWhId(p){ return p.warehouseId || defaultWhId(); }
@@ -1149,6 +1186,9 @@ function seedDefaults(){
      مالية وكل بنود المصروفات **فوق** اللي موجود فعلاً. لولا إن الحماية رفضت
      الكتابة كان المركز صحي على حسابات مالية مكررة. */
   if(window._readBlocked) return;
+  /* م165: البذر ممنوع كمان لو آخر تحميل ماكانش من قاعدة حقيقية فيها إعدادات —
+     إلا لو إحنا في إعداد أول-تشغيل مؤكد صراحةً */
+  if(!window._liveDbLoad && !window._setupConfirmed) return;
   let dirty = [];
   if(DB.warehouses.length===0){ DB.warehouses.push({id:'wh_main', name:'المخزن الرئيسي'}); dirty.push('warehouses'); }
   if(DB.finAccounts.length===0){
@@ -1167,6 +1207,12 @@ function seedDefaults(){
   // الحفظ في الخلفية (مجمّع تلقائياً في حفظة واحدة لكل مجموعة)
   dirty.forEach(k=>saveKey(k).catch(()=>{}));
 }
+/* م165: القاعدة «فاضية بجد» = مفيش إعدادات ولا مستخدمين ولا صف واحد في أي جدول */
+function dbLooksEmpty(data){
+  if(!data) return true;
+  if(data.settings || data.users) return false;
+  return DATA_KEYS.every(k=>!(data[k] && data[k].length));
+}
 async function loadAllData(){
   // تحميل القاعدة كلها بطلب واحد (دالة load_all في القاعدة)
   const { data, error } = await sb.rpc('load_all');
@@ -1177,14 +1223,76 @@ async function loadAllData(){
      السرية الافتراضية! لولا إن الحماية رفضت الكتابة كانت البيانات الحقيقية
      اتمسحت. دلوقتي: مفيش "أول تشغيل" ولا كتابة افتراضيات إلا لو الجهاز مفعّل. */
   window._readBlocked = !_deviceAuthed && !(data && data.settings);
-  window._firstRun = _deviceAuthed && !(data && data.settings);
+  /* ============ م165: سد ثغرة «القراءة الفاضية اتفهمت غلط كقاعدة جديدة» ============
+     الحادثة (ضربت سيف فعلاً — الأرقام السرية والإعدادات رجعوا للافتراضي):
+     جهاز مفعّل، وفي لحظة تحميل واحدة (إقلاع أو مزامنة صامتة) تصريح الدخول كان
+     منتهي لثواني، فالحماية رجّعت رد فاضي **بدون رسالة خطأ** — والسيستم افتكرها
+     قاعدة جديدة وكتب الافتراضيات فوق الحقيقية لما التصريح رجع.
+     العلاج التلاتي:
+     1) أي جهاز شاف القاعدة الحقيقية ولو مرة واحدة بيتعلّم بعلامة محلية —
+        وبعدها عمره ما يصدّق إن القاعدة «جديدة» مهما رجع الرد فاضي.
+     2) «أول تشغيل» بقى ترشيح بس: شاشة تأكيد صريحة (اكتب «بداية») — مفيش
+        ولا بايت بيتكتب في القاعدة قبل ما إنسان يأكد بإيده. ويشترط كمان إن
+        القاعدة فاضية تماماً من أي أثر حياة (dbLooksEmpty).
+     3) رد فاضي على جهاز متعلّم = عطل تحميل — بنرمي خطأ **قبل ما نلمس الذاكرة
+        أصلاً**، فالإقلاع يعرض «إعادة المحاولة» والمزامنة الصامتة بتعدّي الدورة
+        دي وتحاول تاني — والبيانات في الحالتين ماتتلمستش. */
+  const liveDb = !!(data && data.settings);
+  if(liveDb){ try{ localStorage.setItem('mers_live_db_seen','1'); }catch(e){} }
+  let seenLive = false;
+  try{ seenLive = localStorage.getItem('mers_live_db_seen')==='1'; }catch(e){}
+  window._liveDbLoad = liveDb;
+  window._firstRunCandidate = _deviceAuthed && !liveDb && !seenLive && dbLooksEmpty(data);
+  if(_deviceAuthed && !liveDb && !window._firstRunCandidate){
+    const e165 = new Error('protected-empty-read');
+    e165.protectedEmptyRead = true;
+    throw e165;
+  }
   DATA_KEYS.forEach(k=>{
     DB[k] = (data && data[k]) ? data[k] : keyDefault(k);
     _shadow[k] = _snapshot(k);
   });
   KV_KEYS.forEach(k=>{ DB[k] = (data && data[k]) ? data[k] : keyDefault(k); });
   seedDefaults();
-  if(window._firstRun){ saveKey('users').catch(()=>{}); saveKey('settings').catch(()=>{}); }
+  _scheduleDupScan();   /* م164: فحص تكرار الأرقام مع كل إقلاع */
+}
+/* ============ م165: شاشة الإعداد الأول الصريح — بديل الكتابة التلقائية ============ */
+function firstRunSetupHTML(){
+  return `
+  <div class="login-wrap"><div class="login-card" style="text-align:right;max-width:540px">
+    <p class="login-title">🆕 قاعدة بيانات جديدة تماماً؟</p>
+    <p class="login-sub" style="line-height:2.1">
+      السيستم لقى القاعدة فاضية خالص — مفيش إعدادات ولا مستخدمين ولا أي بيانات.<br>
+      لو دي فعلاً <b>بداية نظام جديد من الصفر</b>، اكتب كلمة <b>«بداية»</b> في الخانة
+      ودوس التأكيد — وساعتها بس هيتكتب الإعداد الافتراضي في القاعدة.<br>
+      <span style="color:var(--danger);font-weight:800">⚠️ لو دة جهاز شغال على نظام قائم فيه بيانات —
+      متكتبش حاجة واقفل الصفحة وكلم صاحب المركز فوراً.</span>
+    </p>
+    <div class="form-row"><input class="f" id="setupConfirmWord" placeholder="اكتب هنا: بداية" autocomplete="off"
+      onkeydown="if(event.key==='Enter') confirmFirstRunSetup()"></div>
+    <button class="login-go" style="width:100%" onclick="confirmFirstRunSetup()">تأكيد إنشاء نظام جديد</button>
+    <p class="login-err" id="setupErr"></p>
+    <p class="login-hint" style="margin-top:10px;text-align:center">
+      <button class="btn btn-sm" onclick="location.reload()">🔄 لأ — أعد التحميل والفحص تاني</button>
+    </p>
+  </div></div>`;
+}
+async function confirmFirstRunSetup(){
+  /* الحارس: السيستم نفسه لازم يكون متحقق إن دي قاعدة فاضية تماماً على جهاز
+     مفعّل عمره ما شاف بيانات (dbLooksEmpty + العلامة المحلية + التفعيل) —
+     أي نداء تاني (أدوات مطوّر على سيستم شغال مثلاً) بيترفض فوراً */
+  if(window._firstRunCandidate !== true){ toast('الإعداد الأول متاح بس لقاعدة فاضية تماماً على جهاز مفعّل', true); return; }
+  const wEl = document.getElementById('setupConfirmWord');
+  const err = document.getElementById('setupErr');
+  if((((wEl&&wEl.value)||'').trim()) !== 'بداية'){
+    if(err) err.textContent = 'لازم تكتب كلمة «بداية» بالظبط عشان نتأكد إنه قرار مقصود';
+    return;
+  }
+  window._setupConfirmed = true;   /* بيفتح حارس م165 في محرك الحفظ — للإعداد الأول بس */
+  try{ localStorage.setItem('mers_live_db_seen','1'); }catch(e){}
+  await saveKey('users');
+  await saveKey('settings');
+  await initApp();   /* إقلاع نضيف من الأول — القاعدة بقى فيها إعدادات حقيقية */
 }
 
 /* ============ المزامنة اللحظية بين كل الأجهزة (Real-time) ============
@@ -1238,6 +1346,8 @@ function _applyRemote(key, p){
       if(i>=0) arr[i] = row.data; else arr.push(row.data);
       if(_shadow[key]) _shadow[key].set(row.id, s);
     }
+    /* م164: إصدار وصل من جهاز تاني؟ نفحص تكرار الأرقام فوراً (مؤجّل 2.5ث) */
+    if(key==='invoices' || key==='jobs' || key==='purchases') _scheduleDupScan();
     _scheduleRtRefresh();
   }catch(e){ console.error('applyRemote', e); }
 }
@@ -1306,8 +1416,23 @@ async function initApp(){
       document.getElementById('root').innerHTML = deviceActivationHTML();
       return;
     }
+    /* م165: قاعدة فاضية بجد على جهاز عمره ما شاف بيانات — شاشة إعداد صريحة،
+       ومفيش أي كتابة تلقائية مهما حصل */
+    if(window._firstRunCandidate){
+      document.getElementById('root').innerHTML = firstRunSetupHTML();
+      return;
+    }
   }catch(e){
     console.error('initial load failed', e);
+    /* م165: رد فاضي محمي — الحماية وقفت التحميل قبل ما يلمس أي حاجة */
+    if(e && e.protectedEmptyRead){
+      document.getElementById('root').innerHTML = `
+    <div class="login-wrap"><div class="login-card" style="text-align:center">
+      <p class="login-title" style="color:var(--danger)">القاعدة ردّت رد فاضي مؤقت</p>
+      <p class="login-sub" style="line-height:1.9">الحماية وقفت التحميل قبل ما يلمس أي بيانات — دي غالباً كبوة اتصال أو تصريح دخول بيتجدد.<br>استنى ثواني وجرب تاني.<br><br><button class="btn btn-accent" onclick="location.reload()">🔄 إعادة المحاولة</button></p>
+    </div></div>`;
+      return;
+    }
     // لو الجهاز مش مفعّل والقاعدة رفضت → دي الحماية شغالة، لازم تفعيل
     if(!_deviceAuthed){
       clearSkipFlag();
@@ -1593,7 +1718,7 @@ function loginHTML(){
           </button>`).join('')}
       </div>
       <div class="pin-row">
-        <input id="pinInput" type="password" inputmode="numeric" maxlength="6" placeholder="••••" onkeydown="if(event.key==='Enter') doLogin()">
+        <input id="pinInput" type="password" inputmode="numeric" maxlength="12" placeholder="••••" onkeydown="if(event.key==='Enter') doLogin()">
         <button class="login-go" onclick="doLogin()">دخول</button>
       </div>
       <p class="login-err" id="loginErr"></p>
@@ -2860,7 +2985,7 @@ async function saveNewJob(carId){
   if(nextDate) car.nextServiceDate = nextDate;
   await saveKey('cars', DB.cars);
   const job = {
-    id: uid('job'), jobNo: nextNo(DB.jobs,'jobNo'),
+    id: uid('job'), jobNo: await reserveNo('jobNo', DB.jobs, 'jobNo'),   /* م164: حجز مركزي */
     carId, customerId: car.customerId, status:'مستلمة',
     receivedAt: new Date().toISOString(), notes, odometer: odo,
     items: [], deliveredAt:null, customerApproved:false
@@ -3496,7 +3621,7 @@ async function saveDeposit(jobId){
   if(!acc){ toast('اختار الحساب اللي العربون هيدخل عليه', true); return; }
   const cust = DB.customers.find(c=>c.id===job.customerId)||{};
   const stamp = new Date().toISOString();
-  const dep = { id:uid('dep'), depNo:nextDepositNo(), amount, accountId:acc.id, accountName:acc.name,
+  const dep = { id:uid('dep'), depNo: await reserveDepositNo(), amount, accountId:acc.id, accountName:acc.name,   /* م164 */
     notes, date:stamp, by:actorName(), status:'open' };
   job.deposits = job.deposits||[];
   job.deposits.push(dep);
@@ -5126,7 +5251,7 @@ async function saveStockIn(partId){
   if(supplierId){
     const supplier = DB.suppliers.find(s=>s.id===supplierId);
     const purchase = {
-      id: purchaseId, purchaseNo: nextNo(DB.purchases,'purchaseNo'),
+      id: purchaseId, purchaseNo: await reserveNo('purchaseNo', DB.purchases, 'purchaseNo'),
       supplierId, date: new Date().toISOString(), note,
       items: [{partId, name:p.name, qty, unitCost:cost}],
       total: qty*cost, payments: []
@@ -7248,7 +7373,7 @@ async function saveExtOutFromStock(){
   if(supplierId){
     purchaseId = uid('pur');
     const purchase = {
-      id: purchaseId, purchaseNo: nextNo(DB.purchases,'purchaseNo'), supplierId,
+      id: purchaseId, purchaseNo: await reserveNo('purchaseNo', DB.purchases, 'purchaseNo'), supplierId,
       date: new Date().toISOString(), paymentMethod: payMethod,
       note: 'قطعة غيار خارجية — أمر شغل #'+job.jobNo+(car?' — '+car.plate:''),
       items: [{partId:null, name, qty, unitCost:costPrice}],
@@ -7707,7 +7832,7 @@ async function saveExtItem(jobId, kind){
   if(supplierId){
     purchaseId = uid('pur');
     const purchase = {
-      id: purchaseId, purchaseNo: nextNo(DB.purchases,'purchaseNo'), supplierId,
+      id: purchaseId, purchaseNo: await reserveNo('purchaseNo', DB.purchases, 'purchaseNo'), supplierId,
       date: new Date().toISOString(), paymentMethod: payMethod,
       note: kindTxt+' — أمر شغل #'+job.jobNo+(car?' — '+car.plate:''),
       items: [{partId:null, name, qty, unitCost:costPrice}],
@@ -10790,7 +10915,7 @@ async function savePurchaseInvoice(){
   await Promise.all([saveKey('inventory', DB.inventory), saveKey('stockMoves', DB.stockMoves)]);
   const total = invoiceItems.reduce((s,it)=>s+it.qty*it.unitCost,0);
   const purchase = {
-    id: purchaseId, purchaseNo: purchaseDraft.invoiceNo || nextNo(DB.purchases,'purchaseNo'),
+    id: purchaseId, purchaseNo: purchaseDraft.invoiceNo || await reserveNo('purchaseNo', DB.purchases, 'purchaseNo'),
     supplierId: purchaseDraft.supplierId,
     date: purchaseDraft.date ? new Date(purchaseDraft.date).toISOString() : new Date().toISOString(),
     note: 'طريقة الدفع: '+purchaseDraft.paymentMethod,
@@ -10899,7 +11024,7 @@ async function createInvoiceFromJob(jobId){
   // ختم وقت واحد للفاتورة والتسليم — عشان مايبقاش بينهم فرق ثواني في التقارير (الملاحظة 59)
   const stamp = new Date().toISOString();
   const inv = {
-    id: uid('inv'), invNo: nextNo(DB.invoices,'invNo'),
+    id: uid('inv'), invNo: await reserveNo('invNo', DB.invoices, 'invNo'),   /* م164: حجز مركزي */
     jobId, customerId: job.customerId, items: JSON.parse(JSON.stringify(job.items)),
     subtotal, discount, vatRate, vatAmount, total, payments: [], date: stamp,
     /* م135: لقطة تاريخية من ملاحظات العميل — بتتطبع زي ما هي للأبد */
@@ -12363,13 +12488,119 @@ function renderExpenses(){
     <button class="btn btn-sm ${expenseView==='categories'?'btn-accent':''}" onclick="setExpenseView('categories')">🏷️ أنواع المصروفات</button>
     <button class="btn btn-sm ${expenseView==='report'?'btn-accent':''}" onclick="setExpenseView('report')">📊 تقارير المصروفات</button>
     <button class="btn btn-sm ${expenseView==='custodies'?'btn-accent':''}" onclick="setExpenseView('custodies')">👛 العهد${(()=>{ const o=DB.custodies.filter(c=>c.status==='open').length; return o?' ('+o+')':''; })()}</button>
+    ${can('exp.advance')?`<button class="btn btn-sm ${expenseView==='advances'?'btn-accent':''}" onclick="setExpenseView('advances')">💰 سلفة الموظفين</button>`:''}
   </div>`;
   let body;
   if(expenseView==='categories') body = renderExpenseCategories();
   else if(expenseView==='report') body = renderExpenseReport();
   else if(expenseView==='custodies') body = renderCustodies();
+  else if(expenseView==='advances') body = renderAdvancesView();   /* م166 */
   else body = renderExpenseList();
   return tabsBar + body;
+}
+/* ============ م166: سلفة الموظفين من المصروفات — سجل مركزي واحد ============
+   قرار سيف: مفيش نظامين للسلف. المصدر الوحيد للحقيقة هو صفوف المصروفات
+   بنوع «سلفة موظف» (وكل سلفة HR أصلاً بتنزل فيه من زمان) — الشاشة دي
+   بتضيف طريق تسجيل تاني لنفس السجل + تقرير بفلاتر، وworkflow الـHR مايتلمسش.
+   الموظف «غير المكود» (تحت الاختبار): مفيش ملف موظف بيتعمل أبداً —
+   بس معرّف داخلي ثابت (extEmpId) بيربط كل سلف نفس الاسم ببعض. */
+let advRep = { preset:'this_month', from:'', to:'', q:'', kind:'all' };
+function setAdvRep(k, v){
+  advRep[k] = v;
+  const b = document.getElementById('advRepArea');
+  if(b) b.innerHTML = advRepAreaHTML();
+}
+function normEmpName(s){ return String(s||'').trim().replace(/\s+/g,' '); }
+function findExtEmpId(name){
+  const n = normEmpName(name);
+  if(!n) return null;
+  const hit = DB.expenses.find(e=>expTxnType(e)==='advance' && e.extEmpId && normEmpName(e.extEmpName)===n);
+  return hit ? hit.extEmpId : null;
+}
+function advEmpName(e){
+  if(e.employeeId){
+    const emp = DB.employees.find(x=>x.id===e.employeeId);
+    if(emp) return emp.name;
+  }
+  if(e.extEmpName) return e.extEmpName;
+  return String(e.description||'').replace(/^سلفة — /,'').split(' — ')[0];
+}
+function advTimeTxt(e){
+  if(!e.at) return '—';
+  try{ return new Date(e.at).toLocaleTimeString('ar-EG', { hour:'2-digit', minute:'2-digit' }); }
+  catch(x){ return '—'; }
+}
+function advRows(){
+  return DB.expenses.filter(e=>expTxnType(e)==='advance').filter(e=>{
+    if(advRep.kind==='coded' && !e.employeeId) return false;
+    if(advRep.kind==='ext' && !e.extEmpId) return false;
+    if(advRep.preset && advRep.preset!=='all'){
+      const range = advRep.preset==='custom'
+        ? periodRange({ preset:'custom', from:advRep.from, to:advRep.to })
+        : periodRange({ preset:advRep.preset });
+      if(!inPeriod(e.date, range)) return false;
+    }
+    if(advRep.q.trim() && !smartMatch(advRep.q, advEmpName(e))) return false;
+    return true;
+  }).sort((a,b)=> new Date(b.at||b.date) - new Date(a.at||a.date));
+}
+/* صياغة الإجمالي بتتغير مع الفلاتر — زي أمثلة سيف بالحرف */
+function advTotalLabel(){
+  const name = advRep.q.trim();
+  const hasPeriod = advRep.preset && advRep.preset!=='all';
+  if(name && !hasPeriod) return 'إجمالي سلف «'+name+'» منذ بداية تسجيله بالنظام';
+  if(name) return 'إجمالي سلف «'+name+'» في الفترة';
+  return hasPeriod ? 'إجمالي السلف في الفترة' : 'إجمالي السلف';
+}
+function advRepAreaHTML(){
+  const rows = advRows();
+  const total = rows.reduce((s,e)=>s+(e.amount||0),0);
+  return `
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+    <div class="form-row" style="margin:0;min-width:150px"><label class="f-label">الفترة</label>
+      <select class="f" onchange="setAdvRep('preset', this.value)">
+        ${EXP_DATE_PRESETS.map(([v,l])=>`<option value="${v}" ${advRep.preset===v?'selected':''}>${l}</option>`).join('')}
+      </select></div>
+    ${advRep.preset==='custom'?`
+    <div class="form-row" style="margin:0"><label class="f-label">من</label><input class="f" type="date" value="${advRep.from}" onchange="setAdvRep('from', this.value)"></div>
+    <div class="form-row" style="margin:0"><label class="f-label">إلى</label><input class="f" type="date" value="${advRep.to}" onchange="setAdvRep('to', this.value)"></div>`:''}
+    <div class="form-row" style="margin:0;min-width:210px"><label class="f-label">الموظف (مكود أو غير مكود)</label>
+      <input class="f" placeholder="اكتب الاسم للبحث..." value="${escAttr(advRep.q)}" oninput="setAdvRep('q', this.value)"></div>
+    <div class="form-row" style="margin:0;min-width:130px"><label class="f-label">نوع الموظف</label>
+      <select class="f" onchange="setAdvRep('kind', this.value)">
+        <option value="all" ${advRep.kind==='all'?'selected':''}>الكل</option>
+        <option value="coded" ${advRep.kind==='coded'?'selected':''}>مكود</option>
+        <option value="ext" ${advRep.kind==='ext'?'selected':''}>غير مكود</option>
+      </select></div>
+  </div>
+  <div style="overflow-x:auto"><table class="tbl"><thead><tr>
+    <th>التاريخ</th><th>الوقت</th><th>الموظف</th><th>النوع</th><th>القيمة</th><th>الحساب</th><th>السبب</th><th>سجّلها</th><th></th>
+  </tr></thead><tbody>
+    ${rows.length ? rows.map(e=>`<tr>
+      <td style="white-space:nowrap">${fmtDate(e.date)}</td>
+      <td>${advTimeTxt(e)}</td>
+      <td>${advEmpName(e)}</td>
+      <td>${e.employeeId?'<span class="tag tag-ready">مكود</span>':(e.extEmpId?'<span class="tag tag-cancel">غير مكود</span>':'<span class="muted">—</span>')}</td>
+      <td style="font-weight:700">${money(e.amount||0)}</td>
+      <td>${e.payAccount||'—'}</td>
+      <td>${(e.description||'').split(' — ').slice(1).join(' — ')||'—'}</td>
+      <td>${e.recordedBy||'—'}</td>
+      <td>${e.employeeId?`<button class="btn btn-sm" onclick="openEmployeeDetail('${e.employeeId}')">🔗 الموظف</button>`:''}</td>
+    </tr>`).join('') : `<tr><td colspan="9" class="empty">مفيش سلف مطابقة للفلاتر</td></tr>`}
+  </tbody></table></div>
+  <div class="card" style="margin-top:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:13.5px">
+    <span><b>عدد السلف:</b> ${rows.length.toLocaleString('ar-EG')}</span>
+    <span><b>${advTotalLabel()}:</b> <span style="font-weight:800;font-size:15px">${money(total)}</span></span>
+  </div>
+  <div class="muted" style="font-size:11.5px;margin-top:6px">الإجمالي دة هو <b>إجمالي السلف المسجلة (المصروفة)</b> حسب الفلاتر — مش الرصيد المتبقي. خصم سلف الموظفين المكودين من مرتباتهم مكانه شاشة الرواتب في الموارد البشرية زي ما هو.</div>`;
+}
+function renderAdvancesView(){
+  if(!can('exp.advance')) return `<div class="card"><p class="empty">شاشة سلفة الموظفين متاحة لأصحاب صلاحية «سلفة الموظفين من شاشة المصروفات» بس.</p></div>`;
+  return `
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+    <button class="btn btn-accent" onclick="openExpAdvanceModal()">💰 تسجيل سلفة جديدة</button>
+  </div>
+  <div id="advRepArea">${advRepAreaHTML()}</div>`;
 }
 /* ============ م125: قائمة السجل المالي الموحد — بحث ذكي + فلاتر + ملخص لحظي ============ */
 let expFilters = { q:'', type:'', preset:'all', from:'', to:'' };
@@ -14555,17 +14786,101 @@ async function saveAdvance(empId){
   /* م125 (قرار سيف): مصدر الدفع إلزامي — والسلفة بتتسجل في السجل المالي الموحد */
   const acc = accId ? DB.finAccounts.find(a=>a.id===accId) : null;
   if(!acc){ toast('اختار مصدر الدفع — السلفة لازم تتخصم من حساب', true); return; }
-  if(!e.advances) e.advances = [];
-  const adv = { id:uid('adv'), date, amount, reason, note, accountId:acc.id, recordedBy:actorName(), createdAt:new Date().toISOString() };
-  e.advances.push(adv);
-  const advFm = addFinMove(acc.id, 'out', amount, 'advance', 'سلفة موظف: '+e.name+(reason?' — '+reason:''));
-  DB.expenses.push({ id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'advance', category:'سلفة موظف',
-    description:'سلفة — '+e.name+(reason?' — '+reason:''), amount, date,
-    payAccount:acc.name, accountId:acc.id, employeeId:e.id, advanceId:adv.id, finMoveId:advFm.id,
-    notes:note||'', recordedBy:actorName(), system:true });
-  await Promise.all([saveKey('employees'), saveKey('finMoves'), saveKey('expenses', DB.expenses)]);
-  await logAction('سلفة '+money(amount)+' — '+e.name+' من '+acc.name);
+  await _writeAdvance({ emp:e, date, amount, reason, note, acc });   /* م166: نفس الكاتب المركزي */
   closeModal(); toast('تم تسجيل السلفة وخصمها من '+acc.name); openEmployeeDetail(empId);
+}
+/* ============ م166: الكاتب المركزي الوحيد للسلف ============
+   كل سلفة — من HR أو من المصروفات، لمكود أو غير مكود — بتعدي من هنا:
+   (1) لو مكود: بتتسجل في ملف الموظف (نفس workflow الـHR بالحرف)
+   (2) حركة خزنة خصم من الحساب
+   (3) صف في سجل المصروفات بنوع «سلفة موظف» — وهو السجل المركزي للتقارير.
+   غير المكود: مفيش ملف موظف أبداً — بس extEmpId بيربط سلف نفس الاسم. */
+async function _writeAdvance({ emp, extName, extEmpId, date, amount, reason, note, acc }){
+  const dispName = emp ? emp.name : normEmpName(extName);
+  let advanceId = null;
+  if(emp){
+    if(!emp.advances) emp.advances = [];
+    const adv = { id:uid('adv'), date, amount, reason, note, accountId:acc.id, recordedBy:actorName(), createdAt:new Date().toISOString() };
+    emp.advances.push(adv);
+    advanceId = adv.id;
+  }
+  const advFm = addFinMove(acc.id, 'out', amount, 'advance', 'سلفة موظف: '+dispName+(emp?'':' (غير مكود)')+(reason?' — '+reason:''));
+  DB.expenses.push({ id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'advance', category:'سلفة موظف',
+    description:'سلفة — '+dispName+(emp?'':' (غير مكود)')+(reason?' — '+reason:''), amount, date,
+    payAccount:acc.name, accountId:acc.id,
+    employeeId: emp ? emp.id : null, advanceId,
+    extEmpId: emp ? null : extEmpId, extEmpName: emp ? null : dispName,
+    at: new Date().toISOString(),
+    finMoveId:advFm.id, notes:note||'', recordedBy:actorName(), system:true });
+  const saves = [saveKey('finMoves'), saveKey('expenses', DB.expenses)];
+  if(emp) saves.push(saveKey('employees'));
+  await Promise.all(saves);
+  await logAction('سلفة '+money(amount)+' — '+dispName+(emp?'':' (موظف غير مكود)')+' من '+acc.name);
+}
+/* ============ م166: تسجيل سلفة من شاشة المصروفات ============ */
+function openExpAdvanceModal(){
+  if(!can('exp.advance')){ toast('مالكش صلاحية سلفة الموظفين من المصروفات', true); return; }
+  const extNames = [...new Set(DB.expenses.filter(e=>expTxnType(e)==='advance' && e.extEmpName).map(e=>e.extEmpName))];
+  openModal(`
+    <h3>💰 سلفة موظف — من المصروفات</h3>
+    <div class="form-row"><label class="f-label">نوع الموظف</label>
+      <select class="f" id="xadvKind" onchange="xadvKindChanged()">
+        <option value="coded">موظف مكود (من قايمة الموظفين)</option>
+        <option value="ext">موظف غير مكود (اسم يدوي — تحت الاختبار)</option>
+      </select></div>
+    <div id="xadvCodedBox">
+      <div class="form-row"><label class="f-label">الموظف</label>
+        <select class="f" id="xadvEmp"><option value="">— اختار الموظف —</option>${DB.employees.filter(x=>x.status==='نشط').map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
+    </div>
+    <div id="xadvExtBox" style="display:none">
+      <div class="form-row"><label class="f-label">اسم الموظف (اكتبه بدقة — لو اتكتب قبل كدة هيتقترح عليك)</label>
+        <input class="f" id="xadvExtName" list="xadvExtList" autocomplete="off">
+        <datalist id="xadvExtList">${extNames.map(n=>`<option value="${escAttr(n)}">`).join('')}</datalist></div>
+      <div style="font-size:12.5px;color:var(--danger);font-weight:700;margin-bottom:10px">⚠️ هذا الموظف غير مسجل بالنظام، سيتم تسجيل العملية كسلفة لموظف غير مكود.</div>
+    </div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">تاريخ السلفة</label><input class="f" id="xadvDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-row"><label class="f-label">قيمة السلفة</label><input class="f" id="xadvAmt" type="number" min="0"></div>
+    </div>
+    <div class="form-row"><label class="f-label">مصدر الدفع (إلزامي — الحساب اللي هتتخصم منه)</label>
+      <select class="f" id="xadvAcc"><option value="">— اختار الحساب —</option>${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+    <div class="form-row"><label class="f-label">سبب السلفة</label><input class="f" id="xadvReason"></div>
+    <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="xadvNote"></div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">السلفة بتنزل في نفس السجل المركزي — للمكود هتظهر فوراً في ملفه في الموارد البشرية وهتتخصم من راتبه زي أي سلفة.</div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveExpAdvance()">حفظ السلفة</button>
+  `);
+}
+function xadvKindChanged(){
+  const k = ((document.getElementById('xadvKind')||{}).value)||'coded';
+  const c = document.getElementById('xadvCodedBox'), x = document.getElementById('xadvExtBox');
+  if(c) c.style.display = k==='coded' ? '' : 'none';
+  if(x) x.style.display = k==='ext' ? '' : 'none';
+}
+async function saveExpAdvance(){
+  if(!can('exp.advance')){ toast('مالكش صلاحية سلفة الموظفين من المصروفات', true); return; }   /* حارس م65 */
+  const kind = ((document.getElementById('xadvKind')||{}).value)||'coded';
+  const date = (document.getElementById('xadvDate')||{}).value;
+  const amount = parseFloat((document.getElementById('xadvAmt')||{}).value)||0;
+  const reason = ((document.getElementById('xadvReason')||{}).value||'').trim();
+  const note = ((document.getElementById('xadvNote')||{}).value||'').trim();
+  const accId = (document.getElementById('xadvAcc')||{}).value;
+  if(!date){ toast('اختر تاريخ السلفة', true); return; }
+  if(amount<=0){ toast('اكتب قيمة السلفة', true); return; }
+  const acc = accId ? DB.finAccounts.find(a=>a.id===accId) : null;
+  if(!acc){ toast('اختار مصدر الدفع — السلفة لازم تتخصم من حساب', true); return; }
+  if(kind==='coded'){
+    const empId = (document.getElementById('xadvEmp')||{}).value;
+    const emp = DB.employees.find(x=>x.id===empId);
+    if(!emp){ toast('اختار الموظف من القايمة', true); return; }
+    await _writeAdvance({ emp, date, amount, reason, note, acc });
+  } else {
+    const name = normEmpName((document.getElementById('xadvExtName')||{}).value);
+    if(!name){ toast('اكتب اسم الموظف غير المكود', true); return; }
+    const extEmpId = findExtEmpId(name) || uid('xemp');
+    await _writeAdvance({ extName:name, extEmpId, date, amount, reason, note, acc });
+  }
+  closeModal(); toast('تم تسجيل السلفة وخصمها من '+acc.name);
+  refreshContent();
 }
 function openPenaltyModal(empId){
   if(!can('hr.penalties')){ toast('مالكش صلاحية تسجيل الجزاءات', true); return; }
@@ -15250,7 +15565,7 @@ const NOTIF_SEVERITY = {
   item_archive:'medium', item_restore:'medium', item_edit:'medium',
   custody_settle:'medium', expense_edit:'medium', voucher_edit:'medium',
   user_toggle:'medium', settings_change:'medium', tax_change:'high', payment_method:'medium',
-  dup_customer:'medium', dup_item:'medium',
+  dup_customer:'medium', dup_item:'medium', dup_number:'high',   /* م164 */
   devtools_open:'high',   // الملاحظة 67: فتح أدوات المطوّر
   att_import:'low', att_edit:'medium',   // الملاحظة 68: الحضور
   // الملاحظة 64: سيارات العملاء
@@ -15284,8 +15599,56 @@ function notify(type, action, opts){
     priority: o.priority || NOTIF_SEVERITY[type] || 'medium',
     amount: o.amount || 0,
     reason: o.reason || '',   // م83: أي عملية ليها سبب، السبب بيتخزّن ويظهر في الإشعار
-    refType: o.refType || null, refId: o.refId || null, refNo: o.refNo || null
+    refType: o.refType || null, refId: o.refId || null, refNo: o.refNo || null,
+    system: !!o.system   /* م164: إشعار مراقبة تلقائية من السيستم نفسه */
   });
+}
+/* ============ م164: كاشف تكرار الأرقام — صمام الأمان الدائم ============
+   بيمشي على كل العدادات المهمة ويطلّع إشعار فوري لو لقى رقمين متطابقين:
+   فواتير البيع · أوامر الشغل · إيصالات العربون · فواتير الشراء (لنفس المورد
+   بس — لأن رقم فاتورة الشراء ممكن يكون رقم فاتورة المورد نفسه ومورّدين
+   مختلفين وارد جداً يبقى عندهم نفس الرقم، فدي مش مشكلة).
+   بيشتغل: عند الإقلاع + أول ما أي إصدار من جهاز تاني يوصل بالمزامنة اللحظية.
+   منع السبام: مش بيكرر إشعار لنفس التكرار طول ما إشعاره موجود في نافذة
+   الـ30 يوم — ولو التكرار فضل من غير حل، هيرجع يفكّر تاني بعد ما تعدي. */
+function findDupNos(){
+  const out = [];
+  const scan = (list, field, label, refType, keyFn) => {
+    const by = {};
+    (list||[]).forEach(x=>{
+      const no = x[field];
+      if(no===null || no===undefined || no==='') return;
+      const n = parseInt(no,10);
+      const norm = isNaN(n) ? String(no).trim() : String(n);   // '0365' و'365' = نفس الرقم
+      const k = (keyFn ? keyFn(x)+'|' : '') + norm;
+      (by[k] = by[k]||[]).push(x);
+    });
+    Object.values(by).forEach(v=>{
+      if(v.length>1) out.push({ label, refType, no:String(v[0][field]), count:v.length, refId:(v[0].refJobId||v[0].id) });
+    });
+  };
+  scan(DB.invoices, 'invNo', 'فاتورة', 'invoice');
+  scan(DB.jobs, 'jobNo', 'أمر شغل', 'job');
+  const deps = [];
+  DB.jobs.forEach(j=>(j.deposits||[]).forEach(d=>deps.push({ depNo:d.depNo, id:d.id, refJobId:j.id })));
+  scan(deps, 'depNo', 'إيصال عربون', 'job');
+  scan(DB.purchases, 'purchaseNo', 'فاتورة شراء', 'purchase', x=>x.supplierId||'');
+  return out;
+}
+function alertDupNos(){
+  try{
+    findDupNos().forEach(d=>{
+      const head = '🚨 تكرار أرقام: '+d.label+' #'+d.no;
+      if((DB.notifications||[]).some(n=>n.type==='dup_number' && String(n.action||'').indexOf(head)===0)) return;
+      notify('dup_number', head+' موجود '+d.count+' مرات — غالباً جهازين سجّلوا في نفس اللحظة. راجعهم، والحسابات سليمة لأن الربط الداخلي بالبصمة مش بالرقم',
+        { category:'system', priority:'high', system:true, refType:d.refType, refId:d.refId, refNo:d.no });
+    });
+  }catch(e){}
+}
+let _dupScanTimer = null;
+function _scheduleDupScan(){
+  clearTimeout(_dupScanTimer);
+  _dupScanTimer = setTimeout(()=>{ try{ alertDupNos(); }catch(e){} }, 2500);
 }
 /* ============ م83: السبب بيظهر مع أي إشعار — مهما كانت أولويته ============
    طلب سيف: «طالما في سبب مكتوب في العملية اللي تمت، يظهر لي في مركز
@@ -15379,12 +15742,14 @@ function openNotifRef(notifId){
 }
 function pushNotif(opts){
   try{
-    if(isOwnerSession()) return;   // الأدمن نفسه مش محتاج إشعار بأفعاله
+    /* م164: إشعارات «السيستم» (زي كاشف تكرار الأرقام) لازم تتسجل حتى لو
+       الجالس هو صاحب المركز — دي مراقبة تلقائية مش فعل مستخدم بيتراجع */
+    if(isOwnerSession() && !opts.system) return;   // الأدمن نفسه مش محتاج إشعار بأفعاله
     const n = {
       id: uid('ntf'), notifNo: nextNo(DB.notifications,'notifNo'),
       category: opts.category||'jobs', type: opts.type||'', priority: opts.priority||'medium',
-      userName: session ? (session.staffName||ROLE_LABEL[session.role]||'—') : '—',
-      dept: session ? (ROLE_LABEL[session.role]||session.role) : '—',
+      userName: opts.system ? 'السيستم 🤖' : (session ? (session.staffName||ROLE_LABEL[session.role]||'—') : '—'),
+      dept: opts.system ? 'مراقبة تلقائية' : (session ? (ROLE_LABEL[session.role]||session.role) : '—'),
       position: currentPosition(),
       action: opts.action||'', amount: opts.amount||0,
       reason: opts.reason||'',   // م83: السبب كامل — بيظهر في الإشعار مهما كانت أولويته
@@ -18381,6 +18746,9 @@ async function savePins(){
   let changed = 0;
   for(const r of Object.keys(ROLE_LABEL)){
     const v = ((document.getElementById('pin_'+r)||{}).value||'').trim();
+    /* م165ب: خانة الدخول بتقبل 12 خانة بالكتير — رقم أطول كان بيتخزن كامل
+       وصاحبه يتقفل برا للأبد (حصلت لسيف مع رقم 7 أرقام وخانة كانت 6) */
+    if(v && v.length > 12){ toast('رقم «'+ROLE_LABEL[r]+'» أطول من 12 خانة — خانة الدخول بتقبل 12 بالكتير. قصّره وجرب تاني', true); return; }
     if(v){ DB.users[r] = await hashSecret(v); changed++; }   // مشفّرة (م67)
   }
   if(!changed){ toast('مفيش رقم جديد اتكتب', true); return; }
@@ -18405,7 +18773,7 @@ function setBusy(on){
     'savePaintOut','saveExtOutFromStock','saveNewSupplier','saveSupplierPayment','saveSupplierReturn','savePurchaseInvoice',
     'saveCustomerReturn','saveStockAdjustment','saveScrap','saveTransfer','saveNewWarehouse','saveNewAppointment',
     'saveCannedService','saveCountProgress','submitCountForApproval','confirmCancelJob','saveInvoiceInfo','saveTaxWa','savePins','saveCenterName','saveNewStaff','toggleStaff','saveStaffPass','savePerms','saveFinAccount','saveOpeningBalance','saveFinTransfer','saveExternalDeposit','saveCustodySettle','saveExpenseCat',
-    'saveNewEmployee','saveEmployeeEdit','saveLeaveRequest','saveAbsence','saveAdvance','savePenalty','savePermit',
+    'saveNewEmployee','saveEmployeeEdit','saveLeaveRequest','saveAbsence','saveAdvance','saveExpAdvance','savePenalty','savePermit',
     'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveWorkingDays',
     'saveNewTool','saveToolEdit','saveToolIssue','saveToolReturn',
     'saveDeposit','saveDepositRefund',   /* م127 */
