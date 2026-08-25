@@ -548,7 +548,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v185';
+const APP_VERSION = 'v189';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -2353,7 +2353,13 @@ function openArchivedCarsReport(){
     }).join('')}</tbody></table></div>` : `<div class="empty">مفيش سيارات مؤرشفة</div>`}
   `, true);
 }
-function openCustomerHistory(customerId){ openModal(customerHistoryHTML(customerId)); }
+function openCustomerHistory(customerId){
+  /* م167: بحث اللوحة بيتصفّر لما تفتح عميل مختلف — وبيفضل شغال لو رجعت
+     من تقرير أمر شغل لنفس العميل (عشان تكمل تقليب في فواتير نفس العربية) */
+  if(window._custHistLastId !== customerId){ custHistQ = ''; custHistLimit = 300; }
+  window._custHistLastId = customerId;
+  openModal(customerHistoryHTML(customerId));
+}
 /* ============ م89: تعديل بيانات العميل ============
    طلب سيف: زرار تعديل للعميل — الاسم ونوعه (فرد/شركة) والتليفون وأي حاجة.
    نفس حماية الإضافة بالظبط: منع التكرار (موبايل/قومي/إيميل) بس مع استثناء
@@ -2494,35 +2500,96 @@ function customerHistoryHTML(customerId){
   <label class="f-label">السيارات</label>
   <div style="margin:8px 0 16px">${cars.length? cars.map(c=>{
     const carJobs = jobs.filter(j=>j.carId===c.id);
-    return `<div style="background:var(--surface-2);padding:8px 10px;border-radius:8px;margin-bottom:6px;font-size:13px;${c.archived?'opacity:.62':''}">${c.plate} — ${carLabel(c)} <span class="muted">(${carJobs.length} زيارة${c.vin?' · شاسيه: '+c.vin:''})</span>${c.archived?' <span class="tag tag-cancel" style="font-size:10px">🗄️ مؤرشفة</span>':''}</div>`;
+    return `<div style="background:var(--surface-2);padding:8px 10px;border-radius:8px;margin-bottom:6px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;${c.archived?'opacity:.62':''}">
+      <span>${c.plate} — ${carLabel(c)} <span class="muted">(${carJobs.length} زيارة${c.vin?' · شاسيه: '+c.vin:''})</span>${c.archived?' <span class="tag tag-cancel" style="font-size:10px">🗄️ مؤرشفة</span>':''}</span>
+      <button class="btn btn-sm" onclick="custHistCarById('${customerId}','${c.id}')">📜 تاريخها</button>
+    </div>`;
   }).join('') : '<div class="muted" style="font-size:12.5px">لا توجد سيارات مسجلة</div>'}</div>
-  <label class="f-label">سجل أوامر الشغل والصيانات</label>
+  ${(()=>{
+    /* م167: القسم دة بقى للأوامر المفتوحة/النشطة حالياً بس (السيارة لسه جوه المركز).
+       المقفولة مش بتتمسح — تاريخها كامل تحت في «الفواتير السابقة» (كل فاتورة بتفتح تقريرها) */
+    const openJobs = [...jobs].filter(j=>!isJobClosed(j)).reverse();
+    return `
+  <label class="f-label">🔧 أوامر الشغل المفتوحة حالياً (${openJobs.length})</label>
   <table style="margin-top:6px"><thead><tr><th>رقم</th><th>السيارة</th><th>التاريخ</th><th>الحالة</th><th>الخدمات/القطع</th><th>القيمة</th></tr></thead>
-  <tbody>${[...jobs].reverse().map(j=>{
+  <tbody>${openJobs.map(j=>{
     const car = cars.find(c=>c.id===j.carId);
     const total = j.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
     const itemsSummary = j.items.map(it=>it.name).join('، ') || '—';
     return `<tr><td>#${j.jobNo}</td><td>${car?car.plate:'—'}</td><td>${fmtDate(j.receivedAt)}</td><td><span class="tag ${STATUS_TAGCLASS[j.status]}">${j.status}</span></td><td class="muted" style="max-width:180px">${itemsSummary}</td><td>${money(total)}</td></tr>`;
-  }).join('') || `<tr><td colspan="6" class="empty">لا يوجد سجل صيانة بعد</td></tr>`}</tbody></table>
-  ${invoices.length? `
-  <label class="f-label" style="margin-top:16px;display:block">الفواتير السابقة <span class="muted" style="font-size:11px">— دوس على الفاتورة يفتحلك تقرير أمر الشغل بتاعها</span></label>
-  <table style="margin-top:6px"><thead><tr><th>رقم</th><th>أمر الشغل</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th><th>خدمة العملاء</th></tr></thead>
-  <tbody>${invoices.map(inv=>{
+  }).join('') || `<tr><td colspan="6" class="empty">مفيش أوامر شغل مفتوحة حالياً — كل السيارات متسلمة 👌</td></tr>`}</tbody></table>`;
+  })()}
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px">
+    <label class="f-label" style="margin:0">🧾 الفواتير السابقة <span class="muted" style="font-size:11px">— دوس على الفاتورة يفتحلك تقرير أمر الشغل بتاعها</span></label>
+    <input class="f" id="custHistQInput" style="max-width:220px" placeholder="🔍 بحث برقم اللوحة..." value="${escAttr(custHistQ)}" oninput="setCustHistQ('${customerId}', this.value)">
+    <button class="btn btn-sm" onclick="custHistClear('${customerId}')">✕ مسح البحث</button>
+  </div>
+  <div id="custInvTableWrap">${custInvTableHTML(customerId)}</div>
+  `;
+}
+/* ============ م167: الفواتير السابقة — لوحة العربية ظاهرة + بحث باللوحة جوه العميل بس ============
+   البحث محدود بالعميل المفتوح سجله (مش بحث عام)، وبيشتغل بنفس الطريقة
+   للفرد والشركة، ومطبّع للمسافات: «عرب127» بتلاقي «ع ر ب 127». */
+let custHistQ = '';
+let custHistLimit = 300;   // أداء الشركات الكبيرة: 300 فاتورة وبعدين «عرض المزيد»
+function normPlate(s){ return normSearch(String(s||'')).replace(/\s+/g,''); }
+function setCustHistQ(customerId, v){
+  custHistQ = String(v||'');
+  custHistLimit = 300;
+  const b = document.getElementById('custInvTableWrap');
+  if(b) b.innerHTML = custInvTableHTML(customerId);
+}
+function custHistClear(customerId){
+  const el = document.getElementById('custHistQInput');
+  if(el) el.value = '';
+  setCustHistQ(customerId, '');
+}
+function custHistCarById(customerId, carId){
+  const car = DB.cars.find(c=>c.id===carId);
+  if(!car) return;
+  const el = document.getElementById('custHistQInput');
+  if(el) el.value = car.plate;
+  setCustHistQ(customerId, car.plate);
+}
+function custHistMore(customerId){
+  custHistLimit += 300;
+  const b = document.getElementById('custInvTableWrap');
+  if(b) b.innerHTML = custInvTableHTML(customerId);
+}
+function custInvTableHTML(customerId){
+  const all = DB.invoices.filter(i=>i.customerId===customerId)
+    .sort((a,b)=>new Date(b.date)-new Date(a.date));   /* الأحدث الأول */
+  const q = normPlate(custHistQ);
+  const withCar = all.map(inv=>{
+    const jb = inv.jobId ? DB.jobs.find(j=>j.id===inv.jobId) : null;
+    const car = jb ? DB.cars.find(c=>c.id===jb.carId) : null;
+    return { inv, jb, car };
+  });
+  const rows = q ? withCar.filter(x=>x.car && normPlate(x.car.plate).includes(q)) : withCar;
+  const shown = rows.slice(0, custHistLimit);
+  const activeTotal = rows.filter(x=>!x.inv.cancelled).reduce((s,x)=>s+(x.inv.total||0),0);
+  if(!all.length) return `<div class="muted" style="font-size:12.5px;margin-top:8px">لسه مفيش فواتير للعميل دة</div>`;
+  return `
+  <table style="margin-top:6px"><thead><tr><th>رقم</th><th>أمر الشغل</th><th>السيارة</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th><th>خدمة العملاء</th></tr></thead>
+  <tbody>${shown.length ? shown.map(({inv, jb, car})=>{
     /* م131: رقم أمر الشغل جنب الفاتورة + الضغط بيفتح تقريره — عشان سيف يعرف
        العميل عمل كام فاتورة وكل فاتورة اتعمل فيها إيه بالظبط */
     const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
-    const jb = inv.jobId ? DB.jobs.find(j=>j.id===inv.jobId) : null;
     return `<tr ${jb?`onclick="openWorkOrderReportFromCust('${jb.id}','${customerId}')" style="cursor:pointer" title="دوس لتقرير أمر الشغل #${jb.jobNo}"`:''}>
       <td>#${inv.invNo}${inv.cancelled?' <span class="tag tag-cancel" style="font-size:10px">🚫 ملغاة</span>':''}</td>
       <td style="font-weight:700">${jb?'#'+jb.jobNo:'—'}</td>
+      <td>${car?car.plate:'—'}</td>
       <td>${fmtDate(inv.date)}</td><td>${money(inv.total)}</td><td>${money(paid)}</td>
       <td>${(()=>{ /* م143: نتيجة خدمة العملاء لكل فاتورة — جزء دائم من سجل العميل */
         const st143 = csStatusOf(inv.id);
         return st143.key==='none' ? '<span class="muted" style="font-size:11px">—</span>'
           : '<span class="tag '+st143.cls+'" style="font-size:10px">'+st143.label+'</span>';
       })()}</td></tr>`;
-  }).join('')}</tbody></table>` : ''}
-  `;
+  }).join('') : `<tr><td colspan="7" class="empty">مفيش فواتير للوحة دي عند العميل دة</td></tr>`}
+  ${rows.length > shown.length ? `<tr><td colspan="7" style="text-align:center;padding:10px">
+    <button class="btn btn-sm" onclick="custHistMore('${customerId}')">عرض المزيد (باقي ${(rows.length-shown.length).toLocaleString('ar-EG')} فاتورة)</button></td></tr>` : ''}
+  </tbody></table>
+  <div class="muted" style="font-size:12px;margin-top:6px"><b>${rows.length.toLocaleString('ar-EG')}</b> فاتورة${q?' للوحة دي':''} · إجمالي الساري منها: <b>${money(activeTotal)}</b></div>`;
 }
 /* ============ الملاحظة 57: منع تكرار العملاء والمطابقة الذكية ============ */
 function activeCustomers(){ return DB.customers.filter(c=>!c.merged); }
@@ -5487,7 +5554,10 @@ function moveMatchesSearch(m, q){
 /* الملاحظة 38: أجزاء عرض تتبع الحركة (طالب/أمر/سيارة/ملاحظات) */
 function moveTrackParts(m){
   const parts = [];
-  if(m.reqByName) parts.push('طلبها: '+m.reqByName);
+  /* م168 (تصحيح بعد توضيح سيف): الطالب (مهندس/فني) مش بيظهر خالص في التفاصيل —
+     الاسم الوحيد هو «الموظف» اللي نفّذ/أدخل الحركة في السيستم (بتوع المخزن) */
+  const emp168 = moveActor(m);
+  if(emp168 && emp168!=='—') parts.push('الموظف: '+emp168);
   if(m.forJobNo) parts.push('لأمر #'+m.forJobNo);
   if(m.forCarLbl) parts.push('لسيارة: '+m.forCarLbl);
   if(m.notes) parts.push('📝 '+m.notes);
@@ -5632,7 +5702,9 @@ function moveRefSub(m){
       if(pu){ const paid=(pu.payments||[]).reduce((s,x)=>s+x.amount,0); bits.push(paid>=pu.total?'✅ مسدد للمورد':(paid>0?'⚠ مسدد جزئياً':'🔴 آجل')); } }
     else if(m.payMethod){ bits.push(m.payMethod); }
   }
-  if(m.reqByName) bits.push('طلبها: '+m.reqByName);
+  /* م168 (تصحيح بعد توضيح سيف): مفيش طالب في التفاصيل — بس منفّذ الحركة */
+  const emp168b = moveActor(m);
+  if(emp168b && emp168b!=='—') bits.push('الموظف: '+emp168b);
   return bits.join(' · ');
 }
 /* نافذة تفاصيل الحركة الكاملة (الملاحظة 55، البند 13) — وبتعمل كـ«مستند» للتسوية/المرتجع/التحويل/الهالك */
@@ -9310,6 +9382,26 @@ function supGRepSearch(v){
   const b = document.getElementById('supgrepBody'); if(b) b.innerHTML = supGRepRowsHTML(rows);
   const t = document.getElementById('supgrepTotals'); if(t) t.innerHTML = supGRepTotalsHTML(rows);
 }
+/* ============ م169: «الكمية الفعلية» — رصيد الصنف الحالي لحظة العرض (Live) ============
+   مش كمية الفاتورة — دي بتتحدث تلقائياً مع أي حركة على الصنف لأنها بتتحسب
+   من رصيد المخزون الحي وقت فتح التقرير:
+   · مع فلتر مخزن محدد = رصيد الصنف في المخزن دة بس
+   · من غير فلتر = رصيده في كل المخازن مجموعة
+   (نفس الصنف ممكن يكون سجل في كل مخزن — بنجمع أقاربه بالكود أو الاسم) */
+function supLiveQty(partId){
+  const p = partId ? DB.inventory.find(x=>x.id===partId) : null;
+  if(!p) return null;
+  const key = normPartKey(p.sku) || null;
+  const nameKey = normPartKey(p.name);
+  const siblings = DB.inventory.filter(x =>
+    x.id===p.id
+    || (key && normPartKey(x.sku)===key)
+    || (nameKey && normPartKey(x.name)===nameKey)
+  );
+  const whId = supGRepFilter.warehouseId;
+  const list = whId ? siblings.filter(x=>partWhId(x)===whId) : siblings;
+  return list.reduce((s,x)=>s+(x.qty||0),0);
+}
 function supGRepRowsHTML(rows){
   /* م152: نفس تجربة حركة المخزن (م55) — الصنف بيفتح كارت الصنف، والمستند
      بيفتح فاتورة الشراء أو مستند المرتجع. القطع الخارجية من غير تكويد
@@ -9323,8 +9415,10 @@ function supGRepRowsHTML(rows){
       : `<a onclick="supGRepOpen('ret','${x.retId}')" style="cursor:pointer;color:var(--accent-2);font-weight:600" title="افتح مستند المرتجع">↩ ${x.docNo} <span style="font-size:10px">↗</span></a>`;
     return `<tr>
     <td style="white-space:nowrap;font-size:12px">${fmtDate(x.date)}</td>
-    <td>${nameCell}</td><td class="muted">${x.sku}</td>
-    <td>${x.qty}</td><td>${money(x.unit)}</td><td style="font-weight:800">${money(x.total)}</td>
+    <td>${nameCell}</td>
+    <td>${x.qty}</td>
+    <td style="font-weight:700" title="رصيد الصنف حالياً — بيتحدث مع أي حركة">${(()=>{ const lq=supLiveQty(x.partId); return lq==null?'<span class="muted">—</span>':lq; })()}</td>
+    <td>${money(x.unit)}</td><td style="font-weight:800">${money(x.total)}</td>
     <td>${x.kind==='in'?'<span class="tag tag-working">توريد</span>':'<span class="tag tag-cancel">مرتجع مورد</span>'}</td>
     <td>${x.supName}</td><td class="muted" style="font-size:11.5px">${x.wh}</td>
     <td>${docCell}</td><td class="muted" style="font-size:11.5px">${x.pay}</td>
@@ -9385,7 +9479,7 @@ function openSupGlobalReport(keep){
     <div class="muted" style="font-size:11.5px;margin-top:6px">📋 تقرير للمراجعة فقط — الفترة: <b>${supGRepPeriodLabel()}</b> · 💡 اضغط على <b>اسم الصنف</b> لفتح كارت الصنف، وعلى <b>المستند</b> لفتح فاتورة الشراء أو مستند المرتجع.</div>
   </div>
   <div class="card" style="padding:0;overflow-x:auto;margin-bottom:10px">
-    <table><thead><tr><th>التاريخ</th><th>الصنف</th><th>الكود</th><th>الكمية</th><th>سعر الوحدة</th><th>إجمالي الحركة</th><th>نوع الحركة</th><th>المورد</th><th>المخزن</th><th>المستند</th><th>الدفع</th></tr></thead>
+    <table><thead><tr><th>التاريخ</th><th>الصنف</th><th>الكمية</th><th title="رصيد الصنف الحي — مش كمية الفاتورة">الكمية الفعلية 🔄</th><th>سعر الوحدة</th><th>إجمالي الحركة</th><th>نوع الحركة</th><th>المورد</th><th>المخزن</th><th>المستند</th><th>الدفع</th></tr></thead>
     <tbody id="supgrepBody">${supGRepRowsHTML(rows)}</tbody></table>
   </div>
   <div id="supgrepTotals">${supGRepTotalsHTML(rows)}</div>
@@ -9402,9 +9496,9 @@ function printSupGlobalReport(){
     <h2 style="text-align:center;margin:4px 0">${DB.settings.centerName||''} — تقرير الموردين (توريدات ومرتجعات)</h2>
     <div style="text-align:center;margin-bottom:10px">الفترة: <b>${supGRepPeriodLabel()}</b> · المورد: <b>${supTxt}</b> · المخزن: <b>${whTxt}</b>${f.search?` · بحث: <b>${escAttr(f.search)}</b>`:''}</div>
     <table border="1" cellspacing="0" cellpadding="5" style="width:100%;border-collapse:collapse;font-size:11.5px">
-      <thead><tr style="background:#eee"><th>التاريخ</th><th>الصنف</th><th>الكود</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th><th>النوع</th><th>المورد</th><th>المخزن</th><th>المستند</th><th>الدفع</th></tr></thead>
+      <thead><tr style="background:#eee"><th>التاريخ</th><th>الصنف</th><th>الكمية</th><th>الكمية الفعلية</th><th>سعر الوحدة</th><th>الإجمالي</th><th>النوع</th><th>المورد</th><th>المخزن</th><th>المستند</th><th>الدفع</th></tr></thead>
       <tbody>${[...rows].reverse().map(x=>`<tr>
-        <td>${fmtDate(x.date)}</td><td>${x.name}</td><td>${x.sku}</td><td>${x.qty}</td><td>${money(x.unit)}</td>
+        <td>${fmtDate(x.date)}</td><td>${x.name}</td><td>${x.qty}</td><td>${(()=>{ const lq=supLiveQty(x.partId); return lq==null?'—':lq; })()}</td><td>${money(x.unit)}</td>
         <td style="font-weight:700">${money(x.total)}</td><td>${x.kind==='in'?'توريد':'مرتجع مورد'}</td>
         <td>${x.supName}</td><td>${x.wh}</td><td>${x.docNo}</td><td>${x.pay}</td></tr>`).join('')}</tbody>
     </table>
