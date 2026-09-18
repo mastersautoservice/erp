@@ -306,7 +306,12 @@ function initSupabase(){
     /* م179: مهلة 15 ثانية لكل طلب — طلب معلّق على نت واقع كان بيجمّد طابور الحفظ
        كله وكل الأزرار لحد ما الموظف يعمل ريفريش ويضيع اللي في الطابور */
     global:{ fetch:(u,o)=>{
-      try{ return fetch(u, Object.assign({}, o||{}, { signal:(o&&o.signal)||AbortSignal.timeout(15000) })); }
+      try{
+        /* م184: طلبات الدخول وتجديد التصريح ليها مهلة أطول (30ث) — المهلة القصيرة
+           كانت بتقطعها وتطلّع رسالة «signal timed out» الغامضة بدل الخطأ الحقيقي */
+        const isAuth184 = /\/auth\/v1\//.test(String(u));
+        return fetch(u, Object.assign({}, o||{}, { signal:(o&&o.signal)||AbortSignal.timeout(isAuth184?30000:15000) }));
+      }
       catch(e){ return fetch(u,o); }
     } }
   });
@@ -315,6 +320,74 @@ function initSupabase(){
 async function deviceSession(){
   try{ const r = await sb.auth.getSession(); return (r && r.data && r.data.session) ? r.data.session : null; }
   catch(e){ return null; }
+}
+/* ============ م184: «خدمة الدخول واقعة» ≠ «الجهاز مش مفعّل» ============
+   الحادثة (18/9/2026 — ضربت المركز كله): خدمة الدخول (Auth) في Supabase وقعت
+   وبقت ترد 522، فالأجهزة فشلت تجدّد تصاريحها. السيستم فهمها «الجهاز مش مفعّل»
+   وطلّع شاشة التفعيل على **كل** الأجهزة، والتفعيل نفسه كان بيفشل برسالة
+   غامضة «تعذر التفعيل — signal timed out» — فسيف افتكر إن التفعيل اتلغى
+   والباسورد غلط، والاتنين مكانوش صح.
+   دلوقتي: الجهاز اللي اتفعّل مرة بيفضل متعلّم إنه مفعّل، وبتطلع شاشة انتظار
+   بتشرح الحقيقة وبتعيد المحاولة لوحدها — وأول ما الخدمة ترجع السيستم بيفتح
+   من غير ما حد يعمل أي حاجة. */
+const DEV_ACT_FLAG = 'mers_device_activated';
+function markDeviceActivated(){ try{ localStorage.setItem(DEV_ACT_FLAG,'1'); }catch(e){} }
+function deviceEverActivated(){
+  try{
+    if(localStorage.getItem(DEV_ACT_FLAG)==='1') return true;
+    if(localStorage.getItem('masters_erp_device')) return true;   // مخزن جلسة Supabase نفسه
+  }catch(e){}
+  return false;
+}
+/* خدمة الدخول رادة ولا لأ؟ (طلب صغير مالوش أي علاقة بالبيانات) */
+async function authServiceUp(){
+  try{
+    const r = await fetch(SUPABASE_URL+'/auth/v1/health',
+      { headers:{ apikey: SUPABASE_ANON_KEY }, signal: AbortSignal.timeout(8000) });
+    return !!(r && r.ok);
+  }catch(e){ return false; }
+}
+function deviceWaitingHTML(){
+  return `
+  <div class="login-wrap"><div class="login-card" style="text-align:right;max-width:540px">
+    <p class="login-title">⏳ خدمة الدخول على السيرفر مش رادة</p>
+    <p class="login-sub" style="line-height:2.1">
+      الجهاز ده <b>مفعّل عادي</b> — محدش لغى تفعيله، ومفيش أي مشكلة في الإيميل ولا كلمة السر.<br>
+      اللي حصل إن <b>خدمة الدخول على السيرفر واقعة مؤقتاً</b>، فالجهاز مش قادر يجدّد تصريحه.<br>
+      <b>السيستم بيحاول لوحده كل 20 ثانية، وأول ما الخدمة ترجع هيفتح من غير ما تعمل أي حاجة.</b><br>
+      <span class="muted" style="font-size:12.5px">كل البيانات سليمة في القاعدة — مفيش حاجة اتمسحت ولا اتغيّرت.</span>
+    </p>
+    <div id="devWaitMsg" class="muted" style="font-size:12.5px;min-height:18px;margin-bottom:10px">بيحاول تاني...</div>
+    <button class="btn btn-accent" style="width:100%" onclick="location.reload()">🔄 جرّب تاني دلوقتي</button>
+    <p class="muted" style="font-size:11.5px;margin:10px 0 0;line-height:1.8">
+      لو صاحب المركز متأكد إن الجهاز محتاج تفعيل من جديد فعلاً:
+      <a href="#" id="devShowAct" onclick="showDeviceActivationForm();return false;" style="color:var(--accent)">افتح شاشة التفعيل</a>
+    </p>
+  </div></div>`;
+}
+function showDeviceActivationForm(){
+  _devRetryStop = true;
+  const root = document.getElementById('root');
+  if(root) root.innerHTML = deviceActivationHTML();
+}
+let _devRetryN = 0, _devRetryStop = false;
+function _startDeviceRetry(){
+  if(_devRetryStop) return;
+  const t = setTimeout(async ()=>{
+    if(_devRetryStop) return;
+    _devRetryN++;
+    const el = document.getElementById('devWaitMsg');
+    if(await authServiceUp()){
+      const sess = await deviceSession();
+      if(sess){ markDeviceActivated(); location.reload(); return; }
+      /* الخدمة رجعت والجلسة راحت فعلاً ⇒ محتاج تفعيل حقيقي مرة واحدة */
+      showDeviceActivationForm();
+      return;
+    }
+    if(el) el.textContent = 'لسه مش رادة — محاولة رقم '+_devRetryN+' · بنجرب تاني كل 20 ثانية';
+    _startDeviceRetry();
+  }, 20000);
+  try{ if(t && t.unref) t.unref(); }catch(e){}
 }
 function deviceActivationHTML(){   // م78: مفيش حالة "مع تخطي" — الشاشة واحدة ومفيش مخرج غير التفعيل
   return `
@@ -347,12 +420,18 @@ async function activateDevice(){
   try{
     const { error } = await sb.auth.signInWithPassword({ email, password: pass });
     if(error) throw error;
+    markDeviceActivated();   /* م184 */
     location.reload();
   }catch(e){
     const m = String((e && e.message) || '');
+    const st = Number((e && e.status) || 0);
+    /* م184: مهلة/انقطاع/عطل سيرفر ≠ بيانات غلط — الرسالة الغامضة دي ضيّعت وقت المركز */
+    const serverDown184 = /timed out|timeout|AbortError|aborted|522|503|504|upstream|gateway/i.test(m) || st>=500;
     if(err) err.textContent = /Invalid login/i.test(m)
       ? 'الإيميل أو كلمة السر غلط'
-      : (/fetch|network/i.test(m) ? 'مفيش اتصال بالإنترنت' : ('تعذر التفعيل — '+m));
+      : serverDown184
+        ? 'خدمة الدخول على السيرفر مش رادة دلوقتي — دي مش مشكلة في الإيميل أو كلمة السر. استنى شوية وجرّب تاني.'
+        : (/fetch|network/i.test(m) ? 'مفيش اتصال بالإنترنت' : ('تعذر التفعيل — '+m));
     if(btn){ btn.disabled = false; btn.textContent = 'تفعيل الجهاز'; }
   }
 }
@@ -400,6 +479,7 @@ function saveKey(key){
   _saveQueue = run.catch(()=>{});
   return run.finally(()=>{
     _pendingSaves--; window._lastSaveAt = Date.now();
+    bumpHayGen();   /* م186: بيانات اتعدّلت محلياً (اسم صنف/عميل مثلاً) */
     /* م85: أي تعديل حصل أثناء الرفع بيتحفظ في حفظة تابعة فوراً — مايستناش
        عملية تانية من المستخدم. وبيقف لوحده لما مايبقاش فيه فرق. */
     if(_dirtyAfterSave[key]){
@@ -644,7 +724,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v202';
+const APP_VERSION = 'v207';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1348,7 +1428,48 @@ function dbLooksEmpty(data){
   if(data.settings || data.users) return false;
   return DATA_KEYS.every(k=>!(data[k] && data[k].length));
 }
+/* ============ م185: حماية القاعدة من عاصفة التحميل الكامل ============
+   الحادثة (17/9/2026 — القاعدة وقفت تقبل أي اتصال والمركز وقف يوم كامل):
+   التحميل الكامل بقى 8.9 ميجا، والقاعدة بتبنيه في **ذاكرتها** كل مرة (بتقرا
+   كل الجداول وتلمّها في ملف واحد). ومن م179 كان بيتطلب كل 15 ثانية طول ما
+   المزامنة اللحظية مقطوعة + مع كل رجوع ليها + مع كل ظهور للصفحة، ومن غير أي
+   مانع إن اتنين يشتغلوا مع بعض. القياس الفعلي من جهاز واحد: 7 تحميلات
+   (44 ميجا) في أقل من دقيقة، منها 3 رجعوا خطأ 500. اضربها في 6-7 أجهزة
+   ⇒ ذاكرة القاعدة خلصت ووقفت تقبل اتصال.
+   العلاج: تحميل واحد في المرة (والنداء التاني يستنى نفسه مش يعمل واحد جديد)
+   · مسافة أدنى بين التحميلات التلقائية · تهدئة تدريجية بعد أي خطأ. */
+const FULL_LOAD_MIN_GAP_MS = 60000;   // أقل مسافة بين تحميلين كاملين تلقائيين
+let _fullLoadInFlight = null;         // التحميل الشغال دلوقتي (لو فيه)
+let _lastFullLoadAt = 0;              // آخر مرة كلّمنا فيها القاعدة للتحميل الكامل
+let _loadErrBackoff = 0;              // تهدئة بعد خطأ من السيرفر (بتتضاعف)
+function fullLoadBusy(){ return !!_fullLoadInFlight; }
+function fullLoadGapMs(){ return Math.max(FULL_LOAD_MIN_GAP_MS, _loadErrBackoff); }
 async function loadAllData(guarded){
+  /* فيه تحميل شغال؟ التلقائي يعدّي، والإقلاع/الزرار اليدوي يستنى **نفس** التحميل
+     بدل ما يبدأ واحد جديد (ومهم: مايرجعش false وإلا الإقلاع يفتكرها نجحت) */
+  if(_fullLoadInFlight) return guarded ? false : await _fullLoadInFlight;
+  /* التحميل التلقائي بيحترم المسافة الأدنى + التهدئة بعد الأخطاء */
+  if(guarded && Date.now() - _lastFullLoadAt < fullLoadGapMs()) return false;
+  const p185 = (async ()=>{
+    try{
+      const r = await _loadAllDataCore(guarded);
+      _lastFullLoadAt = Date.now(); _loadErrBackoff = 0;
+      return r;
+    }catch(e){
+      /* السيرفر تعب أو النت وقع ⇒ نهدّي تدريجياً: 30ث ← دقيقة ← دقيقتين ... لحد 5 دقايق */
+      _lastFullLoadAt = Date.now();
+      _loadErrBackoff = Math.min(_loadErrBackoff ? _loadErrBackoff*2 : 30000, 300000);
+      throw e;
+    }
+  })();
+  _fullLoadInFlight = p185;
+  try{ return await p185; }
+  finally{ _fullLoadInFlight = null; }
+}
+async function _loadAllDataCore(guarded){
+  /* م185ب: بنسجّل وقت السيرفر **قبل** ما نقرا — عشان أي تعديل يحصل أثناء
+     القراءة يتجاب في المزامنة الجاية بدل ما يضيع */
+  const stamp185 = await _serverStamp();
   // تحميل القاعدة كلها بطلب واحد (دالة load_all في القاعدة)
   const { data, error } = await sb.rpc('load_all');
   if(error) throw error;
@@ -1393,8 +1514,83 @@ async function loadAllData(guarded){
     _shadow[k] = _snapshot(k);
   });
   KV_KEYS.forEach(k=>{ DB[k] = (data && data[k]) ? data[k] : keyDefault(k); });
+  bumpHayGen();   /* م186: البيانات اتبدلت ⇒ كاش البحث لازم يتبني من جديد */
+  if(stamp185) _syncCursor = stamp185;   /* م185ب: من هنا بنكمّل بالفرق */
   seedDefaults();
   _scheduleDupScan();   /* م164: فحص تكرار الأرقام مع كل إقلاع */
+}
+/* ============ م185 (المرحلة التانية): التحديث بالفرق بدل التحميل الكامل ============
+   المشكلة: كل تحديث كان بيخلي القاعدة تلمّ **كل** الجداول في ملف 8.9 ميجا جوه
+   ذاكرتها — وسيرفر القاعدة عنده نص جيجا رام بس. مع 6-7 أجهزة ده اللي خلّى
+   الذاكرة تخلص والقاعدة توقف تقبل اتصال يوم 17/9/2026.
+   الحل: دالة `load_since` في القاعدة بترجّع **اللي اتغيّر بس** من آخر مزامنة
+   (كام كيلوبايت)، والتحميل الكامل بيفضل للإقلاع أو لو الجهاز قاعد من أكتر من أسبوع.
+   لو ملف القاعدة لسه ماتشغّلش، السيستم بيكتشف كده ويرجع للتحميل الكامل عادي. */
+let _syncCursor = null;      // وقت السيرفر لآخر مزامنة ناجحة
+let _noLoadSince = false;    // القاعدة لسه ماتحدّثتش بملف م185
+let _diffInFlight = null;
+function _isMissingFn(e){
+  const m = String((e && (e.message || e.hint || e.code)) || '');
+  return /PGRST202|42883|not find the function|does not exist/i.test(m);
+}
+async function _serverStamp(){
+  if(_noLoadSince) return null;
+  try{
+    const { data, error } = await sb.rpc('sync_now');
+    if(error){ if(_isMissingFn(error)) _noLoadSince = true; return null; }
+    return data || null;
+  }catch(e){ return null; }
+}
+/* بيرجّع: true = اتطبّق · false = اتأجل (شغل جاري) · 'full' = محتاج تحميل كامل */
+async function syncSince(){
+  if(_noLoadSince || !_syncCursor) return 'full';
+  if(_diffInFlight) return await _diffInFlight;
+  const p = (async ()=>{
+    const { data, error } = await sb.rpc('load_since', { p_since: _syncCursor });
+    if(error){
+      if(_isMissingFn(error)){ _noLoadSince = true; return 'full'; }
+      throw error;
+    }
+    if(!data || data.full_required) return 'full';
+    /* نفس حراسة التحميل الكامل: بعد ما الرد يوصل، لو بدأ شغل أو حفظ نأجّل */
+    if(window._opBusy || _pendingSaves > 0 || _unsavedKeys.size || document.getElementById('modalOverlay')) return false;
+    const ch = data.changed || {}, dl = data.deleted || {};
+    let n = 0;
+    DATA_KEYS.forEach(k=>{ n += _applyDiff(k, ch[k], dl[k]); });
+    const kv = data.kv || {};
+    KV_KEYS.forEach(k=>{ if(kv[k]){ DB[k] = kv[k]; n++; } });
+    if(data.now) _syncCursor = data.now;
+    if(n){ bumpHayGen(); _scheduleDupScan(); }
+    return true;
+  })();
+  _diffInFlight = p;
+  try{ return await p; } finally{ _diffInFlight = null; }
+}
+/* تطبيق الفروقات على الذاكرة **وعلى الظل** — لو الظل ماتحدّثش السجلات دي
+   هتتحسب «تغيير عندنا» وترجع تترفع للقاعدة باسمنا (نفس نوع بق م186) */
+function _applyDiff(key, rows, deletedIds){
+  const arr = DB[key];
+  if(!arr || (!(rows && rows.length) && !(deletedIds && deletedIds.length))) return 0;
+  const sh = _shadow[key] || (_shadow[key] = new Map());
+  let n = 0;
+  (rows||[]).forEach(d=>{
+    if(!d || !d.id) return;
+    const str = JSON.stringify(d);
+    if(sh.get(d.id) === str) return;   // نفس اللي عندنا بالظبط
+    const i = arr.findIndex(r=>r && r.id===d.id);
+    /* التحديث في نفس الكائن مش استبداله — عملية واقفة على await وماسكة مرجع
+       للسجل ماتكملش على «نسخة ميتة» (نفس درس م179) */
+    if(i>=0){ const o = arr[i]; if(o !== d){ const src = Object.assign({}, d); Object.keys(o).forEach(k=>{ delete o[k]; }); Object.assign(o, src); } }
+    else arr.push(d);
+    sh.set(d.id, str);
+    n++;
+  });
+  (deletedIds||[]).forEach(id=>{
+    const i = arr.findIndex(r=>r && r.id===id);
+    if(i>=0){ arr.splice(i,1); n++; }
+    sh.delete(id);
+  });
+  return n;
 }
 /* ============ م165: شاشة الإعداد الأول الصريح — بديل الكتابة التلقائية ============ */
 function firstRunSetupHTML(){
@@ -1476,7 +1672,7 @@ try{ const _wdT = setInterval(_rtWatchdog, 10000); if(_wdT && _wdT.unref) _wdT.u
 /* مؤشر حالة المزامنة في الشريط الجانبي — الموظف بيعرف بعينه لو الجهاز وراه */
 function syncStatusHTML(){
   if(_unsavedKeys.size) return '⏳ '+_unsavedKeys.size+' عملية بتتحفظ — النت بطيء';
-  return _rtConnected ? '🟢 متزامن لحظياً' : '🟠 المزامنة بتعيد الاتصال — تحديث كل 15ث';
+  return _rtConnected ? '🟢 متزامن لحظياً' : '🟠 المزامنة بتعيد الاتصال — تحديث كل دقيقة';   /* م185 */
 }
 function _renderSyncStatus(){
   try{ const el = document.getElementById('syncStatus'); if(el) el.textContent = syncStatusHTML(); }catch(e){}
@@ -1520,6 +1716,7 @@ function _applyRemote(key, p){
       else arr.push(row.data);
       if(_shadow[key]) _shadow[key].set(row.id, s);
     }
+    bumpHayGen();   /* م186: تغيير من جهاز تاني ⇒ كاش البحث اتقدّم */
     /* م164: إصدار وصل من جهاز تاني؟ نفحص تكرار الأرقام فوراً (مؤجّل 2.5ث) */
     if(key==='invoices' || key==='jobs' || key==='purchases') _scheduleDupScan();
     _scheduleRtRefresh();
@@ -1579,9 +1776,16 @@ async function initApp(){
      وبنشيل علامة التخطي القديمة من أي جهاز لسه شايلها من النسخ القديمة. */
   clearSkipFlag();
   if(!_deviceAuthed){
-    document.getElementById('root').innerHTML = deviceActivationHTML();
+    /* م184: الجهاز اتفعّل قبل كده؟ يبقى دي خدمة الدخول واقعة — مش إلغاء تفعيل */
+    if(deviceEverActivated()){
+      document.getElementById('root').innerHTML = deviceWaitingHTML();
+      _startDeviceRetry();
+    } else {
+      document.getElementById('root').innerHTML = deviceActivationHTML();
+    }
     return;
   }
+  markDeviceActivated();   /* م184 */
   try{
     await loadAllData();
     /* ⚠️ م77 — إصلاح الفخ اللي عطّل جهاز الحسابات:
@@ -1617,7 +1821,12 @@ async function initApp(){
     // لو الجهاز مش مفعّل والقاعدة رفضت → دي الحماية شغالة، لازم تفعيل
     if(!_deviceAuthed){
       clearSkipFlag();
-      document.getElementById('root').innerHTML = deviceActivationHTML();
+      if(deviceEverActivated()){   /* م184 */
+        document.getElementById('root').innerHTML = deviceWaitingHTML();
+        _startDeviceRetry();
+      } else {
+        document.getElementById('root').innerHTML = deviceActivationHTML();
+      }
       return;
     }
     document.getElementById('root').innerHTML = `
@@ -1682,6 +1891,10 @@ async function silentSyncTick(force){
   try{
     if(!force && !_pageVisible()) return;      // الجهاز مسيّب ⇒ مفيش تحميل
     if(!_syncSafeNow()) return;
+    /* م185ب: الفرق الأول — كام كيلوبايت بدل 8.9 ميجا */
+    const diff185 = await syncSince();
+    if(diff185 === true){ _lastSyncAt = Date.now(); refreshContent(); return; }
+    if(diff185 === false) return;              // اتأجل لشغل جاري
     const applied = await loadAllData(true);   /* م179: بيتأكد تاني بعد وصول الرد */
     if(applied === false) return;
     _lastSyncAt = Date.now();
@@ -2108,7 +2321,9 @@ function shellHTML(){
 }
 async function refreshData(){
   toast('جاري تحديث البيانات...');
-  await loadAllData();
+  let done185 = false;
+  try{ done185 = (await syncSince()) === true; }catch(e){}   /* م185ب: الفرق الأول */
+  if(!done185) await loadAllData();   /* م185: لو فيه تحميل شغال بيستناه بدل ما يعمل واحد جديد */
   refreshContent();
   toast('تم التحديث بآخر البيانات');
 }
@@ -5719,9 +5934,6 @@ function renderStockMoves(){
       <div class="form-row"><label class="f-label">السداد للمورد</label>
         <select class="f" id="exPay"><option>كاش</option><option>آجل</option></select>
       </div>
-      <div class="form-row"><label class="f-label">اتدفع من حساب (للكاش مع مورد)</label>
-        <select class="f" id="exAcc"><option value="">— اختار الحساب —</option>${accountOptions(null)}</select>
-      </div>
     </div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="exNote"></div>
     <button class="btn" style="background:var(--accent-2);color:#fff;border:none" onclick="saveExtOutFromStock()">🔩 صرف القطعة الخارجية على أمر الشغل</button>
@@ -5839,9 +6051,29 @@ const MOVE_TYPE_WORDS = {
   transfer_out:'تحويل صادر تحويل مخزني',
 };
 const _moveHayCache = new WeakMap();
+/* ============ م186: كاش البحث كان بيكتب جوه الحركة ويخليها «متغيّرة» ============
+   البق (اتقاس على قاعدة سيف الحقيقية): الكاش كان بيزوّد عدّاد `_hv` **جوه
+   حركة المخزن نفسها** عشان يعرف إن نسخته قديمة. ومحرك الحفظ بالفروقات بيقارن
+   الحركة بالظل، فيلاقيها «اتغيّرت» ⇒ يرفعها للقاعدة من أول وجديد. وبما إن كل
+   تحميل كامل بيعمل كائنات جديدة، الكاش بيفضى ⇒ **كل** الحركات بتتزوّد وترجع
+   تترفع كلها مع أول حفظة.
+   الحصيلة: كل حركة اترفعت ~230 مرة · سجل التدقيق في القاعدة وصل 1.2 جيجا
+   (98% منه حركات مخزن) · والكتابة الزيادة دي هي نفس الضغط اللي خلّى ذاكرة
+   القاعدة تخلص وتقع يوم 17/9/2026 والمركز يقف يوم كامل.
+   الحل: صلاحية الكاش بتتحدد من **بصمة الحركة نفسها + عدّاد عام** للبيانات
+   المرتبطة (أصناف/أوامر/عملاء/موردين) — من غير ما نلمس الحركة ولا بايت.
+   (نفس أسلوب partHaystack اللي كان سليم من الأول.) */
+let _hayGen = 0;
+function bumpHayGen(){ _hayGen++; }
+function moveHaySig(m){
+  return [m.partId,m.extName,m.type,m.jobId,m.forJobNo,m.forCarLbl,m.customerId,
+    m.supplierId,m.purchaseId,m.warehouseId,m.fromWhId,m.toWhId,
+    m.note,m.notes,m.reqByName,m.actor,m.reason,m.payMethod,m.id].join('|');
+}
 function moveHaystack(m){
+  const sig = moveHaySig(m);
   const cached = _moveHayCache.get(m);
-  if(cached && cached.v === m._hv) return cached.text;
+  if(cached && cached.gen === _hayGen && cached.sig === sig) return cached.text;
   const parts = [];
   const p = m.partId ? DB.inventory.find(x=>x.id===m.partId) : null;
   if(p) parts.push(p.name, p.sku, p.oemNo, p.supplierPartNo, p.barcode, p.brand, p.category, p.keywords);
@@ -5866,8 +6098,7 @@ function moveHaystack(m){
   if(m.toWhId) parts.push(whName(m.toWhId));
   parts.push(m.note, m.notes, m.reqByName, m.actor, m.reason, m.payMethod, m.id);
   const text = normSearch(parts.filter(Boolean).join(' '));
-  m._hv = (m._hv||0) + 1;
-  _moveHayCache.set(m, { v:m._hv, text });
+  _moveHayCache.set(m, { gen:_hayGen, sig, text });   /* م186: مفيش أي كتابة على الحركة */
   return text;
 }
 /* كل كلمة في البحث لازم تتلاقى (بحث تراكمي) — جزئي وبتطبيع عربي/إنجليزي */
@@ -7890,10 +8121,6 @@ async function saveExtOutFromStock(){
   if(!name){ toast('اكتب اسم القطعة', true); return; }
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
   if(payMethod==='آجل' && !supplierId){ toast('السداد الآجل لازم يتربط بمورد — اختار المورد', true); return; }
-  /* م179د: الكاش لازم يتخصم من حساب حقيقي */
-  const exAcc179 = (document.getElementById('exAcc')||{}).value || null;
-  if(supplierId && payMethod!=='آجل' && !exAcc179){ toast('الكاش لازم يتخصم من حساب — اختار الحساب اللي اتدفع منه', true); return; }
-  if(exAcc179 && !DB.finAccounts.find(a=>a.id===exAcc179 && !a.archived)){ toast('الحساب المختار مش شغال', true); return; }
   const car = DB.cars.find(c=>c.id===job.carId);
   // 1) بند في فاتورة العميل بسعر البيع + التكلفة على أمر الشغل
   job.items.push({id:uid('it'), kind:'ext_part', name, qty, unitPrice:sellPrice, costPrice, supplierId, payMethod, note,
@@ -7910,7 +8137,8 @@ async function saveExtOutFromStock(){
       total: qty*costPrice, payments: [], jobId: job.id, extKind:'ext_part'
     };
     purchase.createdBy = actorName();
-    if(payMethod!=='آجل') purApplyPayEffect(purchase, exAcc179);   /* م179د: حركة مالية حقيقية */
+    /* م183: رجعت زي ما كانت قبل م179د بطلب سيف */
+    if(payMethod!=='آجل') purchase.payments.push({id:uid('pay'), amount:purchase.total, date:new Date().toISOString()});
     DB.purchases.push(purchase);
   }
   // 3) حركة مخزنية مستقلة بدون تأثير على أي رصيد
@@ -7921,7 +8149,7 @@ async function saveExtOutFromStock(){
     note:'قطعة غيار خارجية — أمر شغل #'+job.jobNo+(car?' — '+car.plate:'')+(note?' — '+note:'')
   });
   const saves = [saveKey('jobs', DB.jobs), saveKey('stockMoves', DB.stockMoves)];
-  if(supplierId) saves.push(saveKey('purchases', DB.purchases), saveKey('finMoves', DB.finMoves), saveKey('expenses', DB.expenses));
+  if(supplierId) saves.push(saveKey('purchases', DB.purchases));
   await Promise.all(saves);
   await logAction('قطعة غيار خارجية: '+name+' لأمر الشغل #'+job.jobNo+' — تكلفة '+money(qty*costPrice)+' / بيع '+money(qty*sellPrice)+' ('+payMethod+')');
   toast('تم صرف القطعة الخارجية'+(payMethod==='آجل'?' وتسجيل المديونية على المورد':''));
@@ -8398,9 +8626,6 @@ function openExtItemModal(jobId, kind){
       <div class="form-row"><label class="f-label">طريقة السداد للمورد</label>
         <select class="f" id="extPay"><option>كاش</option><option>آجل</option></select>
       </div>
-      <div class="form-row"><label class="f-label">اتدفع من حساب (للكاش مع مورد)</label>
-        <select class="f" id="extAcc"><option value="">— اختار الحساب —</option>${accountOptions(null)}</select>
-      </div>
     </div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="extNote"></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveExtItem('${jobId}','${kind}')">إضافة للفاتورة</button>
@@ -8420,10 +8645,6 @@ async function saveExtItem(jobId, kind){
   if(!name){ toast('اكتب الاسم', true); return; }
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
   if(payMethod==='آجل' && !supplierId){ toast('السداد الآجل لازم يتربط بمورد — اختار المورد', true); return; }
-  /* م179د: الكاش لازم يتخصم من حساب حقيقي — كان «مدفوع» على الورق والخزنة ماتحركتش */
-  const extAcc179 = (document.getElementById('extAcc')||{}).value || null;
-  if(supplierId && payMethod!=='آجل' && !extAcc179){ toast('الكاش لازم يتخصم من حساب — اختار الحساب اللي اتدفع منه', true); return; }
-  if(extAcc179 && !DB.finAccounts.find(a=>a.id===extAcc179 && !a.archived)){ toast('الحساب المختار مش شغال', true); return; }
   const car = DB.cars.find(c=>c.id===job.carId);
   const kindTxt = kind==='ext_part'?'قطعة غيار خارجية':'أعمال خارجية';
   // 1) إضافة البند للفاتورة/أمر الشغل
@@ -8444,9 +8665,10 @@ async function saveExtItem(jobId, kind){
       jobId: job.id, extKind: kind
     };
     purchase.createdBy = actorName();
-    if(payMethod!=='آجل') purApplyPayEffect(purchase, extAcc179);   /* م179د: حركة مالية حقيقية */
+    /* م183: رجعت زي ما كانت قبل م179د بطلب سيف — الكاش يتسجل مدفوع على الفاتورة من غير حساب/حركة مالية */
+    if(payMethod!=='آجل') purchase.payments.push({id:uid('pay'), amount:purchase.total, date:new Date().toISOString()});
     DB.purchases.push(purchase);
-    await Promise.all([saveKey('purchases', DB.purchases), saveKey('finMoves', DB.finMoves), saveKey('expenses', DB.expenses)]);
+    await saveKey('purchases', DB.purchases);
   }
   // 3) حركة مخزنية مستقلة (دخول 1 → خروج 1: لا تؤثر على أي رصيد)
   pushStockMove({
