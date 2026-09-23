@@ -157,6 +157,11 @@ input,select,textarea{font-family:'Tajawal',sans-serif;}
 .btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger);}
 .btn-danger:hover{background:var(--danger);color:#fff;}
 .btn-sm{padding:6px 11px;font-size:12px;border-radius:7px;}
+/* م189: خانة الزراير في الجداول — كل الزراير تفضل **ظاهرة** وبتلف على أكتر من
+   سطر بدل ما تخرج بره الشاشة وتبقى مش قابلة للضغط (شكوى سيف: زرار «إذن خروج»
+   كان مقصوص، وعلى الشاشات الصغيرة الزرار اللي في الآخر مكانش بيتوصله أصلاً) */
+.row-actions{display:flex;flex-wrap:wrap;gap:5px;align-items:center;min-width:250px;}
+.row-actions .btn{padding:5px 9px;font-size:11.5px;white-space:nowrap;}
 table{width:100%;border-collapse:collapse;font-size:13.5px;}
 th{text-align:right;color:var(--muted);font-weight:700;font-size:12px;padding:10px 12px;border-bottom:1px solid var(--border);}
 td{padding:12px;border-bottom:1px solid var(--border);}
@@ -724,7 +729,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v207';
+const APP_VERSION = 'v217';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -2039,7 +2044,13 @@ function openModal(html, wide){
     <button class="modal-close" onclick="closeModal()">✕</button>${html}</div>`;
   document.body.appendChild(ov);
 }
-function closeModal(){ const ov=document.getElementById('modalOverlay'); if(ov) ov.remove(); if(_rtRefreshPending) _scheduleRtRefresh(); }   /* م179: تحديث مؤجّل بيتطبق أول ما النافذة تتقفل */
+function closeModal(){
+  const ov=document.getElementById('modalOverlay'); if(ov) ov.remove();
+  if(_rtRefreshPending) _scheduleRtRefresh();
+  /* م187: قفلت شاشة تحصيل فاتورة لسه متقفلة؟ نسأل عن إذن الخروج دلوقتي */
+  const pend187 = window._pendingExitPermitInv;
+  if(pend187){ window._pendingExitPermitInv = null; setTimeout(()=>{ try{ askExitPermit(pend187); }catch(e){} }, 250); }
+}   /* م179: تحديث مؤجّل بيتطبق أول ما النافذة تتقفل */
 window._confirmCb = null;
 function askConfirm(msg, cb){
   window._confirmCb = cb;
@@ -3695,7 +3706,8 @@ function jobDetailHTML(jobId){
   ${can('jobs.print') ? `<div style="display:flex;gap:8px;margin-top:8px">
     <button class="btn" style="flex:1" onclick="printJobTicket('${job.id}')">🖨 طباعة أمر الشغل</button>
     <button class="btn" style="flex:1" onclick="downloadJobTicket('${job.id}')">⬇ تحميل أمر الشغل</button>
-  </div>` : ''}
+  </div>
+  <button class="btn" style="width:100%;margin-top:8px" onclick="openHandoverModal('${job.id}')">🧾 إقرار استلام سيارة</button>` : ''}
   `;
 }
 /* ============ الملاحظة 49: ملاحظات الورشة الداخلية داخل أمر الشغل ============
@@ -3943,6 +3955,131 @@ function printJobTicket(jobId){
   if(!can('jobs.print')){ toast('مالكش صلاحية طباعة أوامر الشغل', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   printHTML(`<style>${brandedInvoiceCSS()}</style>`+brandedJobHTML(job));
+}
+/* ============ م188: إقرار استلام سيارة ============
+   طلب سيف: الشركات بتستلم العربية وتمشي، وأمر الشغل بيتقفل ويتفوتر بعدها
+   بيوم أو اتنين بعد مراجعة الحسابات. فمحتاج إقرار يمضيه السواق أو مندوب
+   الشركة وقت الاستلام — من شاشة أمر الشغل وهو لسه نشط.
+   قرارات سيف: البنود = **قطع الغيار بس** (الداخلية والخارجية)، من غير مصنعيات
+   ومن غير كميات · اسم القطعة ينفع يتعدّل للإقرار بس ومايأثرش على أمر الشغل
+   ولا الفاتورة ولا المخزون · الماركة واللوحة من السيستم · التاريخ = تاريخ
+   الطباعة · اسم المستلم يفضل فاضي يتكتب بخط اليد. */
+const AR_DAYS188 = ['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+function handoverParts(job){
+  return ((job && job.items) || []).filter(it => it && (it.kind === 'part' || it.kind === 'ext_part'));
+}
+function handoverName(job, it){
+  const v = ((job && job.handoverNames) || {})[it.id];
+  return (v !== undefined && String(v).trim()) ? String(v).trim() : (it.name || '');
+}
+function handoverCSS(){
+  return brandedInvoiceCSS() + `
+  .hv-title{display:inline-block;font-size:23px;font-weight:900;letter-spacing:3px;border-bottom:3px solid #111;padding-bottom:5px;margin:10px 0 22px;}
+  .hv-body{font-size:15px;line-height:3.1;}
+  .hv-fill{display:inline-block;border-bottom:1px dotted #222;text-align:center;font-weight:800;min-width:150px;}
+  .hv-blank{display:inline-block;border-bottom:1px dotted #222;min-width:300px;height:18px;vertical-align:middle;}
+  .hv-sec{background:#F2D410;color:#111;font-weight:900;font-size:13.5px;padding:7px 11px;margin:24px 0 10px;border-radius:5px;}
+  .hv-list{width:100%;border-collapse:collapse;font-size:14px;}
+  .hv-list td{border:1px solid #ddd;padding:9px 11px;}
+  .hv-sign{margin-top:42px;text-align:left;}
+  .hv-sign .note{font-size:13px;margin-bottom:10px;}
+  .hv-sign .sig{font-size:14px;font-weight:800;}
+  .hv-sign .sig-dots{display:inline-block;border-bottom:2px dotted #333;min-width:330px;height:16px;vertical-align:middle;}
+  .hv-foot{margin-top:16px;font-size:10.5px;color:#777;text-align:center;}`;
+}
+function handoverHTML(job){
+  const car  = DB.cars.find(c=>c.id===job.carId) || {};
+  const cust = DB.customers.find(c=>c.id===job.customerId) || {};
+  const s = DB.settings;
+  const now = new Date();
+  const make = [car.make, car.model].filter(Boolean).join(' ') || '—';
+  const parts = handoverParts(job);
+  return `<style>${handoverCSS()}</style>
+  <div class="binv">
+    <div class="binv-head">
+      <div>
+        <p class="binv-title">إقرار استلام سيارة</p>
+        <div style="font-size:13px;color:#555">${s.centerName}</div>
+      </div>
+      <img src="${LOGO}" alt="logo">
+    </div>
+    <div style="text-align:center"><span class="hv-title">إقــرار إســتلام ســيارة للإصلاح</span></div>
+    <div class="hv-body">
+      إنه فى يوم <span class="hv-fill" style="min-width:120px">${AR_DAYS188[now.getDay()] || ''}</span>
+      &nbsp; الموافق : <span class="hv-fill" style="min-width:160px">${now.getDate()} / ${now.getMonth()+1} / ${now.getFullYear()}</span><br>
+      إستلمت أنا / <span class="hv-blank" style="min-width:430px"></span><br>
+      بأننى قد تسلمت سيارة ماركة / <span class="hv-fill" style="min-width:220px">${make}</span>
+      &nbsp; لوحات رقم / <span class="hv-fill" style="min-width:180px">${car.plate || '—'}</span><br>
+      وذلك بعد اتمام الاصلاح بمركز ماسترز لصيانة السيارات بالعبور و السيارة بحالة جيده ..
+    </div>
+    <div class="hv-sec">بنود الصيانة</div>
+    ${parts.length ? `<table class="hv-list"><tbody>
+      ${parts.map((it,i)=>`<tr><td style="width:42px;text-align:center">${i+1}</td><td>${handoverName(job, it)}</td></tr>`).join('')}
+    </tbody></table>` : `<div style="font-size:13.5px;color:#777">—</div>`}
+    <div class="hv-sign">
+      <div class="note">أقر بصحة البيانات الموضحة أعلاه وباستلام السيارة.</div>
+      <div class="sig">توقيع المستلم : <span class="sig-dots"></span></div>
+      <div style="height:48px"></div>
+    </div>
+    <div class="hv-foot">أمر شغل رقم ${job.jobNo}${cust.name ? ' — ' + cust.name : ''}</div>
+  </div>`;
+}
+function openHandoverModal(jobId){
+  if(!can('jobs.print')){ toast('مالكش صلاحية طباعة أوامر الشغل', true); return; }
+  const job = DB.jobs.find(j=>j.id===jobId);
+  if(!job){ toast('أمر الشغل غير موجود', true); return; }
+  const car = DB.cars.find(c=>c.id===job.carId) || {};
+  const parts = handoverParts(job);
+  const now = new Date();
+  openModal(`
+    <h3>🧾 إقرار استلام سيارة — أمر شغل #${job.jobNo}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">${carLabel(car)} · لوحات ${car.plate || '—'}</div>
+    <div class="card" style="padding:11px 13px;margin-bottom:12px;font-size:12.5px;line-height:2.3">
+      إنه فى يوم <b>${AR_DAYS188[now.getDay()] || ''}</b> الموافق : <b>${now.getDate()} / ${now.getMonth()+1} / ${now.getFullYear()}</b><br>
+      إستلمت أنا / <span class="muted">(بيتكتب بخط اليد)</span><br>
+      بأننى قد تسلمت سيارة ماركة / <b>${[car.make, car.model].filter(Boolean).join(' ') || '—'}</b> لوحات رقم / <b>${car.plate || '—'}</b><br>
+      وذلك بعد اتمام الاصلاح بمركز ماسترز لصيانة السيارات بالعبور و السيارة بحالة جيده ..
+    </div>
+    <div class="dsec">بنود الصيانة — قطع الغيار بس</div>
+    ${parts.length
+      ? parts.map((it,i)=>`<div class="form-row" style="margin-bottom:6px">
+          <input class="f" id="hv188_${i}" value="${String(handoverName(job, it)).replace(/"/g,'&quot;')}"></div>`).join('')
+      : `<div class="empty">مفيش قطع غيار متصرفة على الأمر ده — الإقرار هيطلع من غير بنود</div>`}
+    <p class="muted" style="font-size:11.5px;line-height:1.85;margin:4px 0 10px">
+      تعديل الاسم هنا بيظهر في الإقرار <b>بس</b> — مابيأثرش على أمر الشغل ولا الفاتورة ولا المخزون.
+      المصنعيات والأعمال الخارجية مابتظهرش في الإقرار.</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-accent" style="flex:1" onclick="printHandover('${job.id}')">🖨 طباعة الإقرار</button>
+      <button class="btn" style="flex:1" onclick="downloadHandover('${job.id}')">⬇ تحميل</button>
+    </div>`);
+}
+async function _handoverGo(jobId, download){
+  const job = DB.jobs.find(j=>j.id===jobId);
+  if(!job){ toast('أمر الشغل غير موجود', true); return; }
+  const car = DB.cars.find(c=>c.id===job.carId) || {};
+  /* التعديلات بتتقري من النافذة لو مفتوحة وبتتحفظ على الإقرار بس */
+  const map = Object.assign({}, job.handoverNames || {});
+  let changed = false;
+  handoverParts(job).forEach((it, i)=>{
+    const el = document.getElementById('hv188_'+i);
+    if(!el) return;
+    const v = String(el.value || '').trim();
+    if(v && v !== handoverName(job, it)){ map[it.id] = v; changed = true; }
+  });
+  if(changed){ job.handoverNames = map; await saveKey('jobs', DB.jobs); }
+  const html = handoverHTML(job);
+  if(download) downloadHTML(html, 'إقرار-استلام-'+job.jobNo);
+  else printHTML(html);
+  await logAction('🧾 '+(download ? 'تحميل' : 'طباعة')+' إقرار استلام سيارة — أمر شغل #'+job.jobNo
+    + (car.plate ? ' · ' + car.plate : ''));
+}
+async function printHandover(jobId){
+  if(!can('jobs.print')){ toast('مالكش صلاحية طباعة أوامر الشغل', true); return; }
+  await _handoverGo(jobId, false);
+}
+async function downloadHandover(jobId){
+  if(!can('jobs.print')){ toast('مالكش صلاحية طباعة أوامر الشغل', true); return; }
+  await _handoverGo(jobId, true);
 }
 function downloadJobTicket(jobId){
   if(!can('jobs.print')){ toast('مالكش صلاحية طباعة أوامر الشغل', true); return; }
@@ -5551,7 +5688,11 @@ async function saveTransfer(){
   if(destArchived){ toast('نفس الصنف موجود مؤرشف في مخزن «'+whName(destWhId)+'» — استرجعه من الأرشيف الأول قبل التحويل ليه', true); return; }
   let dest = findDuplicatePart(src.name, src.sku, destWhId, src.id);
   if(!dest){
-    dest = {...src, id:uid('p'), warehouseId:destWhId, qty:0, createdAt:new Date().toISOString()};
+    /* م196: {...src} نسخة سطحية — الصفين كانوا بيتشاركوا **نفس** مصفوفة
+       costHistory، فإعادة تقييم صنف في مخزن كانت بتغيّر تكلفة الصرف في
+       المخزن التاني كمان. بننسخ السجل نسخة مستقلة. */
+    dest = {...src, id:uid('p'), warehouseId:destWhId, qty:0, createdAt:new Date().toISOString(),
+      costHistory: Array.isArray(src.costHistory) ? src.costHistory.map(h=>Object.assign({}, h)) : []};
     DB.inventory.push(dest);
   }
   src.qty -= qty;
@@ -5688,6 +5829,10 @@ async function doMergeParts(srcId, dstId, reason){
   if(srcId===dstId) return;
   const src = DB.inventory.find(p=>p.id===srcId), dst = DB.inventory.find(p=>p.id===dstId);
   if(!src || !dst){ toast('الصنف مش موجود', true); return; }
+  /* م196: الدمج بيتنفذ جوه نافذة تأكيد — لو جهاز تاني دمج نفس الصنف والنافذة
+     مفتوحة، التأكيد كان بيضيف كميته تاني ⇒ الرصيد يتعد مرتين. */
+  if(src.merged){ toast('الصنف «'+src.name+'» اتدمج بالفعل — اعمل تحديث للبيانات', true); return; }
+  if(dst.merged){ toast('الصنف الأساسي اتدمج في صنف تاني — اعمل تحديث للبيانات', true); return; }
   if(partWhId(src)!==partWhId(dst)){ toast('مينفعش تدمج صنفين في مخازن مختلفة — استخدم التحويل المخزني', true); return; }
   /* م155: دمج أثناء جرد مفتوح كان بيسيب سطرين بنفس الصنف والاعتماد يطبّق
      آخرهم بس — كمية بتضيع بحركة شكلها موثق. الجرد الأول ثم الدمج. */
@@ -5855,7 +6000,8 @@ async function saveStockIn(partId){
       paymentMethod: inPay179,
       items: [{partId, name:p.name, qty, unitCost:(cost>0?cost:null), warehouseId:partWhId(p)}],
       total: qty*cost, payments: [],
-      status: 'pending', supInvNo: '', supInvDate: '',
+      status: 'pending', finApproved: false,   /* م193 */
+      supInvNo: '', supInvDate: '',
       createdBy: actorName(),
       history: [{ id:uid('ph'), at:new Date().toISOString(), actor:actorName(), action:'created',
         changes:[{ field:'إجمالي الفاتورة', before:'—', after:money(qty*cost) }], reason:'توريد سريع من كارت الصنف' }]
@@ -6024,9 +6170,9 @@ function renderStockMoves(){
   </div>
 
   <div class="section-head"><h3>سجل حركة المخزن</h3><span class="muted" style="font-size:12.5px" id="mvCount">${mvCountLabel()}</span></div>
-  <div class="muted" style="font-size:11.5px;margin-bottom:8px">💡 اضغط على <b>اسم الصنف</b> لفتح كارت الصنف، وعلى <b>المرجع</b> لفتح المستند المصدر (أمر شغل · فاتورة شراء · مرتجع · تسوية · جرد · تحويل)، أو <b>تفاصيل</b> لعرض كل بيانات الحركة.</div>
+  <div class="muted" style="font-size:11.5px;margin-bottom:8px">💡 اضغط على <b>اسم الصنف</b> لفتح كارت الصنف، وعلى <b>المرجع</b> لفتح المستند المصدر (أمر شغل · فاتورة شراء · مرتجع · تسوية · جرد · تحويل)، أو <b>تفاصيل</b> لعرض كل بيانات الحركة.<br>📦 <b>الكمية الفعلية</b> = الكمية اللي في المخزن من الصنف ده <b>دلوقتي</b> — بتتحدث لايف ومابتتأثرش بالفلتر، وبتطابق كارت الصنف دايماً. القطع والخامات الخارجية مالهاش رصيد فبتظهر «—».</div>
   <div class="card">
-    <table><thead><tr><th>التاريخ</th><th>الصنف</th><th>النوع</th><th>الكمية</th><th>المرجع</th><th></th></tr></thead>
+    <table><thead><tr><th>التاريخ</th><th>الصنف</th><th>النوع</th><th>الكمية</th><th>الكمية الفعلية</th><th>المرجع</th><th></th></tr></thead>
     <tbody id="mvTableBody">${mvRowsHTML()}</tbody></table>
   </div>`;
 }
@@ -6168,7 +6314,7 @@ function mvRowsHTML(){
   /* م122: فهرس الأصناف مرة واحدة — بدل دورة بحث كاملة لكل صف */
   const invById = new Map(DB.inventory.map(p=>[p.id, p]));
   const moreRow = all.length > moves.length
-    ? `<tr><td colspan="6" style="text-align:center;padding:10px">
+    ? `<tr><td colspan="7" style="text-align:center;padding:10px">
         <button class="btn btn-sm" onclick="mvShowMore()">⬇ عرض المزيد (${all.length - moves.length} حركة أقدم)</button>
         <span class="muted" style="font-size:11.5px;margin-right:8px">معروض أحدث ${moves.length} من ${all.length} — استخدم البحث والفلاتر للوصول لأي حركة</span>
       </td></tr>` : '';
@@ -6186,7 +6332,7 @@ function mvRowsHTML(){
     transfer_in: '<span class="tag tag-ready">تحويل وارد</span>',
     transfer_out: '<span class="tag tag-working">تحويل صادر</span>'
   };
-  if(moves.length===0) return `<tr><td colspan="6" class="empty">${mvFilters.q?`مفيش حركة فيها «${mvFilters.q}» — جرّب كلمة أقصر أو امسح الفلاتر`:'لا توجد حركات مطابقة للفلاتر'}</td></tr>`;
+  if(moves.length===0) return `<tr><td colspan="7" class="empty">${mvFilters.q?`مفيش حركة فيها «${mvFilters.q}» — جرّب كلمة أقصر أو امسح الفلاتر`:'لا توجد حركات مطابقة للفلاتر'}</td></tr>`;
   return moves.map(m=>{
     const p = invById.get(m.partId);
     const itemName = p ? p.name : (m.extName || '—');
@@ -6217,6 +6363,13 @@ function mvRowsHTML(){
       <td>${nameCell}</td>
       <td>${typeTagMap[m.type]||m.type}</td>
       <td style="font-weight:700;${qtyColor}">${qtyTxt}</td>
+      <td style="white-space:nowrap">${
+        /* م195 (قرار سيف): الكمية الفعلية **لايف** للصنف في المخزن دلوقتي —
+           مش الرصيد بعد الحركة. الرقم ده ثابت لكل حركات نفس الصنف ومابيتأثرش
+           بالفلتر ولا بنوع الحركة، وبيطابق كارت الصنف دايماً. */
+        p ? `<b title="الكمية الفعلية للصنف في المخزن دلوقتي — بتتحدث لايف">${p.qty}</b>`
+          : `<span class="muted" title="قطعة أو خامة خارجية — مالهاش رصيد في المخزون">—</span>`
+      }</td>
       <td>${refCell}</td>
       <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openMoveDetails('${m.id}')">👁 تفاصيل</button></td>
     </tr>`;
@@ -6390,12 +6543,36 @@ function purStatus(p){ return p.status || 'approved'; }   // الفواتير ا
 function purIsPaid(p){   // اتدفعت فعلاً (كاش وقت الشراء أو سداد لاحق)
   return (p && p.payments || []).reduce((s,x)=>s+(x.amount||0),0) > 0.01;
 }
+/* ============ م193 (حرج): فاتورة كاش اتراجعت كانت بتتقفل من غير ما الفلوس تخرج ============
+   الحادثة: فاتورة كاش بتتسجّل عليها «دفعة تلقائية» بكامل المبلغ وقت الشراء —
+   بس الدفعة دي **مالهاش حساب ولا حركة مالية** (الخصم الحقيقي بيحصل وقت
+   الاعتماد المالي لما المحاسب يحدد المصدر). ولما المراجع يدوس «اعتماد /
+   إتمام المراجعة» (Level 2) الحالة بتبقى approved، والقاعدة القديمة
+   (approved + مدفوعة = مقفولة) كانت بتخلي purIsClosed ترجع true.
+   النتيجة: زرار «الاعتماد المالي وإغلاق» بيختفي، وpurFinApprove بترفض،
+   والفاتورة بتتعلّم «تم الاعتماد المالي والإغلاق» — **والفلوس عمرها ما خرجت
+   من أي حساب**. الخزنة بتبقى ناقصة بقيمة الفاتورة للأبد.
+   العلاج: (1) الفواتير الجديدة بتتولد بعلامة صريحة finApproved:false.
+   (2) القاعدة القديمة بقت تشترط إن الدفعة يكون وراها **فلوس خرجت فعلاً**
+   (حساب أو حركة مالية) — مش مجرد صف دفعة على الورق. */
+function purPaidForReal(p){
+  return ((p && p.payments) || []).some(x => (x.amount||0) > 0.01 && (x.finMoveId || x.accountId));
+}
 function purIsClosed(p){   // مقفولة مالياً = اتعملها اعتماد مالي وإغلاق
   if(!p) return false;
   if(p.finApproved === true) return true;
-  // الفواتير القديمة (قبل م102) اللي اتقفلت قبل ما يبقى فيه علامة صريحة:
-  // معتمدة + مدفوعة = تعتبر مقفولة، عشان مانفكّش قفل قديم بالغلط
-  return p.finApproved === undefined && purStatus(p)==='approved' && purIsPaid(p);
+  /* م193: الفواتير الجديدة بتتولد بعلامة صريحة false — فالقاعدة القديمة
+     مابتلمسهاش خالص، والقفل بيحصل بزرار «الاعتماد المالي» بس. */
+  if(p.finApproved === false) return false;
+  /* الفواتير القديمة (قبل م193) اللي اتقفلت قبل ما يبقى فيه علامة صريحة:
+     معتمدة + مدفوعة = تعتبر مقفولة، عشان مانفكّش قفل قديم بالغلط (قرار م102). */
+  return purStatus(p)==='approved' && purIsPaid(p);
+}
+/* م193: كاشف الفواتير المقفولة اللي مفيش وراها فلوس خرجت فعلاً من أي حساب —
+   دي اللي اتقفلت بالقاعدة القديمة قبل الإصلاح، والخزنة ناقصة بقيمتها. */
+function purClosedWithoutCash(){
+  return (DB.purchases||[]).filter(p =>
+    p && p.finApproved !== true && !p.extKind && purIsClosed(p) && !purPaidForReal(p));
 }
 function purStatusTag(p){
   const st = purStatus(p);
@@ -6522,13 +6699,22 @@ function epRecalc(purchaseId){
    الدالة دي بتخلّي مجموع حركات التوريد لبند الفاتورة = كمية البند
    بالظبط، وبتكتب على الحركة إنها اتصحّحت (مش تعديل صامت).
    ============================================================ */
-function syncPurchaseInMove(purchase, item, oldQty, newQty){
+function syncPurchaseInMove(purchase, item, oldQty, newQty, lineIdx){
   try{
     if(!purchase || !item || !item.partId) return;
     const part = DB.inventory.find(x=>x.id===item.partId);
     if(!part) return;
-    const moves = DB.stockMoves.filter(m=>m.purchaseId===purchase.id
+    let moves = DB.stockMoves.filter(m=>m.purchaseId===purchase.id
       && m.partId===item.partId && m.type==='in');
+    /* م196: فاتورة واحدة ممكن يكون فيها بندين بيروحوا لنفس صف الصنف (بند
+       متحوّل لمخزن تاني، أو بندين «صنف جديد» اتدمجوا). قبل كده الدالة كانت
+       بتعتبر كل الحركات بند واحد وتظبّط الفرق على أول حركة ⇒ تعديل كمية بند
+       بيكتب فوق حركة البند التاني والسجل يختلف عن الرصيد. الحركات الجديدة
+       بتتختم برقم بندها فبنطابق عليه بالظبط. */
+    if(moves.length > 1 && typeof lineIdx === 'number'){
+      const exact196 = moves.filter(m => m.lineIdx === lineIdx);
+      if(exact196.length === 1) moves = exact196;
+    }
     const note = ' — الكمية اتصحّحت من '+oldQty+' لـ '+newQty
       +' (تعديل فاتورة المورد) بواسطة '+actorName();
     if(moves.length === 1){
@@ -6637,6 +6823,10 @@ async function saveEditPurchase(purchaseId){
   /* م179د: نتحقق من كل البنود الأول — قبل كده كان بيرفض بند ويكمل حفظ اللي قبله ويقول «اتعدّل» */
   for(const l of lines){
     const it = p.items[l.idx]; if(!it) continue;
+    /* م196: كمية بالسالب أو صفر، أو سعر بالسالب — كانت بتتكتب زي ما هي على
+       البند وعلى حركة التوريد، فالسجل يبقى فيه توريد بالسالب والإجمالي يقلب. */
+    if(!(l.qty > 0)){ toast('كمية «'+it.name+'» لازم تكون أكبر من صفر', true); return; }
+    if(l.unitCost < 0){ toast('سعر «'+it.name+'» مينفعش يكون بالسالب', true); return; }
     if(Math.abs((it.qty||0) - l.qty) > 0.001){
       const part = it.partId ? DB.inventory.find(x=>x.id===it.partId) : null;
       const dq = l.qty - it.qty;
@@ -6674,7 +6864,7 @@ async function saveEditPurchase(purchaseId){
          التوريد** المسجّلة. فالفاتورة تقول 4 والحركة تقول 1 — وسجل الصنف
          يطلع رصيد سالب رغم إن الرصيد الحقيقي صح.
          دلوقتي الحركة بتتصحّح مع الفاتورة، فالسجل يفضل مطابق دايماً. */
-      if(part) syncPurchaseInMove(p, it, oldQ, l.qty);
+      if(part) syncPurchaseInMove(p, it, oldQ, l.qty, l.idx);   /* م196: البند بالظبط */
     }
   });
   // بيانات فاتورة المورد
@@ -6697,13 +6887,18 @@ async function saveEditPurchase(purchaseId){
   }
   // تحديث حركات التوريد المرتبطة + آخر سعر شراء ومتوسط التكلفة للمخزون المتبقي
   costTouched.forEach(({it, newCost})=>{
+    /* م196 (حرج): سعر 0 معناه «مش سعر شراء» — نفس قاعدة مسار الإنشاء بالظبط.
+       لو اتكتب 0 على الحركة، lastPurchaseInfo بترجع 0 وكل صرف جاي بيتكلف
+       بصفر للأبد والربحية بتطلع 100%. (المحاسب بيمسح الخانة عشان يعيد
+       الكتابة ويحفظ بالغلط ⇒ التكلفة تتمسح.) */
+    const cost196 = newCost > 0 ? newCost : null;
     DB.stockMoves.filter(m=>m.purchaseId===p.id && m.partId===it.partId && m.type==='in')
-      .forEach(m=>{ m.unitCost = newCost; });
+      .forEach(m=>{ m.unitCost = cost196; });
     const part = it.partId ? DB.inventory.find(x=>x.id===it.partId) : null;
     // تكلفة الصنف بتتحدث بس لو ده آخر توريد ليه (المخزون المتبقي بيتقيّم بالسعر الصح)
     if(part){
       const lastIn = partInMoves(part.id)[0];
-      if(lastIn && lastIn.purchaseId===p.id) part.costPrice = newCost;
+      if(cost196 !== null && lastIn && lastIn.purchaseId===p.id) part.costPrice = cost196;   /* م196 */
     }
   });
   purLog(p, wasApproved?'edited_approved':'edited', changes, reason);
@@ -8908,10 +9103,23 @@ function approveCount(icId){
   askConfirm('اعتماد التسوية النهائية لجرد #'+ic.countNo+'؟ سيتم تعديل رصيد '+safe154.length+' صنف ليطابق الجرد الفعلي وتسجيل حركة تسوية موثقة لكل صنف.'
     +(skipped154.length?'<br><span style="font-size:12px;color:var(--danger)">⚠️ '+skipped154.length+' صنف هيتستثنى (اتحرك أثناء الجرد أو اتأرشف): '+skipped154.slice(0,3).join(' · ')+(skipped154.length>3?' وغيرهم':'')+' — راجع عدّهم في جرد جاي.</span>':'')
     +' هذا الإجراء نهائي.', async ()=>{
+    /* ============ م196 (حرج): إعادة الفحص **بعد** التأكيد ============
+       الفحص القديم (safe154) كان بيتعمل قبل ما نافذة التأكيد تتفتح. لو صنف
+       اتصرف من جهاز تاني والنافذة مفتوحة، الاعتماد كان بيكتب رقم الجرد فوق
+       الرصيد الجديد ⇒ الكمية اللي اتصرفت **بترجع للمخزن** بصمت، وده بالظبط
+       اللي حارس م155 اتعمل عشان يمنعه. دلوقتي بنعيد نفس الفحص لكل سطر جوه
+       الـcallback، وبنتأكد إن الجرد نفسه لسه مفتوح. */
+    const icNow196 = DB.inventoryCounts.find(x=>x.id===icId);
+    if(!icNow196 || icNow196.status==='approved' || icNow196.status==='cancelled'){
+      toast('الجرد ده '+(icNow196 && icNow196.status==='cancelled'?'اتلغى':'اتعتمد')+' من جهاز تاني — اعمل تحديث للبيانات', true);
+      closeModal(); refreshContent(); return;
+    }
     const enteredBy = ic.submittedBy || ic.createdBy;
+    const applied196 = [], movedNow196 = [];
     for(const l of safe154){
       const p = DB.inventory.find(x=>x.id===l.partId);
-      if(!p) continue;
+      if(!p || p.archived || p.merged){ movedNow196.push(l.name || l.partId); continue; }
+      if(countLiveQty(l) !== l.systemQty){ movedNow196.push(p.name); continue; }
       const before = p.qty;
       const after = l.physicalQty;
       const diff = after - before;
@@ -8932,11 +9140,20 @@ function approveCount(icId){
           +(Math.abs(ledgerDelta-diff)>0.001?' — (توفيق سجل الحركات: '+(ledgerDelta>0?'+':'')+ledgerDelta+' — رصيد الحركات كان '+mvBal+')':'')
           +' — أدخل الجرد: '+enteredBy+' — اعتمده: '+actorName()
       });
+      applied196.push(l);
+    }
+    if(movedNow196.length){   /* م196 */
+      if(!applied196.length){
+        toast('كل الأصناف اتحركت أثناء ما نافذة التأكيد مفتوحة — حدّث عدّها وبعدين اعتمد: '+movedNow196.slice(0,4).join('، '), true);
+        closeModal(); refreshContent(); return;
+      }
+      toast('⚠️ '+movedNow196.length+' صنف اتحرك أثناء التأكيد واتستثنى: '+movedNow196.slice(0,4).join('، '), true);
+      ic.skippedLines = (ic.skippedLines||[]).concat(movedNow196);
     }
     ic.status = 'approved';
     ic.approvedAt = new Date().toISOString();
     ic.approvedBy = actorName();
-    if(skipped154.length) ic.skippedLines = skipped154;
+    if(skipped154.length) ic.skippedLines = (ic.skippedLines||[]).concat(skipped154);   /* م196 */
     await saveKey('inventory', DB.inventory);
     await saveKey('stockMoves', DB.stockMoves);
     await saveKey('inventoryCounts', DB.inventoryCounts);
@@ -8953,6 +9170,9 @@ async function cancelInventoryCount(icId){
   const ic = DB.inventoryCounts.find(x=>x.id===icId); if(!ic) return;
   if(ic.status==='approved'){ toast('الجرد ده معتمد خلاص — مينفعش يتلغي', true); return; }
   askConfirmReason('إلغاء جلسة الجرد #'+ic.countNo+'؟<br><span class="muted" style="font-size:12px">مفيش أي أرصدة هتتغير — الجلسة هتتعلم «ملغاة» وتقدر تبدأ جرد جديد.</span>', async (reason)=>{
+    /* م196: جهاز تاني اعتمد الجرد والنافذة مفتوحة؟ الإلغاء كان بيكتب فوق اعتماد
+       اتطبّق على الأرصدة فعلاً — والجلسة تفضل «ملغاة» ومعاها approvedBy. */
+    if(ic.status==='approved'){ toast('الجرد اتعتمد من جهاز تاني أثناء ما النافذة مفتوحة — مينفعش يتلغي', true); closeModal(); refreshContent(); return; }
     ic.status = 'cancelled'; ic.cancelledAt = new Date().toISOString(); ic.cancelledBy = actorName(); ic.cancelReason = reason||'';
     await saveKey('inventoryCounts', DB.inventoryCounts);
     await logAction('🚫 إلغاء جلسة جرد #'+ic.countNo+' — السبب: '+(reason||'—'));
@@ -9471,7 +9691,14 @@ function purReversePayEffect(p){
 /* يطبّق الأثر المالي لطريقة الدفع الحالية (كاش = دفعة تلقائية بالمتبقي، وحركة مالية لو اتحدد الحساب) */
 function purApplyPayEffect(p, accountId){
   if(purIsCredit(p)) return;   // آجل — مفيش دفعة تلقائية
-  const remaining = Math.max(0, Math.round((p.total - purManualPaid(p))*100)/100);
+  /* م193 (حرج): المرتجعات المخصومة من الفاتورة كانت **مش داخلة في الحساب**،
+     فلو فاتورة آجل 10000 اترجع منها بـ3000 وبعدين اتحولت كاش، السيستم كان
+     بيخصم 10000 من الخزنة بدل 7000 — الخزنة تنقص 3000 والمورد يبقى ليه
+     رصيد دائن وهمي بنفس المبلغ. (purchaseOutstanding كانت بتخصمهم أصلاً.) */
+  const returned193 = (DB.supplierReturns||[])
+    .filter(r => r.invoiceId === p.id)
+    .reduce((sum,r) => sum + (r.payableReduction||0), 0);
+  const remaining = Math.max(0, Math.round((p.total - purManualPaid(p) - returned193)*100)/100);
   if(remaining <= 0) return;
   const pay = { id:uid('spay'), amount:remaining, date:new Date().toISOString(), auto:true, accountId: accountId||null };
   if(accountId){
@@ -11885,7 +12112,9 @@ async function savePurchaseInvoice(){
         part = findDuplicatePart(src.name, src.sku, wantWh) ||
           (()=>{ const np = {id:uid('p'), name:src.name, sku:src.sku||'', brand:src.brand||'', oemNo:src.oemNo||'',
               category:src.category||'', unit:src.unit||'قطعة', qty:0, minQty:src.minQty||2,
-              costPrice:line.costPrice, sellPrice:src.sellPrice, warehouseId:wantWh,
+              /* م196: بند بسعر 0 (هدية/بدل) مايعملش صف جديد بتكلفة صفر —
+                 بياخد تكلفة الصنف الأصلي، وإلا كل صرف من المخزن ده بصفر */
+              costPrice:(line.costPrice>0 ? line.costPrice : (src.costPrice||0)), sellPrice:src.sellPrice, warehouseId:wantWh,
               createdAt:new Date().toISOString()};
             DB.inventory.push(np); return np; })();
       }
@@ -11910,7 +12139,7 @@ async function savePurchaseInvoice(){
     }
     /* م145: أي صنف عدى من فاتورة شراء وملوش كود بياخد كود تلقائي فوراً */
     if(autoSkuIfMissing(part)) autoCoded145.push([part.name, part.sku]);
-    pushStockMove({id:uid('mv'), partId:part.id, type:'in', qty:line.qty, unitCost:(line.costPrice>0 ? line.costPrice : null) /* م179د: سعر 0 = مش سعر شراء */, warehouseId:partWhId(part), date:new Date().toISOString(), note:'فاتورة شراء #'+(purchaseDraft.invoiceNo||'—')+' — '+purchaseDraft.paymentMethod+' — مخزن: '+whName(partWhId(part)), supplierId:purchaseDraft.supplierId, purchaseId,
+    pushStockMove({id:uid('mv'), partId:part.id, type:'in', qty:line.qty, unitCost:(line.costPrice>0 ? line.costPrice : null) /* م179د: سعر 0 = مش سعر شراء */, lineIdx: invoiceItems.length /* م196: رقم البند في الفاتورة */, warehouseId:partWhId(part), date:new Date().toISOString(), note:'فاتورة شراء #'+(purchaseDraft.invoiceNo||'—')+' — '+purchaseDraft.paymentMethod+' — مخزن: '+whName(partWhId(part)), supplierId:purchaseDraft.supplierId, purchaseId,
       notes:line.notes||'', reqById:line.reqById||'', reqByName:line.reqByName||'', forJobId:line.forJobId||'', forJobNo:line.forJobNo||'', forCarId:line.forCarId||'', forCarLbl:line.forCarLbl||''});
     invoiceItems.push({partId:part.id, name:part.name, qty:line.qty, unitCost:line.costPrice, warehouseId:partWhId(part)});
   }
@@ -11924,7 +12153,8 @@ async function savePurchaseInvoice(){
     paymentMethod: purchaseDraft.paymentMethod,
     items: invoiceItems, total, payments: [],
     // الملاحظة 63: الفاتورة بتتسجل «بانتظار فاتورة المورد» — الأسعار مبدئية لحد ما تتعتمد
-    status: 'pending', supInvNo: purchaseDraft.invoiceNo || '', supInvDate: '',
+    status: 'pending', finApproved: false,   /* م193: القفل المالي بالزرار الصريح بس */
+    supInvNo: purchaseDraft.invoiceNo || '', supInvDate: '',
     createdBy: actorName(),
     history: [{ id:uid('ph'), at:new Date().toISOString(), actor:actorName(), action:'created',
       changes:[{ field:'إجمالي الفاتورة', before:'—', after:money(total) }], reason:'' }]
@@ -12093,7 +12323,10 @@ async function createInvoiceFromJob(jobId){
   closeModal(); toast('تم إصدار الفاتورة وتسليم السيارة — تفضل بتحصيل الدفعة');
   currentTab='invoices'; render();
   // بعد الإصدار: نروح لشاشة تحصيل الدفعة على طول (لو عنده صلاحية التحصيل)
-  if(can('bill.collect')) openPaymentModal(inv.id);
+  /* م187: سؤال إذن الخروج بييجي **بعد** شاشة التحصيل — عشان التصريح يعكس
+     الفلوس اللي اتقبضت فعلاً مش حالة الفاتورة قبل التحصيل بثانية */
+  if(can('bill.collect')){ openPaymentModal(inv.id); window._pendingExitPermitInv = inv.id; }
+  else askExitPermit(inv.id);
 }
 function paymentStatus(inv){
   const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
@@ -12149,9 +12382,9 @@ function renderInvoices(){
     </div>
     <button class="btn btn-sm" onclick="invFilters={search:'',status:'',custType:'',dateFrom:'',dateTo:''};refreshContent()">مسح الفلاتر</button>
   </div>
-  <div class="card">
+  <div class="card" style="overflow-x:auto">
     <table>
-      <thead><tr><th>رقم</th><th>العميل</th><th>النوع</th><th>أمر الشغل</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th><th>الحالة</th><th></th><th></th></tr></thead>
+      <thead><tr><th>رقم</th><th>العميل</th><th>النوع</th><th>أمر الشغل</th><th>السيارة</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
       <tbody id="invTableBody2">${invRowsHTML()}</tbody>
     </table>
   </div>`;
@@ -12183,18 +12416,21 @@ function invRowsHTML(){
   return list.map(inv=>{
     const cust = DB.customers.find(c=>c.id===inv.customerId);
     const job = inv.jobId ? DB.jobs.find(j=>j.id===inv.jobId) : null;
+    /* م189: نوع السيارة — من أمر الشغل، ولو الأمر اتمسح بنرجع لسيارة الفاتورة */
+    const carRow = DB.cars.find(c=>c.id === ((job && job.carId) || inv.carId));
+    const carTxt = carRow ? ([carRow.make, carRow.model].filter(Boolean).join(' ') || carRow.plate || '—') : '—';
     const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
     const st = paymentStatus(inv);
     return `<tr>
       <td>#${inv.invNo}</td><td>${cust?cust.name:'—'}</td><td>${(cust&&cust.custType)||'فرد'}</td>
-      <td>${job?'#'+job.jobNo:'—'}</td><td>${fmtDate(inv.date)}</td>
+      <td>${job?'#'+job.jobNo:'—'}</td><td>${carTxt}</td><td>${fmtDate(inv.date)}</td>
       <td>${money(inv.total)}</td><td>${money(paid)}</td>
       <td>${inv.cancelled?'<span class="tag tag-cancel">ملغاة</span>':`<span class="tag ${map[st][1]}">${map[st][0]}</span>`}</td>
-      <td style="white-space:nowrap">${!inv.cancelled && st!=='paid' && can('bill.collect')?`<button class="btn btn-sm btn-accent" onclick="openPaymentModal('${inv.id}')">تحصيل</button> `:''}
+      <td><div class="row-actions">${!inv.cancelled && st!=='paid' && can('bill.collect')?`<button class="btn btn-sm btn-accent" onclick="openPaymentModal('${inv.id}')">تحصيل</button>`:''}
       ${!inv.cancelled && can('bill.edit')?`<button class="btn btn-sm" onclick="openEditInvoice('${inv.id}')">✏️ تعديل</button> `:''}
       ${!inv.cancelled && job && can('jobs.reopen')?`<button class="btn btn-sm" onclick="reopenJobOrder('${inv.id}')">🔄 إعادة فتح الأمر</button> `:''}
-      ${!inv.cancelled && can('bill.cancel')?`<button class="btn btn-sm btn-danger" onclick="cancelInvoice('${inv.id}')">إلغاء</button>`:''}</td>
-      <td style="white-space:nowrap">${can('bill.history')?`<button class="btn btn-sm" onclick="openInvoiceHistory('${inv.id}')">🕘 السجل</button> `:''}${job?`<button class="btn btn-sm" onclick="openWorkOrderReport('${job.id}')">📈 الربحية</button> `:''}${can('bill.print')?`<button class="btn btn-sm" onclick="printInvoice('${inv.id}')">🖨</button> <button class="btn btn-sm" onclick="downloadInvoice('${inv.id}')">⬇ تحميل</button>`:''}</td>
+      ${!inv.cancelled && can('bill.cancel')?`<button class="btn btn-sm btn-danger" onclick="cancelInvoice('${inv.id}')">إلغاء</button>`:''}
+      ${can('bill.history')?`<button class="btn btn-sm" onclick="openInvoiceHistory('${inv.id}')">🕘 السجل</button>`:''}${job?`<button class="btn btn-sm" onclick="openWorkOrderReport('${job.id}')">📈 الربحية</button> `:''}${can('bill.print')?`<button class="btn btn-sm" onclick="printInvoice('${inv.id}')">🖨</button> <button class="btn btn-sm" onclick="downloadInvoice('${inv.id}')">⬇ تحميل</button>${inv.cancelled?'':` <button class="btn btn-sm" onclick="printExitPermit('${inv.id}')" title="إذن تصريح خروج السيارة">🚗 إذن خروج</button>`}`:''}</div></td>
     </tr>`;
   }).join('');
 }
@@ -12264,6 +12500,14 @@ function openEditInvoice(invId){
     <div class="form-row"><label class="f-label">📝 ملاحظات العميل (بتظهر للعميل في الفاتورة المطبوعة)</label><textarea class="f" id="eiExtNotes" rows="3" placeholder="توصيات · أعمال مقترحة · نصايح صيانة...">${inv.externalNotes||''}</textarea></div>
     <div class="form-row"><label class="f-label">سبب التعديل *</label><input class="f" id="eiReason" placeholder="مثال: تصحيح وسيلة سداد، خصم متفق عليه"></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveEditInvoice('${inv.id}')">حفظ التعديلات</button>
+    ${can('bill.print') ? `<div class="dsec" style="margin-top:16px">🚗 إذن تصريح خروج السيارة</div>
+    <p class="muted" style="font-size:12px;margin:0 0 9px;line-height:1.9">${inv.exitPermit
+      ? 'الإذن رقم <b>'+inv.exitPermit.no+'</b> اتعمل في '+fmtDateTime(inv.exitPermit.at)+' — إعادة الطباعة بتطلع نفس المستند بنفس الأرقام مع رقم النسخة، وبتتسجّل في سجل العمليات.'
+      : 'لسه ماتعملش إذن خروج للفاتورة دي — أول طباعة هي اللي بتنشئه.'}</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn" style="flex:1" onclick="printExitPermit('${inv.id}')">🖨 طباعة إذن تصريح خروج</button>
+      <button class="btn" style="flex:1" onclick="downloadExitPermit('${inv.id}')">⬇ تحميل الإذن</button>
+    </div>` : ''}
   `, true);
   editInvRecalc(invId);
 }
@@ -12792,6 +13036,190 @@ function downloadInvoice(invId){
   const inv = DB.invoices.find(i=>i.id===invId);
   if(inv && inv.cancelled){ toast('الفاتورة #'+inv.invNo+' ملغاة — مش بتتطبع كمستند صالح للعميل', true); return; }   /* م179ج */
   downloadHTML(brandedInvoiceHTML(inv), 'فاتورة-'+inv.invNo);
+}
+
+/* ============ م187: إذن تصريح خروج السيارة ============
+   مستند رسمي مربوط بالفاتورة وأمر الشغل، بيتعمل **مرة واحدة** وبياخد لقطة
+   للحالة المالية وقتها. أي إعادة طباعة بتطلع **نفس** المستند بنفس الأرقام
+   ومعلّم عليه رقم النسخة — مفيش إذن جديد بيتعمل ومفيش رقم بيتغيّر.
+   النظام هو اللي بيحدد النوع من المتبقي: صفر ⇒ «مدفوعة بالكامل»،
+   أكبر من صفر ⇒ «سداد جزئي» بإقرار والتزام وتوقيع الموظف المسؤول.
+   مفيش أي خانة للـSecurity — بيستلم الإذن للتحقق والسماح بالخروج بس. */
+function exitPermitCSS(){
+  return brandedInvoiceCSS() + `
+  .ep-status{padding:11px 16px;border-radius:8px;text-align:center;font-weight:900;font-size:17px;margin:12px 0;}
+  .ep-paid{background:#e9f7ee;color:#116b31;border:2px solid #116b31;}
+  .ep-partial{background:#fdeceb;color:#a4131b;border:2px solid #a4131b;}
+  .ep-due{display:block;font-size:23px;margin-top:5px;}
+  .ep-sec{background:#F2D410;color:#111;font-weight:900;font-size:13px;padding:7px 11px;margin:15px 0 8px;border-radius:5px;}
+  .ep-line{display:inline-block;border-bottom:1px dotted #222;min-width:170px;height:16px;vertical-align:middle;}
+  .ep-hand{font-size:12.5px;line-height:2.7;}
+  .ep-legal{border:1.5px solid #a4131b;border-radius:6px;padding:12px 14px;font-size:12.5px;line-height:2.1;background:#fffaf9;}
+  .ep-sign{display:flex;justify-content:space-between;gap:16px;margin-top:20px;}
+  .ep-sign > div{flex:1;text-align:center;font-size:12px;}
+  .ep-sign .box{border-top:1.5px solid #333;margin-top:44px;padding-top:6px;font-weight:800;}
+  .ep-copy{text-align:center;color:#a4131b;font-weight:800;font-size:12.5px;border:1.5px dashed #a4131b;padding:6px;border-radius:5px;margin-bottom:10px;}
+  .ep-foot{margin-top:14px;font-size:10.5px;color:#666;text-align:center;line-height:1.9;}`;
+}
+function exitPermitHTML(inv, p, copyNo){
+  const cust = DB.customers.find(c=>c.id===inv.customerId) || {};
+  const job  = DB.jobs.find(j=>j.id===inv.jobId);
+  const car  = job ? DB.cars.find(c=>c.id===job.carId) : null;
+  const s    = DB.settings;
+  const partial = p.status === 'partial';
+  const works = (inv.items||[]).filter(it=>it && it.name);
+  const line = (w)=>`<span class="ep-line" style="min-width:${w||170}px"></span>`;
+  return `<style>${exitPermitCSS()}</style>
+  <div class="binv">
+    <div class="binv-head">
+      <div>
+        <p class="binv-title">إذن تصريح خروج سيارة</p>
+        <div style="font-size:13px;color:#555">${s.centerName}</div>
+      </div>
+      <img src="${LOGO}" alt="logo">
+    </div>
+    ${copyNo > 1 ? `<div class="ep-copy">🔁 إعادة طباعة — نسخة رقم ${copyNo} · ${fmtDateTime(new Date().toISOString())}</div>` : ''}
+    <div class="binv-meta">
+      <div><div class="lbl">إذن الخروج #</div><div class="val">${p.no}</div></div>
+      <div><div class="lbl">الفاتورة #</div><div class="val">${inv.invNo}</div></div>
+      <div><div class="lbl">أمر الشغل #</div><div class="val">${job ? job.jobNo : '—'}</div></div>
+    </div>
+    <div class="ep-status ${partial ? 'ep-partial' : 'ep-paid'}">
+      ${partial ? '⚠️ تصريح خروج — سداد جزئي' : '✅ تصريح خروج — مدفوعة بالكامل'}
+      ${partial ? `<span class="ep-due">المبلغ المتبقي: ${money(p.balance)}</span>` : ''}
+    </div>
+    <table class="binv-info"><tbody>
+      <tr>
+        <td class="k">العميل</td><td class="v">${cust.name||'—'}${cust.custType==='شركة'?' (شركة)':''}</td>
+        <td class="k">رقم اللوحة</td><td class="v">${car ? car.plate : '—'}</td>
+      </tr>
+      <tr>
+        <td class="k">رقم الهاتف</td><td class="v" style="direction:ltr;text-align:right">${cust.phone||'—'}</td>
+        <td class="k">نوع السيارة</td><td class="v">${car ? (car.make||'—') : '—'}</td>
+      </tr>
+      <tr>
+        <td class="k">تاريخ ووقت الدخول</td><td class="v">${job && job.receivedAt ? fmtDateTime(job.receivedAt) : '—'}</td>
+        <td class="k">موديل السيارة</td><td class="v">${car ? ((car.model||'—') + (car.year ? ' / '+car.year : '')) : '—'}</td>
+      </tr>
+      <tr>
+        <td class="k">تاريخ ووقت الخروج</td><td class="v">${fmtDateTime((job && job.deliveredAt) || inv.date)}</td>
+        <td class="k">قراءة العداد</td><td class="v">${jobOdometer(job, car)}</td>
+      </tr>
+    </tbody></table>
+
+    <div class="ep-sec">ملخص أعمال الصيانة والإصلاح المنفذة</div>
+    <table>
+      <thead><tr><th style="width:34px">م</th><th>البيان</th><th style="width:70px">الكمية</th></tr></thead>
+      <tbody>
+        ${works.length ? works.map((it,i)=>`<tr><td style="text-align:center">${i+1}</td><td>${it.name}</td><td style="text-align:center">${it.qty||1}</td></tr>`).join('')
+                       : '<tr><td colspan="3" style="text-align:center;color:#777">لا توجد بنود مسجّلة</td></tr>'}
+      </tbody>
+    </table>
+
+    <div class="ep-sec">الموقف المالي وقت إصدار التصريح</div>
+    <table class="binv-info"><tbody>
+      <tr><td class="k">إجمالي الفاتورة</td><td class="v">${money(p.total)}</td>
+          <td class="k">إجمالي المدفوع</td><td class="v">${money(p.paid)}</td></tr>
+      <tr><td class="k">المتبقي</td><td class="v" style="color:${partial?'#a4131b':'#116b31'}">${money(p.balance)}</td>
+          <td class="k">حالة السداد</td><td class="v" style="color:${partial?'#a4131b':'#116b31'}">${partial ? 'مدفوعة جزئياً' : 'مدفوعة بالكامل'}</td></tr>
+    </tbody></table>
+
+    ${partial ? `
+    <div class="ep-sec">بيانات العميل (تُكتب بخط اليد)</div>
+    <div class="ep-hand">
+      اسم العميل بالكامل: ${line(300)}<br>
+      الرقم القومي: ${line(300)}<br>
+      رقم الهاتف: ${line(230)}<br>
+      تاريخ/موعد السداد المتفق عليه: ${line(230)}
+    </div>
+
+    <div class="ep-sec">إقرار والتزام بالسداد</div>
+    <div class="ep-legal">
+      أقر أنا العميل الموقّع أدناه باستلام السيارة رقم لوحة (<b>${car ? car.plate : '—'}</b>) من ${s.centerName}،
+      مع وجود مبلغ مستحق قدره (<b>${money(p.balance)}</b>) فقط لا غير،
+      وأتعهد بسداد كامل المبلغ المتبقي للمركز وفقاً للاتفاق المبرم مع المركز.
+      <br><br>
+      وفي حالة عدم سداد المبلغ المستحق في الموعد المتفق عليه، يحتفظ المركز بحقه في اتخاذ الإجراءات القانونية
+      اللازمة للمطالبة بالمبلغ المستحق، وفقاً للقوانين واللوائح المعمول بها.
+    </div>
+
+    <div class="ep-sec">الموظف المسؤول عن خروج السيارة (يُكتب بخط اليد)</div>
+    <div class="ep-hand">
+      الاسم: ${line(250)} &nbsp;&nbsp; التوقيع: ${line(180)}<br>
+      التاريخ: ${line(150)} &nbsp;&nbsp; الوقت: ${line(150)}
+    </div>` : ''}
+
+    <div class="ep-sign">
+      <div><div class="box">المحاسب / المسؤول المالي</div></div>
+      <div><div class="box">العميل / مستلم السيارة</div></div>
+      ${partial ? '<div><div class="box">الموظف المسؤول عن خروج السيارة</div></div>' : ''}
+    </div>
+    <div class="ep-foot">
+      إذن خروج رقم ${p.no} — صدر بتاريخ ${fmtDateTime(p.at)} بواسطة ${p.by}
+      ${copyNo > 1 ? ` · نسخة رقم ${copyNo}` : ''}<br>
+      هذا الإذن مستند رسمي صادر من ${s.centerName} ويُقدَّم للأمن للتحقق والسماح بخروج السيارة.
+    </div>
+  </div>`;
+}
+/* بيتعمل مرة واحدة بس — وبياخد رقمه من العدّاد المركزي فمفيش جهازين ياخدوا نفس الرقم */
+async function ensureExitPermit(inv){
+  if(inv.exitPermit) return inv.exitPermit;
+  const list = DB.invoices.filter(i=>i.exitPermit).map(i=>({ epNo: i.exitPermit.no }));
+  const no = await reserveNo('exitPermitNo', list, 'epNo');
+  if(inv.exitPermit) return inv.exitPermit;   /* جهاز تاني عمله أثناء انتظار القاعدة */
+  const b = invBalance(inv);
+  const paid = Math.round(b.paid*100)/100, bal = Math.round(b.balance*100)/100;
+  inv.exitPermit = { no, at:new Date().toISOString(), by:actorName(),
+    total: inv.total, paid, balance: bal,
+    status: bal > 0.005 ? 'partial' : 'paid', prints: [] };
+  await saveKey('invoices', DB.invoices);
+  await logAction('🚗 إنشاء إذن تصريح خروج #'+no+' — فاتورة #'+inv.invNo
+    +' · الإجمالي '+money(inv.total)+' · المدفوع '+money(paid)+' · المتبقي '+money(bal)
+    +' · الحالة: '+(inv.exitPermit.status==='partial'?'سداد جزئي':'مدفوعة بالكامل'));
+  if(inv.exitPermit.status === 'partial'){
+    await logAction('⚠️ خروج سيارة وعليها مبلغ مستحق — فاتورة #'+inv.invNo
+      +' · المتبقي وقت الخروج '+money(bal)+' · سمح بالخروج: '+actorName());
+  }
+  return inv.exitPermit;
+}
+async function _exitPermitCopy(invId, download){
+  if(!can('bill.print')){ toast('مالكش صلاحية الطباعة', true); return; }
+  const inv = DB.invoices.find(i=>i.id===invId);
+  if(!inv){ toast('الفاتورة غير موجودة', true); return; }
+  if(inv.cancelled){ toast('الفاتورة #'+inv.invNo+' ملغاة — مفيش إذن خروج عليها', true); return; }
+  const p = await ensureExitPermit(inv);
+  p.prints = p.prints || [];
+  const copyNo = p.prints.length + 1;
+  p.prints.push({ n:copyNo, at:new Date().toISOString(), by:actorName() });
+  await saveKey('invoices', DB.invoices);
+  await logAction((copyNo === 1 ? '🖨 طباعة' : '🔁 إعادة طباعة')+' إذن تصريح خروج #'+p.no
+    +' (نسخة رقم '+copyNo+') — فاتورة #'+inv.invNo);
+  const html = exitPermitHTML(inv, p, copyNo);
+  if(download) downloadHTML(html, 'إذن-خروج-'+p.no);
+  else printHTML(html);
+}
+async function printExitPermit(invId){ await _exitPermitCopy(invId, false); }
+async function downloadExitPermit(invId){ await _exitPermitCopy(invId, true); }
+/* الـPopup اللي بيظهر بعد إقفال الفاتورة (وبعد شاشة التحصيل لو اتفتحت) */
+function askExitPermit(invId){
+  const inv = DB.invoices.find(i=>i.id===invId);
+  if(!inv || inv.cancelled || !can('bill.print')) return;
+  const b = invBalance(inv);
+  const partial = b.balance > 0.005;
+  openModal(`
+    <h3>🚗 إذن تصريح خروج السيارة</h3>
+    <p style="font-size:14px;line-height:1.95">فاتورة <b>#${inv.invNo}</b> اتقفلت.<br>
+      تحب تطبع <b>إذن تصريح خروج السيارة</b> دلوقتي؟</p>
+    <div class="card" style="padding:9px 11px;margin-bottom:12px;font-size:12.5px;border-right:3px solid var(--${partial?'danger':'accent'})">
+      ${partial
+        ? '<b style="color:var(--danger)">المتبقي على الفاتورة '+money(b.balance)+'</b> — هيطلع «تصريح خروج سداد جزئي» فيه إقرار والتزام بالسداد وتوقيع الموظف المسؤول عن الخروج.'
+        : '<b>الفاتورة مدفوعة بالكامل</b> — هيطلع تصريح خروج عادي.'}
+    </div>
+    <p class="muted" style="font-size:12px;margin:0 0 12px">لو دوست «لا» مش هتخسر حاجة — تقدر تطبعه أي وقت من زرار «🚗 إذن خروج» جنب الفاتورة.</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn" style="flex:1" onclick="closeModal()">لا</button>
+      <button class="btn btn-accent" style="flex:1" onclick="closeModal();printExitPermit('${inv.id}')">نعم — طباعة</button>
+    </div>`);
 }
 
 /* ======================= RECEIVABLES (المديونيات والمستحقات) ======================= */
