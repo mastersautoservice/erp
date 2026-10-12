@@ -248,7 +248,8 @@ label.f-label{font-size:12.5px;color:var(--muted);margin-bottom:6px;display:bloc
 .tcompact td.muted{font-weight:600;}
 .modal h3{margin:0 0 18px;font-size:17px;}
 .modal-close{position:absolute;left:22px;top:22px;background:var(--surface-2);width:30px;height:30px;border-radius:50%;color:var(--muted);}
-.toast-wrap{position:fixed;bottom:22px;left:22px;z-index:200;display:flex;flex-direction:column;gap:8px;}
+.toast-wrap{position:fixed;bottom:22px;left:22px;z-index:450;display:flex;flex-direction:column;gap:8px;}   /* م221: فوق الكاميرا (400) */
+body.cam-open .toast-wrap{top:64px;bottom:auto;left:10px;right:10px}
 .toast{background:var(--surface-3);border:1px solid var(--border);border-right:4px solid var(--success);padding:12px 18px;border-radius:9px;font-size:13.5px;box-shadow:0 6px 20px rgba(0,0,0,.3);animation:slidein .2s;}
 .toast.err{border-right-color:var(--danger);}
 @keyframes slidein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -325,6 +326,7 @@ body.busy button{pointer-events:none;opacity:.55;}
   .emp-head{padding-left:0}
   .emp-actions .btn{min-width:calc(50% - 4px)}
   .search-box svg{width:18px;height:18px;flex-shrink:0}
+  .toast-wrap{left:10px;right:10px;bottom:calc(100px + env(safe-area-inset-bottom,0px))}   /* م221: فوق الشريط اللي تحت */
   .btn svg{width:18px;height:18px;flex-shrink:0}
   .section-head > div{flex-wrap:wrap}
   .section-head .btn{white-space:nowrap}
@@ -894,7 +896,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v242';
+const APP_VERSION = 'v243';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -2496,8 +2498,8 @@ async function openCamScanner(inputId, fallbackCtx){
     <div class="cam-status" id="camStatus">بيشغّل الكاميرا...</div>
     <div class="cam-actions"><button class="btn btn-sm" id="camTorch" style="display:none" onclick="camTorch()">🔦 كشاف</button>
       <button class="btn btn-sm" onclick="camManual()">⌨️ اكتب الكود بإيدك</button></div>`;
-  document.body.appendChild(ov);
-  const me = _cam = { inputId:inputId || '', ctx:fallbackCtx || '', continuous:!!CAM_CONTINUOUS[inputId], last:'', lastAt:0, torch:false };
+  document.body.appendChild(ov); document.body.classList.add('cam-open');
+  const me = _cam = { inputId:inputId || '', ctx:fallbackCtx || '', continuous:!!CAM_CONTINUOUS[inputId], last:'', lastAt:0, cand:'', candAt:0, torch:false };
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:720 } }, audio:false });
     if(_cam !== me){ stream.getTracks().forEach(t=>t.stop()); return; }
@@ -2526,7 +2528,8 @@ async function openCamScanner(inputId, fallbackCtx){
       me.reader = reader;
       camSetStatus('خلّي الباركود جوه المربع');
       /* ZXing بيشغّل الفيديو بنفسه ويستنى «playing» — لو الفيديو اشتغل قبله مش هيبدأ يقرا */
-      reader.decodeFromStream(stream, v, (res)=>{ if(res && _cam === me) camGot(res.getText ? res.getText() : res.text); });
+      const pr = reader.decodeFromStream(stream, v, (res)=>{ if(res && _cam === me) camGot(res.getText ? res.getText() : res.text); });
+      if(pr && pr.catch) pr.catch(err=>{ if(_cam === me){ camClose(); toast(camErrText(err), true); } });   /* م221 */
     }
   } catch(err){
     if(_cam === me){ camClose(); toast(camErrText(err), true); }
@@ -2536,8 +2539,15 @@ function camGot(raw){
   const me = _cam, code = normCode(raw);
   if(!me || !code) return;
   const now = Date.now();
+  /* م221: الكود بيتقبل لما يتقرا مرتين متطابقين ورا بعض (قراية غلط من زاوية وحشة مابتعديش) */
+  if(code !== me.cand || now - me.candAt > 1000){ me.cand = code; me.candAt = now; return; }
+  me.candAt = now;
   if(me.continuous){
-    if(code === me.last && now - me.lastAt < 1500) return;   // نفس القطعة لسه قدام الكاميرا
+    /* م221: في الجرد نفس القطعة مابتتعدش تاني طول ما هي قدام الكاميرا — لازم تبعد ثانية
+       (كانت بتتعد تاني بعد ثانية ونص حتى لو القطعة ماتحركتش ⇒ العدّ يزيد غلط) */
+    const seen = code === me.last && now - me.lastAt < 1200;
+    if(code === me.last) me.lastAt = now;
+    if(seen) return;
     me.last = code; me.lastAt = now;
     camDeliver(me.inputId, me.ctx, code);
     camSetStatus('✔ ' + code + ' — كمّل السكان أو اقفل');
@@ -2566,6 +2576,7 @@ function camClose(){
     try { if(me.stream) me.stream.getTracks().forEach(t=>t.stop()); } catch(e){}
   }
   const ov = document.getElementById('camOverlay'); if(ov && ov.parentNode) ov.parentNode.removeChild(ov);
+  try { document.body.classList.remove('cam-open'); } catch(e){}
 }
 async function camTorch(){
   const me = _cam; if(!me || !me.stream) return;
@@ -10266,31 +10277,32 @@ function openEditItemModal(partId){
   const p = DB.inventory.find(x=>x.id===partId);
   _eiBc = partBarcodes(p);   /* م219 */
   openModal(`
-    <h3>تعديل الصنف — ${p.name}</h3>
-    <div class="form-row"><label class="f-label">اسم الصنف</label><input class="f" id="eiName" value="${p.name}"></div>
+    <h3>تعديل الصنف — ${escNote(p.name)}</h3>
+    <div class="form-row"><label class="f-label">اسم الصنف</label><input class="f" id="eiName" value="${escAttr(p.name)}">
+      ${(()=>{ const f = partFamily(p); return f.length > 1 ? `<div class="muted" style="font-size:11.5px;margin-top:4px">📦 الصنف ده موجود في ${f.length} مخازن (${f.map(x=>escNote(whName(partWhId(x)))).join('، ')}) — الاسم والكود والباركود بيتعدلوا فيهم كلهم.</div>` : ''; })()}</div>
     <div class="form-row"><label class="f-label">المخزن</label><select class="f" id="eiWh">${whOptions(partWhId(p))}</select></div>
     <div class="grid g2">
-      <div class="form-row"><label class="f-label">كود الصنف</label><input class="f" id="eiSku" value="${p.sku||''}"></div>
-      <div class="form-row"><label class="f-label">الفئة / التصنيف</label><input class="f" id="eiCategory" value="${p.category||''}"></div>
+      <div class="form-row"><label class="f-label">كود الصنف</label><input class="f" id="eiSku" value="${escAttr(p.sku||'')}"></div>
+      <div class="form-row"><label class="f-label">الفئة / التصنيف</label><input class="f" id="eiCategory" value="${escAttr(p.category||'')}"></div>
     </div>
     <div class="grid g2">
-      <div class="form-row"><label class="f-label">الماركة / الشركة المصنعة</label><input class="f" id="eiBrand" value="${p.brand||''}"></div>
-      <div class="form-row"><label class="f-label">الوحدة</label><input class="f" id="eiUnit" value="${p.unit||'قطعة'}"></div>
+      <div class="form-row"><label class="f-label">الماركة / الشركة المصنعة</label><input class="f" id="eiBrand" value="${escAttr(p.brand||'')}"></div>
+      <div class="form-row"><label class="f-label">الوحدة</label><input class="f" id="eiUnit" value="${escAttr(p.unit||'قطعة')}"></div>
     </div>
     <div class="grid g2">
-      <div class="form-row"><label class="f-label">رقم OEM (اختياري)</label><input class="f" id="eiOem" value="${p.oemNo||''}"></div>
-      <div class="form-row"><label class="f-label">رقم المورد للقطعة (اختياري)</label><input class="f" id="eiSupNo" value="${p.supplierPartNo||''}"></div>
+      <div class="form-row"><label class="f-label">رقم OEM (اختياري)</label><input class="f" id="eiOem" value="${escAttr(p.oemNo||'')}"></div>
+      <div class="form-row"><label class="f-label">رقم المورد للقطعة (اختياري)</label><input class="f" id="eiSupNo" value="${escAttr(p.supplierPartNo||'')}"></div>
     </div>
     <div class="form-row"><label class="f-label">🏷️ باركود المصنع (الإنترناشونال) — ممكن أكتر من واحد · كود الصنف اللي فوق بيفضل شغال كباركود برضه</label>
       <div id="eiBcList" style="margin-bottom:4px">${eiBcHTML()}</div>
       <div style="display:flex;gap:6px"><input class="f" id="eiBcNew" dir="ltr" autocomplete="off" placeholder="اعمل سكان للباركود (أو اكتبه واضغط Enter)" onkeydown="if(event.key==='Enter'){event.preventDefault();eiBcAdd('${p.id}')}">
         <button class="btn btn-sm" onclick="eiBcAdd('${p.id}')">➕</button>${camBtnHTML('eiBcNew')}</div></div>
-    <div class="form-row"><label class="f-label">كلمات بحث بديلة (اختياري) — بتساعد البحث الذكي يلاقي الصنف بأي اسم</label><input class="f" id="eiKeywords" value="${p.keywords||''}" placeholder="مثال: بواجي، شمعات، spark plugs"></div>
+    <div class="form-row"><label class="f-label">كلمات بحث بديلة (اختياري) — بتساعد البحث الذكي يلاقي الصنف بأي اسم</label><input class="f" id="eiKeywords" value="${escAttr(p.keywords||'')}" placeholder="مثال: بواجي، شمعات، spark plugs"></div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">الحد الأدنى للمخزون</label><input class="f" id="eiMin" type="number" min="0" value="${p.minQty}"></div>
-      <div class="form-row"><label class="f-label">موقع التخزين</label><input class="f" id="eiLocation" value="${p.location||''}" placeholder="مثال: رف 3 - درج ب"></div>
+      <div class="form-row"><label class="f-label">موقع التخزين</label><input class="f" id="eiLocation" value="${escAttr(p.location||'')}" placeholder="مثال: رف 3 - درج ب"></div>
     </div>
-    <div class="form-row"><label class="f-label">وصف الصنف (اختياري)</label><textarea class="f" id="eiDesc" rows="2">${p.description||''}</textarea></div>
+    <div class="form-row"><label class="f-label">وصف الصنف (اختياري)</label><textarea class="f" id="eiDesc" rows="2">${escNote(p.description||'')}</textarea></div>
     <div class="form-row"><label class="f-label">سعر البيع</label><input class="f" id="eiSell" type="number" min="0" value="${p.sellPrice}"></div>
     <div class="form-row">
       <label class="f-label">الكمية الحالية بالمخزن</label>
@@ -10331,6 +10343,19 @@ async function saveEditItem(partId){
     const own = newSku219 && newSku219!==normCode(p.sku) ? barcodeOwner(newSku219, partFamilyKey(p)) : null;
     if(own){ toast('الكود ده متسجل باركود على صنف تاني («'+own.name+'») — اختار كود تاني', true); return; }
   }
+  /* م221: الصنف في أكتر من مخزن = نفس القطعة ⇒ الاسم والكود بيتعدلوا عليه في كل المخازن.
+     قبل كده كان بيتعدل في مخزن واحد: الباركود يبقى على صنفين بأسامي مختلفة، وأول تحويل
+     للمخزن التاني يعمل صنف مكرر (لأن التحويل بيدوّر على الصنف بالاسم والكود). */
+  const sibs221 = fam219.filter(x=>x.id!==p.id);
+  const newName221 = name, newSku221 = document.getElementById('eiSku').value.trim();
+  const rename221 = sibs221.length && (newName221!==p.name || newSku221!==String(p.sku||'').trim());
+  if(rename221){
+    const sibIds = new Set(fam219.map(x=>x.id));
+    for(const s of sibs221){
+      const d = findDuplicatePart(newName221, newSku221, partWhId(s), s.id);
+      if(d && !sibIds.has(d.id)){ toast('في «'+whName(partWhId(s))+'» صنف تاني بالاسم/الكود الجديد («'+d.name+'») — ادمجهم الأول من «🔀 دمج أصناف»', true); return; }
+    }
+  }
   /* م155: تغيير المخزن من «تعديل الصنف» كان نقل صامت — من غير صلاحية التحويل
      ومن غير حركة ولا ظهور في تقرير التحويلات، والحركات التاريخية كلها بتقلب
      على المخزن الجديد. دلوقتي: الصنف اللي عليه رصيد بيتنقل من شاشة التحويل بس. */
@@ -10347,6 +10372,7 @@ async function saveEditItem(partId){
     if(newSku178 !== String(p.sku||'').trim()) p.skuAuto = false;
     p.sku = newSku178;
   }
+  if(rename221) sibs221.forEach(x=>{ x.name = p.name; x.sku = p.sku; x.skuAuto = p.skuAuto; });   /* م221 */
   p.category = document.getElementById('eiCategory').value.trim();
   p.brand = document.getElementById('eiBrand').value.trim();
   p.oemNo = ((document.getElementById('eiOem')||{}).value||'').trim();
@@ -10362,6 +10388,7 @@ async function saveEditItem(partId){
   await logAction('تعديل بيانات الصنف: '+p.name);
   const ch = [];
   if(wasName!==p.name) ch.push('الاسم: '+wasName+' ← '+p.name);
+  if(rename221) ch.push('اتعدل كمان في: '+sibs221.map(x=>whName(partWhId(x))).join('، '));   /* م221 */
   if(wasSell!==p.sellPrice) ch.push('سعر البيع: '+money(wasSell||0)+' ← '+money(p.sellPrice||0));
   if(wasMin!==p.minQty) ch.push('الحد الأدنى: '+wasMin+' ← '+p.minQty);
   if(wasWh!==p.warehouseId) ch.push('المخزن: '+whName(wasWh)+' ← '+whName(p.warehouseId));
@@ -10809,7 +10836,7 @@ function renderInventoryCount(){
   ${editable ? `<div class="card" style="padding:10px 12px;margin-bottom:12px;border:1px solid var(--accent)">
     <label class="f-label">🏷️ جرد بالباركود — كل سكان = قطعة (+1) على الصنف</label>
     <div class="scan-row"><input class="f" id="cntScanBox" dir="ltr" autocomplete="off" placeholder="اعمل سكان هنا..." onkeydown="scanKey(event,'cnt')">${camBtnHTML('cntScanBox')}</div>
-    ${isTouchDevice() ? '<div class="muted" style="font-size:11.5px;margin-top:4px">📷 في الجرد الكاميرا بتفضل مفتوحة — عدّي القطع واحدة واحدة قدامها.</div>' : ''}
+    <div class="muted" style="font-size:11.5px;margin-top:4px">${isTouchDevice() ? '📷 في الجرد الكاميرا بتفضل مفتوحة — عدّي القطع واحدة واحدة قدامها (وبعّد كل قطعة قبل اللي بعدها). ' : ''}العدّ بالسكان بيتحفظ لوحده.</div>
   </div>` : ''}
   <div class="card">
     <table>
@@ -13740,12 +13767,12 @@ function scanUnknownToast(c){ toast('🏷️ الباركود ' + c + ' مش م�
 /* كل خانة قطعة: الخانة · البحث · الاختيار — anyWh: مش مهم المخزن (الشراء/كارت الصنف) */
 const SCAN219 = {
   pl:{ input:'plSearch', search:v=>filterPartsLive(v), pick:id=>selectExistingPart(id), unknown:c=>plUnknownBarcode(c), anyWh:true },
-  mv:{ input:'mvPartSearch', search:v=>mvSearchParts(v), pick:id=>mvPickPart(id), unknown:c=>scanUnknownPage(c) },
+  mv:{ input:'mvPartSearch', search:v=>mvSearchParts(v), pick:id=>mvPickPart(id), unknown:c=>scanUnknownPage(c, 'mv') },
   cr:{ input:'crSearch', search:v=>crSearchParts(v), pick:id=>crPickPart(id) },
   iu:{ input:'iuSearch', search:v=>iuSearchParts(v), pick:id=>iuPickPart(id) },
   sc:{ input:'scSearch', search:v=>scSearchParts(v), pick:id=>scPickPart(id) },
   tr:{ input:'trPartSearch', search:v=>trSearchParts(v), pick:id=>trPickPart(id) },
-  inv:{ input:'invSearchBox', search:v=>filterInventoryLive(v), pick:id=>openItemCard(id), unknown:c=>scanUnknownPage(c), anyWh:true },
+  inv:{ input:'invSearchBox', search:v=>filterInventoryLive(v), pick:id=>openItemCard(id), unknown:c=>scanUnknownPage(c, 'inv'), anyWh:true },
 };
 function partScan(ctx, code){
   const c = normCode(code); if(!c) return false;
@@ -13788,17 +13815,21 @@ function cntScan(c){
   const q = document.getElementById('cq_' + idx); if(q){ q.value = v; try { q.scrollIntoView({ block:'center' }); } catch(e){} }
   scanBeep(); toast('✔ ' + l.name + ' = ' + v);
   if(inp && !document.getElementById('camOverlay')) inp.focus();
+  /* م221: العدّ بالسكان بيتحفظ لوحده بعد كل كام سكان — لو الموبايل قفل أو الصفحة اتعملها ريفريش مايضيعش */
+  clearTimeout(_cntAutoT);
+  _cntAutoT = setTimeout(()=>{ try { const r = saveKey('inventoryCounts', DB.inventoryCounts); if(r && r.catch) r.catch(()=>{}); } catch(e){} }, 2500);
   return true;
 }
+let _cntAutoT = null;
 /* باركود مش متسجل في شاشة (مش نافذة) ⇒ اربطه بصنف من هنا */
-function scanUnknownPage(c){
+function scanUnknownPage(c, ctx){
   if(!canLinkBarcode()){ scanUnknownToast(c); return; }
-  openBarcodeLinkModal(c);
+  openBarcodeLinkModal(c, ctx);
 }
-let _bcLink = { code:'', q:'' };
-function openBarcodeLinkModal(code){
+let _bcLink = { code:'', q:'', ctx:'' };
+function openBarcodeLinkModal(code, ctx){
   if(!canLinkBarcode()){ toast('ربط الباركود محتاج صلاحية «تعديل صنف» أو «إضافة صنف»', true); return; }
-  _bcLink = { code:normCode(code), q:'' };
+  _bcLink = { code:normCode(code), q:'', ctx:ctx || '' };
   openModal(`
     <h3>🏷️ باركود جديد: <span dir="ltr">${escNote(_bcLink.code)}</span></h3>
     <div class="muted" style="font-size:12.5px;margin-bottom:10px">الباركود ده مش متسجل على أي صنف. دوّر على القطعة بالاسم واربطه بيها — بعد كده أي سكان ليه هيجيب القطعة دي على طول.</div>
@@ -13834,8 +13865,9 @@ async function linkBarcodeToPart(partId, code){
 async function bcLinkTo(partId){
   if(!(await linkBarcodeToPart(partId, _bcLink.code))) return;
   closeModal(); toast('اتربط — أي سكان للباركود ده هيجيب الصنف على طول');
-  if(currentTab==='inventory') openItemCard(partId);
-  else if(document.getElementById('mvPartSearch')) mvPickPart(partId);
+  /* م221: يرجع لنفس اللي كان بيعمله: الصرف ⇒ القطعة تتختار · بحث/سكان عام ⇒ كارت الصنف */
+  if(_bcLink.ctx==='mv' && document.getElementById('mvPartSearch')) mvPickPart(partId);
+  else openItemCard(partId);
 }
 /* ---------- فاتورة الشراء: باركود مش متسجل ⇒ اربطه بصنف موجود أو صنف جديد ---------- */
 let _plLinkCode = null, _plUnknown = '';
