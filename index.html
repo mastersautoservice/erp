@@ -920,7 +920,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v248';
+const APP_VERSION = 'v250';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1959,6 +1959,12 @@ function _tryRtRefresh(){
   }catch(e){}
 }
 try{ document.addEventListener('focusout', ()=>{ if(_rtRefreshPending) _scheduleRtRefresh(); }, true); }catch(e){}
+function bootRetryHTML228(n, total){
+  return `<div class="login-wrap"><div class="login-card" style="text-align:center">
+      <p class="login-title">⏳ بيحمّل بيانات المركز...</p>
+      <p class="login-sub" style="line-height:1.9">القاعدة اتأخرت في الرد — السيستم بيحاول تاني لوحده.<br><b>محاولة ${n} من ${total}</b> · مش محتاج تدوس حاجة.</p>
+    </div></div>`;
+}
 async function initApp(){
   if(!window.supabase){
     document.getElementById('root').innerHTML = `
@@ -2002,8 +2008,26 @@ async function initApp(){
     return;
   }
   markDeviceActivated();   /* م184 */
+  /* ============ م228: الإقلاع بيحاول لوحده قبل ما يقول «تعذر الاتصال» ============
+     شكوى سيف: الرسالة بتظهر كتير والنت شغال، ولازم يدوس «إعادة المحاولة» كذا مرة.
+     القياس (قراءة بس): تحميل كل البيانات بقى تقيل على سيرفر القاعدة الصغير (نص جيجا رام)،
+     والقاعدة بتقطع أي طلب بيعدّي 8 ثواني — فأول محاولة بعد ما السيرفر يهدى بتتقطع، واللي
+     بعدها بتنجح لأن الداتا بقت في الذاكرة. دلوقتي السيستم بيعيد لوحده 4 مرات (2 · 4 · 7 · 10 ثواني)
+     ومعاه رسالة «بنحاول تاني»، والخطأ مابيظهرش غير لو كل المحاولات فشلت — ووقتها بيكتب السبب. */
+  const bootDelays228 = Array.isArray(window._bootRetryDelays) ? window._bootRetryDelays : [2000, 4000, 7000, 10000];
+  let bootErr228 = null;
+  for(let a = 0; a <= bootDelays228.length; a++){
+    try{ await loadAllData(); bootErr228 = null; break; }
+    catch(e){
+      bootErr228 = e;
+      console.error('initial load failed (attempt ' + (a + 1) + ')', e);
+      if(!_deviceAuthed || a >= bootDelays228.length) break;   // جهاز مش مفعّل = تفعيل مش عطل
+      document.getElementById('root').innerHTML = bootRetryHTML228(a + 2, bootDelays228.length + 1);
+      await new Promise(r=>setTimeout(r, bootDelays228[a]));
+    }
+  }
   try{
-    await loadAllData();
+    if(bootErr228) throw bootErr228;
     /* ⚠️ م77 — إصلاح الفخ اللي عطّل جهاز الحسابات:
        زرار "دخول من غير تفعيل (مؤقت)" كان بيتساب في الجهاز للأبد. بعد ما
        شدّدنا حماية القاعدة، الجهاز اللي اتخطّى التفعيل بقى بيقرا فاضي بدون
@@ -2048,7 +2072,8 @@ async function initApp(){
     document.getElementById('root').innerHTML = `
     <div class="login-wrap"><div class="login-card" style="text-align:center">
       <p class="login-title" style="color:var(--danger)">تعذر الاتصال بقاعدة البيانات</p>
-      <p class="login-sub" style="line-height:1.9">تأكد من الإنترنت ومن صحة رابط ومفتاح Supabase، وإن ملف SQL اتنفذ في المشروع.<br><br><button class="btn btn-accent" onclick="location.reload()">إعادة المحاولة</button></p>
+      <p class="login-sub" style="line-height:1.9">السيستم حاول ${bootDelays228.length + 1} مرات لوحده ومفيش رد — غالباً سيرفر القاعدة واقف أو النت فاصل.<br>استنى دقيقة وجرب تاني.<br><br><button class="btn btn-accent" onclick="location.reload()">إعادة المحاولة</button></p>
+      <div class="muted" style="font-size:11px;direction:ltr;margin-top:6px">${_joEsc(String((e && (e.message || e.code)) || e || ''))}</div>
     </div></div>`;
     return;
   }
@@ -2745,6 +2770,28 @@ function renderTab(){
   }
 }
 function refreshContent(){ const c=document.getElementById('contentArea'); if(c) c.innerHTML = renderTab(); }
+/* ============ م229: «تحميل المزيد» في كل القوايم الطويلة ============
+   طلب سيف: أي قايمة طويلة (تنبيه النفاد في الرئيسية · المخزون · الفواتير · العملاء · سجل العمليات …)
+   بتعرض أول 100 سطر بس وتحتها «⬇ تحميل المزيد (100 كمان)» و«عرض الكل» — عشان ماينزلش لتحت كتير.
+   🛡️ البحث والفلاتر بيدوّروا في **كل** البيانات (طلب سيف بالنص) — العرض بس هو اللي متقسّم.
+   الإجماليات والطباعة والإكسيل على الكل. أي تغيير في البحث/الفلتر بيرجّع القايمة لأول 100
+   (مفتاح القايمة فيه بصمة الفلاتر). */
+const PG229 = 100;
+const _pgLim229 = {};
+function pgKey(base, parts){ return base + '_' + _attSig(JSON.stringify(parts == null ? [] : parts)); }
+function pgShown(key){ return _pgLim229[key] || PG229; }
+function pgSlice(key, list){ const n = pgShown(key); return list.length > n ? list.slice(0, n) : list; }
+function pgMore(key, all){ _pgLim229[key] = all ? Infinity : pgShown(key) + PG229; }
+function pgCtlHTML(key, total, redraw){
+  const shown = Math.min(pgShown(key), total);
+  if(total <= shown) return '';
+  const step = Math.min(PG229, total - shown), go = redraw || 'refreshContent()';
+  return `<div class="pg-more" style="grid-column:1/-1;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;padding:10px">
+    <span class="muted" style="font-size:12px">ظاهر ${shown.toLocaleString('ar-EG')} من ${total.toLocaleString('ar-EG')}</span>
+    <button class="btn btn-sm btn-accent" onclick="pgMore('${key}');${go}">⬇ تحميل المزيد (${step.toLocaleString('ar-EG')} كمان)</button>
+    <button class="btn btn-sm" onclick="pgMore('${key}',1);${go}">عرض الكل (${total.toLocaleString('ar-EG')})</button></div>`;
+}
+function pgRowHTML(key, total, cols, redraw){ const c = pgCtlHTML(key, total, redraw); return c ? `<tr><td colspan="${cols}" style="padding:0">${c}</td></tr>` : ''; }
 
 /* ======================= DASHBOARD ======================= */
 function renderDashboard(){
@@ -2805,7 +2852,7 @@ function renderDashboard(){
     <div class="section-head" style="margin-top:26px"><h3>تنبيه: قطع وشيكة النفاد</h3><button class="btn btn-sm" onclick="goTab('inventory')">إدارة المخزون</button></div>
     <div class="card">
       <table><thead><tr><th>القطعة</th><th>الكمية الحالية</th><th>الحد الأدنى</th></tr></thead>
-      <tbody>${lowStock.map(p=>`<tr><td>${p.name}</td><td class="low-stock">${p.qty}</td><td>${p.minQty}</td></tr>`).join('')}</tbody></table>
+      <tbody>${pgSlice('dashLow', lowStock).map(p=>`<tr><td>${p.name}</td><td class="low-stock">${p.qty}</td><td>${p.minQty}</td></tr>`).join('')}${pgRowHTML('dashLow', lowStock.length, 3)}</tbody></table>
     </div>` : ''}
     ${['reception','owner'].includes(session.role) ? renderServiceRemindersWidget() : ''}
     ${['reception','owner'].includes(session.role) ? renderTodayAppointmentsWidget() : ''}
@@ -2955,10 +3002,10 @@ function renderCustomers(){
       <div class="section-head" style="margin-top:4px"><h3>🗄️ عملاء مؤرشفون (${arch.length})</h3></div>
       <div class="grid g3" style="margin-bottom:18px">${arch.length? arch.map(customerCard).join('') : emptyState('مفيش عملاء مؤرشفين')}</div>
       <div class="section-head"><h3>العملاء النشطون (${act.length})</h3></div>
-      <div class="grid g3">${act.length? act.map(customerCard).join('') : emptyState('لسه مفيش عملاء نشطين')}</div>`;
+      <div class="grid g3">${act.length? pgSlice(pgKey('custA', []), act).map(customerCard).join('') + pgCtlHTML(pgKey('custA', []), act.length) : emptyState('لسه مفيش عملاء نشطين')}</div>`;
     }
     return `<div class="grid g3">
-    ${list.length? list.map(customerCard).join('') : emptyState(custSearchTerm?'مفيش نتائج مطابقة':'لسه مفيش عملاء مسجلين')}
+    ${list.length? pgSlice(pgKey('cust', [custSearchTerm, custShowArchived]), list).map(customerCard).join('') + pgCtlHTML(pgKey('cust', [custSearchTerm, custShowArchived]), list.length) : emptyState(custSearchTerm?'مفيش نتائج مطابقة':'لسه مفيش عملاء مسجلين')}
   </div>`;
   })()}`;
 }
@@ -3344,11 +3391,11 @@ function customerHistoryHTML(customerId){
    البحث محدود بالعميل المفتوح سجله (مش بحث عام)، وبيشتغل بنفس الطريقة
    للفرد والشركة، ومطبّع للمسافات: «عرب127» بتلاقي «ع ر ب 127». */
 let custHistQ = '';
-let custHistLimit = 300;   // أداء الشركات الكبيرة: 300 فاتورة وبعدين «عرض المزيد»
+let custHistLimit = 100;   // أداء الشركات الكبيرة: 100 فاتورة وبعدين «تحميل المزيد» (م229: كانت 300)
 function normPlate(s){ return normSearch(String(s||'')).replace(/\s+/g,''); }
 function setCustHistQ(customerId, v){
   custHistQ = String(v||'');
-  custHistLimit = 300;
+  custHistLimit = 100;
   const b = document.getElementById('custInvTableWrap');
   if(b) b.innerHTML = custInvTableHTML(customerId);
 }
@@ -3365,7 +3412,7 @@ function custHistCarById(customerId, carId){
   setCustHistQ(customerId, car.plate);
 }
 function custHistMore(customerId){
-  custHistLimit += 300;
+  custHistLimit += 100;
   const b = document.getElementById('custInvTableWrap');
   if(b) b.innerHTML = custInvTableHTML(customerId);
 }
@@ -3400,7 +3447,8 @@ function custInvTableHTML(customerId){
       })()}</td></tr>`;
   }).join('') : `<tr><td colspan="7" class="empty">مفيش فواتير للوحة دي عند العميل دة</td></tr>`}
   ${rows.length > shown.length ? `<tr><td colspan="7" style="text-align:center;padding:10px">
-    <button class="btn btn-sm" onclick="custHistMore('${customerId}')">عرض المزيد (باقي ${(rows.length-shown.length).toLocaleString('ar-EG')} فاتورة)</button></td></tr>` : ''}
+    <button class="btn btn-sm btn-accent" onclick="custHistMore('${customerId}')">⬇ تحميل المزيد (${Math.min(100, rows.length-shown.length)} كمان)</button>
+    <button class="btn btn-sm" onclick="custHistLimit=Infinity;custHistMore('${customerId}')">عرض الكل (${rows.length.toLocaleString('ar-EG')})</button></td></tr>` : ''}
   </tbody></table>
   <div class="muted" style="font-size:12px;margin-top:6px"><b>${rows.length.toLocaleString('ar-EG')}</b> فاتورة${q?' للوحة دي':''} · إجمالي الساري منها: <b>${money(activeTotal)}</b></div>`;
 }
@@ -5932,10 +5980,12 @@ function inventoryRowsHTML(){
     const archBlock = arch.length
       ? secRow('🗄️ الأصناف المؤرشفة ('+arch.length+') — دوس على الصنف للتفاصيل أو ♻️ للاسترجاع') + arch.map(invRowHTML).join('')
       : secRow('🗄️ مفيش أصناف مؤرشفة مطابقة للفلاتر الحالية');
-    const actBlock = act.length ? (arch.length? secRow('📦 الأصناف النشطة ('+act.length+')') : '') + act.map(invRowHTML).join('') : '';
+    const kA = pgKey('invA', [invSearchTerm, invWhFilter, invAvailFilter]);   /* م229 */
+    const actBlock = act.length ? (arch.length? secRow('📦 الأصناف النشطة ('+act.length+')') : '') + pgSlice(kA, act).map(invRowHTML).join('') + pgRowHTML(kA, act.length, 9, 'filterInventoryLive(invSearchTerm)') : '';
     return archBlock + actBlock;
   }
-  return items.length ? items.map(invRowHTML).join('') : `<tr><td colspan="9" class="empty">لا يوجد أصناف مطابقة</td></tr>`;
+  const k229 = pgKey('inv', [invSearchTerm, invWhFilter, invAvailFilter]);   /* م229 */
+  return items.length ? pgSlice(k229, items).map(invRowHTML).join('') + pgRowHTML(k229, items.length, 9, 'filterInventoryLive(invSearchTerm)') : `<tr><td colspan="9" class="empty">لا يوجد أصناف مطابقة</td></tr>`;
 }
 /* ============================================================
    م145 — الباركود وطباعته للمخزون 🏷️ (v159)
@@ -7430,7 +7480,7 @@ function moveMatchesFilters(m){
 }
 function resetMvFilters(){ mvFilters = { dateFrom:'', dateTo:'', supplierId:'', type:'', partId:'', jobNo:'', carCust:'', reqById:'', q:'' }; refreshContent(); }
 function refreshMvTable(){
-  mvShowLimit = 250;   // م122: بحث/فلتر جديد بيبدأ من أحدث 250 من جديد
+  mvShowLimit = 100;   // م122 · م229: بحث/فلتر جديد بيبدأ من أحدث 100 من جديد
   const b=document.getElementById('mvTableBody'); if(b) b.innerHTML = mvRowsHTML();
   const c=document.getElementById('mvCount'); if(c) c.textContent = mvCountLabel();
 }
@@ -7438,9 +7488,9 @@ function refreshMvTable(){
    واحدة (15,000 صف = ~3.3 ثانية حساب + تهنيج حقيقي في المتصفح).
    دلوقتي بنعرض أحدث 250 وزرار «عرض المزيد» — والبحث والفلاتر بيشتغلوا
    على **كل** الحركات عادي، العرض بس هو اللي متقسّم. */
-let mvShowLimit = 250;
+let mvShowLimit = 100;   /* م229: كانت 250 */
 function mvShowMore(){
-  mvShowLimit += 250;
+  mvShowLimit += 100;
   const b=document.getElementById('mvTableBody'); if(b) b.innerHTML = mvRowsHTML();
 }
 function mvRowsHTML(){
@@ -7450,7 +7500,8 @@ function mvRowsHTML(){
   const invById = new Map(DB.inventory.map(p=>[p.id, p]));
   const moreRow = all.length > moves.length
     ? `<tr><td colspan="7" style="text-align:center;padding:10px">
-        <button class="btn btn-sm" onclick="mvShowMore()">⬇ عرض المزيد (${all.length - moves.length} حركة أقدم)</button>
+        <button class="btn btn-sm btn-accent" onclick="mvShowMore()">⬇ تحميل المزيد (${Math.min(100, all.length - moves.length)} كمان)</button>
+        <button class="btn btn-sm" onclick="mvShowLimit=Infinity;mvShowMore()">عرض الكل (${all.length})</button>
         <span class="muted" style="font-size:11.5px;margin-right:8px">معروض أحدث ${moves.length} من ${all.length} — استخدم البحث والفلاتر للوصول لأي حركة</span>
       </td></tr>` : '';
   const typeTagMap = {
@@ -12520,7 +12571,8 @@ function supInvItemsHTML(p){
     }).join('')}</tbody></table>`;
 }
 function supInvRowsHTML(rows){
-  return rows.length ? rows.map(p=>{
+  const k229 = pgKey('supInv', [supInvRepF, supInvShowItems]);   /* م229 */
+  return rows.length ? pgSlice(k229, rows).map(p=>{
     const sup = DB.suppliers.find(s=>s.id===p.supplierId);
     return `<tr onclick="supInvRepOpen('${p.id}')" style="cursor:pointer" title="دوس لفتح الفاتورة — الإجراءات حسب صلاحياتك">
       <td style="font-weight:800">#${p.purchaseNo}${p.supInvNo && String(p.supInvNo)!==String(p.purchaseNo)?`<div class="muted" style="font-size:10.5px">مورد: ${p.supInvNo}</div>`:''}</td>
@@ -12537,7 +12589,7 @@ function supInvRowsHTML(rows){
     <tr onclick="supInvRepOpen('${p.id}')" style="cursor:pointer;background:var(--surface-2)" title="دوس لفتح الفاتورة">
       <td colspan="10" style="padding:4px 18px 12px">${supInvItemsHTML(p)}</td>
     </tr>` : ''}`;
-  }).join('') : `<tr><td colspan="10" class="empty">مفيش فواتير مطابقة للفلاتر دي</td></tr>`;
+  }).join('') + pgRowHTML(k229, rows.length, 10, 'supInvRepSearch(supInvRepF.search)') : `<tr><td colspan="10" class="empty">مفيش فواتير مطابقة للفلاتر دي</td></tr>`;
 }
 function supInvTotalsHTML(rows){
   const sum = rows.reduce((s,p)=>s+(p.total||0),0);
@@ -15068,7 +15120,8 @@ function invRowsHTML(){
   const map = {unpaid:['غير محصلة','tag-unpaid'], partial:['محصلة جزئياً','tag-partial'], paid:['محصلة بالكامل','tag-paid']};
   const list = [...DB.invoices].filter(invoiceMatchesFilters).sort((a,b)=>new Date(b.date)-new Date(a.date));
   if(list.length===0) return `<tr><td colspan="10" class="empty">لا توجد فواتير مطابقة</td></tr>`;
-  return list.map(inv=>{
+  const k229 = pgKey('invs', [invFilters]);   /* م229 */
+  return pgSlice(k229, list).map(inv=>{
     const cust = DB.customers.find(c=>c.id===inv.customerId);
     const job = inv.jobId ? DB.jobs.find(j=>j.id===inv.jobId) : null;
     /* م189: نوع السيارة — من أمر الشغل، ولو الأمر اتمسح بنرجع لسيارة الفاتورة */
@@ -15088,7 +15141,7 @@ function invRowsHTML(){
       ${!inv.cancelled && inv.custCredit && inv.custCredit.status==='open' && can('bill.refund')?`<button class="btn btn-sm btn-accent" onclick="openCustRefund('inv','${inv.id}')">💸 فلوس للعميل</button>`:''}
       ${can('bill.history')?`<button class="btn btn-sm" onclick="openInvoiceHistory('${inv.id}')">🕘 السجل</button>`:''}${job?`<button class="btn btn-sm" onclick="openWorkOrderReport('${job.id}')">📈 الربحية</button> `:''}${can('bill.print')?`<button class="btn btn-sm" onclick="printInvoice('${inv.id}')">🖨</button> <button class="btn btn-sm" onclick="downloadInvoice('${inv.id}')">⬇ تحميل</button>${inv.cancelled?'':` <button class="btn btn-sm" onclick="printExitPermit('${inv.id}')" title="إذن تصريح خروج السيارة">🚗 إذن خروج</button>`}`:''}</div></td>
     </tr>`;
-  }).join('');
+  }).join('') + pgRowHTML(k229, list.length, 10, 'refreshInvTable()');
 }
 /* ================= الملاحظة 60: تعديل الفاتورة وإلغاؤها وسجلها الكامل =================
    القاعدة: بنود الفاتورة (القطع/الخدمات/الأعمال الخارجية/الدهانات/الكميات) ممنوع تعديلها
@@ -16183,26 +16236,26 @@ function renderReceivables(){
   <div class="section-head"><h3>الشركات المدينة خلال الفترة (${debtorsComp.length})</h3></div>
   <div class="card" style="margin-bottom:18px">
     <table><thead><tr><th>اسم الشركة</th><th>عدد الفواتير الآجلة</th><th>أرقام الفواتير</th><th>إجمالي المبلغ الآجل</th><th></th></tr></thead>
-    <tbody>${debtorsComp.map(d=>`<tr>
+    <tbody>${pgSlice(pgKey('debC', [rcvPeriod]), debtorsComp).map(d=>`<tr>
       <td style="font-weight:700">${d.cust.name}</td>
       <td>${d.invCount}</td>
       <td class="muted" style="font-size:12px">${d.invNos.join('، ')}</td>
       <td class="low-stock" style="font-weight:800">${money(d.total)}</td>
       <td><button class="btn btn-sm" onclick="invFilters={search:'${d.cust.name.replace(/'/g,"\\'")}',status:'',custType:'',dateFrom:'',dateTo:''};goTab('invoices')">فواتيره</button></td>
-    </tr>`).join('')}</tbody></table>
+    </tr>`).join('')}${pgRowHTML(pgKey('debC', [rcvPeriod]), debtorsComp.length, 5)}</tbody></table>
   </div>` : ''}
 
   ${debtorsInd.length? `
   <div class="section-head"><h3>العملاء الأفراد المدينون خلال الفترة (${debtorsInd.length})</h3></div>
   <div class="card" style="margin-bottom:18px">
     <table><thead><tr><th>اسم العميل</th><th>عدد الفواتير الآجلة</th><th>أرقام الفواتير</th><th>إجمالي المبلغ الآجل</th><th></th></tr></thead>
-    <tbody>${debtorsInd.map(d=>`<tr>
+    <tbody>${pgSlice(pgKey('debI', [rcvPeriod]), debtorsInd).map(d=>`<tr>
       <td style="font-weight:700">${d.cust.name}</td>
       <td>${d.invCount}</td>
       <td class="muted" style="font-size:12px">${d.invNos.join('، ')}</td>
       <td class="low-stock" style="font-weight:800">${money(d.total)}</td>
       <td><button class="btn btn-sm" onclick="invFilters={search:'${d.cust.name.replace(/'/g,"\\'")}',status:'',custType:'',dateFrom:'',dateTo:''};goTab('invoices')">فواتيره</button></td>
-    </tr>`).join('')}</tbody></table>
+    </tr>`).join('')}${pgRowHTML(pgKey('debI', [rcvPeriod]), debtorsInd.length, 5)}</tbody></table>
   </div>` : ''}
 
   <div class="section-head"><h3>تفاصيل الفواتير</h3></div>
@@ -16254,7 +16307,8 @@ function rcvRowsHTML(){
     return true;
   });
   if(list.length===0) return `<tr><td colspan="9" class="empty">لا توجد فواتير مطابقة</td></tr>`;
-  return list.map(inv=>{
+  const k229 = pgKey('rcv', [rcvFilters]);   /* م229 */
+  return pgSlice(k229, list).map(inv=>{
     const cust = DB.customers.find(c=>c.id===inv.customerId);
     const b = invBalance(inv);
     const st = paymentStatus(inv);
@@ -16263,7 +16317,7 @@ function rcvRowsHTML(){
       <td class="${b.balance>0?'low-stock':''}">${money(b.balance)}</td>
       <td><span class="tag ${stMap[st][1]}">${stMap[st][0]}</span></td>
       <td>${st!=='paid' && can('bill.collect')?`<button class="btn btn-sm btn-accent" onclick="openPaymentModal('${inv.id}')">تحصيل</button>`:''}</td></tr>`;
-  }).join('');
+  }).join('') + pgRowHTML(k229, list.length, 9, 'refreshRcvTable()');
 }
 
 /* ======================= FINANCE (الخزنة والحسابات المالية — الملاحظة 17) ======================= */
@@ -16363,13 +16417,13 @@ function renderFinance(){
   <div class="section-head"><h3>حركات الفترة (${pm.length})</h3></div>
   <div class="card">
     <table><thead><tr><th>الوقت</th><th>الحساب</th><th>النوع</th><th>المبلغ</th><th>البيان</th><th>بواسطة</th></tr></thead>
-    <tbody>${pm.length? [...pm].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(m=>{
+    <tbody>${pm.length? pgSlice(pgKey('finm', [finPeriod]), [...pm].sort((a,b)=>new Date(b.date)-new Date(a.date))).map(m=>{
       const acc = DB.finAccounts.find(a=>a.id===m.accountId);
       return `<tr><td style="white-space:nowrap">${fmtDateTime(m.date)}</td><td>${acc?acc.name:'—'}</td>
       <td>${m.type==='in'?'<span class="tag tag-paid">وارد</span>':'<span class="tag tag-unpaid">منصرف</span>'}</td>
       <td style="font-weight:800">${money(m.amount)}</td><td class="muted" style="font-size:12px">${m.note||'—'}</td>
       <td class="muted" style="font-size:11.5px">${m.actor||'—'}</td></tr>`;
-    }).join('') : `<tr><td colspan="6" class="empty">لا توجد حركات في الفترة دي</td></tr>`}</tbody></table>
+    }).join('') + pgRowHTML(pgKey('finm', [finPeriod]), pm.length, 6) : `<tr><td colspan="6" class="empty">لا توجد حركات في الفترة دي</td></tr>`}</tbody></table>
   </div>`;
 }
 function openAccountDetail(accId){
@@ -16831,8 +16885,8 @@ function renderAdvancesView(){
 }
 /* ============ م125: قائمة السجل المالي الموحد — بحث ذكي + فلاتر + ملخص لحظي ============ */
 let expFilters = { q:'', type:'', preset:'all', from:'', to:'' };
-let expShowLimit = 250;
-function expShowMore(){ expShowLimit += 250; const b=document.getElementById('expTableBody'); if(b) b.innerHTML = expRowsHTML(); }
+let expShowLimit = 100;   /* م229: كانت 250 */
+function expShowMore(){ expShowLimit += 100; const b=document.getElementById('expTableBody'); if(b) b.innerHTML = expRowsHTML(); }
 const EXP_DATE_PRESETS = [['all','الكل'],['today','اليوم'],['this_week','هذا الأسبوع'],['this_month','هذا الشهر'],['last_month','الشهر الماضي'],['custom','فترة مخصوصة']];
 /* كومة البحث: كل نص ليه علاقة بالعملية — الوصف والأسماء والأرقام والحساب والملاحظات */
 function expSearchHay(e){
@@ -16856,7 +16910,7 @@ function expMatchesFilters(e){
   return true;
 }
 function refreshExpTable(){
-  expShowLimit = 250;   // أي تغيير فلتر يرجّع للصفحة الأولى
+  expShowLimit = 100;   // أي تغيير فلتر يرجّع للصفحة الأولى
   const b = document.getElementById('expTableBody'); if(b) b.innerHTML = expRowsHTML();
   const s = document.getElementById('expSummaryBar'); if(s) s.innerHTML = expSummaryHTML();
 }
@@ -16882,7 +16936,8 @@ function expRowsHTML(){
   const all = [...DB.expenses].filter(expMatchesFilters).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const list = all.slice(0, expShowLimit);
   const moreRow = all.length > list.length ? `<tr><td colspan="10" style="text-align:center;padding:10px">
-    <button class="btn btn-sm" onclick="expShowMore()">عرض المزيد (باقي ${(all.length-list.length).toLocaleString('ar-EG')} عملية)</button></td></tr>` : '';
+    <button class="btn btn-sm btn-accent" onclick="expShowMore()">⬇ تحميل المزيد (${Math.min(100, all.length-list.length)} كمان)</button>
+    <button class="btn btn-sm" onclick="expShowLimit=Infinity;expShowMore()">عرض الكل (${all.length.toLocaleString('ar-EG')})</button></td></tr>` : '';
   if(list.length===0) return `<tr><td colspan="10" class="empty">لا توجد عمليات مطابقة</td></tr>`;
   return list.map(e=>{
     const def = expTxnDef(e);
@@ -18807,7 +18862,7 @@ function attMissingCardHTML(){
     <div class="dsec" style="${rv.length?'color:var(--danger)':''}">🔴 بصمات ناقصة وأيام محتاجة مراجعة (${rv.length})</div>
     ${rv.length?`<div class="muted" style="font-size:12px;margin-bottom:8px">كمّل الوقت الناقص واكتب السبب (نسي يبصم · مأمورية · إذن …). التصحيح بيتسجل باسمك، وبصمة الجهاز الأصلية بتفضل محفوظة زي ما هي.</div>
     <div style="overflow-x:auto;max-height:360px;overflow-y:auto"><table><thead><tr><th>الموظف</th><th>اليوم</th><th>المشكلة</th><th>الموجود</th><th></th></tr></thead>
-      <tbody>${rv.slice(0,200).map(row).join('')}</tbody></table></div>`:`<div class="muted" style="font-size:12px">مفيش بصمات ناقصة ✅</div>`}
+      <tbody>${pgSlice('attMiss', rv).map(row).join('')}${pgRowHTML('attMiss', rv.length, 5)}</tbody></table></div>`:`<div class="muted" style="font-size:12px">مفيش بصمات ناقصة ✅</div>`}
     ${excusedN?`<div style="font-size:11.5px;margin-top:8px;color:var(--success)">✅ ${excusedN} بصمة ناقصة متغطية بمأمورية أو إذن انصراف معتمد — مش محتاجة تكملة ومش هتتخصم.</div>`:''}
     ${ed.length?`<div class="muted" style="font-size:11.5px;margin-top:8px">⏳ ${ed.length} يوم برّه فترة الملفات اللي اترفعت (زي خروج بعد نص الليل تبع يوم قبل الملف) — هيكملوا لوحدهم لما ترفع ملف الأيام دي.</div>`:''}
   </div>`;
@@ -18876,7 +18931,7 @@ function renderAttReview(){
   </div>
   <div class="card" style="overflow-x:auto">
     <table><thead><tr><th>الموظف</th><th>التاريخ</th><th>النوع</th><th>دخول</th><th>خروج</th><th>ساعات فعلية</th><th>أساسي</th><th>إضافي</th><th>تأخير</th><th>الحالة</th><th></th></tr></thead>
-    <tbody>${sessions.length? sessions.slice(0,300).map(s=>`<tr ${s.status==='review'?'style="background:rgba(220,50,50,.06)"':''}>
+    <tbody>${sessions.length? pgSlice(pgKey('attRv', [attReviewFilter]), sessions).map(s=>`<tr ${s.status==='review'?'style="background:rgba(220,50,50,.06)"':''}>
       <td style="font-weight:600">${empName(s.empId)}</td>
       <td style="white-space:nowrap">${attDayLabel(s.dateStr, true)}</td>
       <td>${s.mode==='fixed'?'<span class="tag tag-inspect">ثابت</span>':'<span class="tag tag-ready">مرن</span>'}${s.manual?' <span class="tag tag-working" style="font-size:9px">مُصحّح</span>':''}</td>
@@ -18891,7 +18946,7 @@ function renderAttReview(){
     </tr>`).join('') + `<tr style="font-weight:800;background:var(--surface-2)"><td colspan="5">الإجمالي (${T.n} يوم${f.emp ? '' : ' — كل الموظفين'})</td>
       <td>${fmtMins(T.w)}</td><td>${fmtMins(T.r)}</td><td style="color:var(--success)">${fmtMins(T.o)}</td><td style="color:var(--danger)">${fmtMins(T.l)}</td><td colspan="2">الصافي: ${fmtNetMins(T.o - T.l)}</td></tr>`
       : `<tr><td colspan="11" class="empty">مفيش سجلات حضور مطابقة</td></tr>`}</tbody></table>
-    ${sessions.length>300?`<div class="muted" style="font-size:11.5px;margin-top:6px">بيتعرض أول 300 — الإجمالي محسوب على الكل (${T.n} يوم).</div>`:''}
+    ${pgCtlHTML(pgKey('attRv', [attReviewFilter]), sessions.length)}
   </div>`;
 }
 /* م217: فترات سريعة — الأسبوع عندنا بيبدأ السبت */
@@ -21303,9 +21358,10 @@ function renderToolsOut(){
   </div>`;
 }
 function renderToolsLog(){
-  const moves = [...DB.toolMoves].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,200);
+  const allMv229 = [...DB.toolMoves].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const moves = pgSlice('toolLog', allMv229);   /* م229 */
   return `
-  <div class="section-head"><h3>📋 سجل حركة العدد (آخر ${moves.length})</h3></div>
+  <div class="section-head"><h3>📋 سجل حركة العدد (${allMv229.length})</h3></div>
   <div class="card">
     <table><thead><tr><th>الوقت</th><th>الحركة</th><th>العدة</th><th>الفني</th><th>المدة</th><th>الحالة عند الاستلام</th><th>بواسطة</th></tr></thead>
     <tbody>${moves.length? moves.map(m=>{
@@ -21319,7 +21375,7 @@ function renderToolsLog(){
         <td>${m.condition||'—'}</td>
         <td class="muted" style="font-size:11.5px">${m.actor||'—'}</td>
       </tr>`;
-    }).join('') : `<tr><td colspan="7" class="empty">مفيش حركات مسجلة</td></tr>`}
+    }).join('') + pgRowHTML('toolLog', allMv229.length, 7) : `<tr><td colspan="7" class="empty">مفيش حركات مسجلة</td></tr>`}
     </tbody></table>
   </div>`;
 }
@@ -22742,7 +22798,7 @@ function renderInvAnalysis(){
         : (invAnalTab==='near' ? '<th>حد الأمان</th><th>الحالة</th>'
         : (invAnalTab==='zero' ? '<th>حد الأمان</th><th>آخر صرف</th>' : '<th>آخر تاريخ صرف</th><th>عدد أيام الركود</th>'))}
       <th></th></tr></thead>
-    <tbody>${list.length ? list.map(r=>`<tr>
+    <tbody>${list.length ? pgSlice(pgKey('anal', [invAnalTab, invAnalWh]), list).map(r=>`<tr>
       <td class="muted" style="font-size:11.5px">${r.part.sku||'—'}</td>
       <td style="font-weight:700">${r.part.name}</td>
       <td class="muted" style="font-size:12px">${r.part.category||'—'}</td>
@@ -22773,7 +22829,7 @@ function renderInvAnalysis(){
             : `<td class="muted" style="white-space:nowrap;font-size:12px">${r.lastOut?fmtDate(r.lastOut):'<span style="color:var(--danger)">مااتصرفش خالص</span>'}</td>
              <td style="font-weight:800;color:var(--danger)">${r.stagnantDays!==null?r.stagnantDays+' يوم':'—'}</td>`))}
       <td><button class="btn btn-sm" onclick="openPartAnalysis('${r.part.id}')">🔬 تحليل</button></td>
-    </tr>`).join('') : `<tr><td colspan="11" class="empty">${
+    </tr>`).join('') + pgRowHTML(pgKey('anal', [invAnalTab, invAnalWh]), list.length, 11) : `<tr><td colspan="11" class="empty">${
       invAnalTab==='fast' ? 'مفيش أصناف سريعة الحركة بالحد الحالي'
       : (invAnalTab==='near' ? 'مفيش أصناف قرّبت تخلص 👏'
       : (invAnalTab==='zero' ? 'مفيش أصناف متصفرة 👏' : 'مفيش أصناف راكدة 👏'))}</td></tr>`}</tbody></table>
@@ -23852,7 +23908,7 @@ function renderNotifications(){
   ${(P==='largeDisc' && largeDiscInv.length)?`
   <div class="section-head"><h3>🏷️ فواتير بخصم عالي (≥ ${s.largeDiscountPct||15}%)</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الفاتورة</th><th>العميل</th><th>التاريخ</th><th>الإجمالي</th><th>الخصم</th><th>النسبة</th><th></th></tr></thead>
-  <tbody>${largeDiscInv.slice(0,60).map(i=>{ const cu = DB.customers.find(c=>c.id===i.customerId);
+  <tbody>${pgSlice('nLD', largeDiscInv).map(i=>{ const cu = DB.customers.find(c=>c.id===i.customerId);
     const pct = i.subtotal>0 ? (i.discount/i.subtotal*100) : 0;
     /* م121: Workflow بنفس تجربة سجل الإشعارات — فتح السجل + 3 زراير تحت السطر */
     return `<tr><td>#${i.invNo}</td><td>${cu?cu.name:'—'}</td><td style="white-space:nowrap">${fmtDate(i.date)}</td>
@@ -23860,14 +23916,14 @@ function renderNotifications(){
     <td style="color:var(--danger);font-weight:800">${pct.toFixed(0)}%</td>
     <td style="white-space:nowrap"><button class="btn btn-sm btn-accent" onclick="openInvoiceHistory('${i.id}')">↗ فتح السجل</button></td></tr>
     <tr><td colspan="7" style="padding-top:0;border-bottom:2px solid var(--border)">${wfRowControls('largeDisc', i.id, 'فاتورة #'+i.invNo+' بخصم '+pct.toFixed(0)+'%', Number(i.discount)||0, 'invoice', i.id, i.invNo)}</td></tr>`;
-  }).join('')}</tbody></table></div>`:''}
+  }).join('')}${pgRowHTML('nLD', largeDiscInv.length, 7)}</tbody></table></div>`:''}
   ${(P==='lowStk' && lowStk.length)?`
   <div class="section-head"><h3>⚠️ قطع تحت حد الأمان (${lowStk.length})</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الصنف</th><th>المخزن</th><th>الرصيد</th><th>الحد الأدنى</th><th></th></tr></thead>
-  <tbody>${lowStk.slice(0,80).map(p=>`<tr><td style="font-weight:700">${p.name}</td>
+  <tbody>${pgSlice('nLow', lowStk).map(p=>`<tr><td style="font-weight:700">${p.name}</td>
     <td><span class="tag tag-inspect">${whName(partWhId(p))}</span></td>
     <td style="color:var(--danger);font-weight:800">${p.qty} ${p.unit||''}</td><td>${p.minQty||0}</td>
-    <td><button class="btn btn-sm" onclick="openItemCard('${p.id}')">📇 كارت الصنف</button></td></tr>`).join('')}</tbody></table></div>`:''}
+    <td><button class="btn btn-sm" onclick="openItemCard('${p.id}')">📇 كارت الصنف</button></td></tr>`).join('')}${pgRowHTML('nLow', lowStk.length, 5)}</tbody></table></div>`:''}
   ${(P==='overCust' && overCust.length)?`
   <div class="section-head"><h3>👛 عهد مفتوحة متأخرة (+${CUSTODY_OVERDUE_HOURS} ساعة)</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>العهدة</th><th>الموظف</th><th>المبلغ</th><th>مفتوحة من</th><th></th></tr></thead>
@@ -23976,7 +24032,8 @@ function renderNotifications(){
   <div class="card">
     <table><thead><tr><th>الأولوية</th><th>القسم</th><th>الإجراء</th><th>المستخدم</th><th>الوقت</th><th>الحالة</th><th></th></tr></thead>
     <tbody>${(()=>{ const shown = (P==='unseen' ? list.filter(n=>!n.seen) : list);
-      return shown.length? shown.slice(0,120).map(n=>{
+      const k229 = pgKey('notif', [P, notifFilter, notifDateFrom, notifDateTo, notifShowArchived, notifShowFollow]);   /* م229 */
+      return shown.length? pgSlice(k229, shown).map(n=>{
       /* ============ الملاحظة 75: الإجراءات تحت كل إشعار مباشرة (واجهة فقط) ============
          اتشال زرار «تفاصيل» — و«تعليق / تمت المراجعة / متابعة» اتنقلوا من نافذة
          التفاصيل لتحت الإشعار نفسه. الوظائف والصلاحيات والسجل كلهم زي ما هم. */
@@ -24012,7 +24069,7 @@ function renderNotifications(){
              <button class="btn btn-sm btn-danger" onclick="setNotifStatus('${n.id}','followup')">⚠ متابعة</button>`}
       </div>`:''}
     </td></tr>`;
-    }).join('') : `<tr><td colspan="7" class="empty">مفيش إشعارات — كله تمام 👏</td></tr>`; })()}
+    }).join('') + pgRowHTML(k229, shown.length, 7) : `<tr><td colspan="7" class="empty">مفيش إشعارات — كله تمام 👏</td></tr>`; })()}
     </tbody></table>
   </div>`:''}`;
 }
@@ -24213,10 +24270,10 @@ let auditFilters = { actor:'', text:'', dateFrom:'', dateTo:'', refNo:'' };
    عند الطلب وبنحطها في مصفوفة عرض منفصلة (مش DB.activityLog — عشان الحفظ
    بالفروقات مايتلغبطش). والعرض بأحدث 300 + «عرض المزيد» زي حركة المخزن. */
 const AUDIT_WINDOW_DAYS = 30;
-let auditShowLimit = 300;
+let auditShowLimit = 100;   /* م229: كانت 300 */
 let _auditOldRows = [];
 let _auditFetchState = { from:'', to:'', loading:false, error:false };
-function auditShowMore(){ auditShowLimit += 300; const b=document.getElementById('auditTableBody'); if(b) b.innerHTML = auditRowsHTML(); }
+function auditShowMore(){ auditShowLimit += 100; const b=document.getElementById('auditTableBody'); if(b) b.innerHTML = auditRowsHTML(); }
 function _auditNeedsFetch(){
   const f = auditFilters.dateFrom;
   if(!f) return false;
@@ -24279,7 +24336,7 @@ function renderActivityLog(){
   </div>`;
 }
 function refreshAuditTable(){
-  auditShowLimit = 300;   // م124: أي تغيير فلتر يرجّع للصفحة الأولى
+  auditShowLimit = 100;   // م124: أي تغيير فلتر يرجّع للصفحة الأولى
   if(_auditNeedsFetch()) _fetchOldAudit();   // بيحدّث الجدول بنفسه لما يخلص
   const b=document.getElementById('auditTableBody'); if(b) b.innerHTML = auditRowsHTML();
 }
@@ -24308,7 +24365,8 @@ function auditRowsHTML(){
       <button class="btn btn-sm" onclick="refreshAuditTable()">إعادة المحاولة</button></td></tr>`;
   else if(list.length > shown.length)
     extraRow = `<tr><td colspan="4" style="text-align:center;padding:10px">
-      <button class="btn btn-sm" onclick="auditShowMore()">عرض المزيد (باقي ${(list.length-shown.length).toLocaleString('ar-EG')} عملية)</button></td></tr>`;
+      <button class="btn btn-sm btn-accent" onclick="auditShowMore()">⬇ تحميل المزيد (${Math.min(100, list.length-shown.length)} كمان)</button>
+      <button class="btn btn-sm" onclick="auditShowLimit=Infinity;auditShowMore()">عرض الكل (${list.length.toLocaleString('ar-EG')})</button></td></tr>`;
   if(shown.length===0 && !extraRow) return `<tr><td colspan="4" class="empty">لا توجد عمليات مطابقة</td></tr>`;
   return shown.map(l=>`<tr>
     <td style="white-space:nowrap">${fmtDateTime(l.date)}</td>
