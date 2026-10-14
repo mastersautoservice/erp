@@ -738,7 +738,17 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
           const it = localArr[i];
           if(it && it.id && tomb.has(it.id)){
             localArr.splice(i, 1);
-            blocked.push({ key, rowId:u.id, field:f, name:(it.name||it.id) });
+            /* م224: البند اترجع بالكامل من جهاز تاني — بس الجهاز ده كان جمّع عليه صرف جديد ⇒
+               الصرف الجديد بس بيفضل على الأمر (بند جديد) عشان القطعة اللي خرجت تتحاسب */
+            const bIt = (base && Array.isArray(base[f])) ? base[f].find(x=>x && x.id===it.id) : null;
+            const bMv = new Set(((bIt && Array.isArray(bIt.issues)) ? bIt.issues : []).map(x=>x && x.moveId).filter(Boolean));
+            const fresh = (Array.isArray(it.issues) ? it.issues : []).filter(x=>x && x.moveId && !bMv.has(x.moveId));
+            if(fresh.length){
+              const fq = Math.round(fresh.reduce((s, x)=>s + (+x.qty || 0), 0) * 1000) / 1000;
+              localArr.push(Object.assign({}, it, { id:uid('it'), qty:fq, issues:fresh, addedAt:fresh[0].at, addedByName:fresh[0].by || it.addedByName,
+                unitPrice:Math.max(...fresh.map(x=>+x.price || 0)), costPrice:Math.max(...fresh.map(x=>+x.cost || 0)) }));
+              rescued.push({ key, rowId:u.id, field:f, name:(it.name||it.id) });
+            } else blocked.push({ key, rowId:u.id, field:f, name:(it.name||it.id) });
             changed = true;
           }
         }
@@ -757,6 +767,20 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
           const sb0 = _mergeCanon(b0), sl = _mergeCanon(localArr[i]), sr = _mergeCanon(it);
           if(sl === sb0 && sr !== sb0){
             localArr[i] = JSON.parse(JSON.stringify(it));
+            window._mergeAdopted++;
+            changed = true;
+          } else if(sl !== sb0 && sr !== sb0 && sl !== sr && (Array.isArray(localArr[i].issues) || Array.isArray(it.issues)) && typeof b0.qty === 'number'){
+            /* م224: البند اتعدّل من الجهازين (صرف اتجمع عليه هنا، وصرف أو مرتجع هناك) ⇒
+               الكمية = بتاعتنا + بتاعتهم − اللي كانت (مايضيعش صرف ولا مرتجع) · مرات الصرف بتتضم */
+            const L = localArr[i];
+            const q = Math.round(((+L.qty || 0) + (+it.qty || 0) - (+b0.qty || 0)) * 1000) / 1000;
+            const seen = new Set(), iss = [];
+            [...(Array.isArray(it.issues) ? it.issues : []), ...(Array.isArray(L.issues) ? L.issues : [])].forEach(x=>{
+              const k = x && (x.moveId || ('b|' + x.at + '|' + x.qty)); if(k && !seen.has(k)){ seen.add(k); iss.push(x); } });
+            iss.sort((a, b)=>new Date(a.at || 0) - new Date(b.at || 0));
+            const pick = f => (L[f] !== b0[f] && it[f] !== b0[f]) ? Math.max(+L[f] || 0, +it[f] || 0) : (L[f] !== b0[f] ? L[f] : it[f]);
+            if(q > 0) L.qty = q;
+            L.issues = iss; L.unitPrice = pick('unitPrice'); L.costPrice = pick('costPrice');
             window._mergeAdopted++;
             changed = true;
           }
@@ -896,7 +920,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v243';
+const APP_VERSION = 'v248';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -3959,9 +3983,21 @@ function itemAgeText(at){
 }
 function itemStampHTML(st, it, opts){
   const verb = (it.kind==='part' || it.kind==='ext_part') ? 'اتصرفت' : 'اتسجلت';
+  const noBy = !!(opts && opts.noBy);   /* م208: نسخة خدمة العملاء — من غير اسم الموظف */
+  /* م224: البند اللي اتجمع من كذا صرفة ⇒ كل صرفة بكميتها ووقتها ومين صرفها */
+  if(it && Array.isArray(it.issues) && it.issues.length > 1){
+    const n = it.issues.length, last = it.issues[n - 1];
+    let pd = '', pb = '';   /* نفس اليوم ⇒ الساعة بس · نفس الموظف ⇒ مايتكررش */
+    const one = x => { const d2 = x.at ? new Date(x.at) : null; let s = '<b>' + (+x.qty || 0) + '</b>';
+      if(d2){ const dk = d2.toDateString();
+        const when = dk === pd ? d2.toLocaleTimeString('ar-EG', { hour:'2-digit', minute:'2-digit' }) : (AR_DAYS188[d2.getDay()] || '') + ' ' + fmtDateTime(x.at);
+        const who = (!noBy && x.by && x.by !== pb) ? ' · ' + _joEsc(x.by) : '';
+        pd = dk; if(x.by) pb = x.by; s += ' (' + when + who + ')'; }
+      return s; };
+    return `<div class="muted it-stamp" style="white-space:normal">🕒 ${verb} ${n === 2 ? 'مرتين' : n + ' مرات'}: ${it.issues.map(one).join(' + ')}${last && last.at ? ' · آخر صرف ' + itemAgeText(last.at) : ''}</div>`;
+  }
   if(!st) return `<div class="muted it-stamp">🕒 ${verb}: —</div>`;
   const d = new Date(st.at);
-  const noBy = !!(opts && opts.noBy);   /* م208: نسخة خدمة العملاء — من غير اسم الموظف */
   return `<div class="muted it-stamp">🕒 ${verb}: <b>${AR_DAYS188[d.getDay()] || ''} ${fmtDateTime(st.at)}</b>`
     + ` · ${itemAgeText(st.at)}${!noBy && st.by ? ' · ' + _joEsc(st.by) : ''}</div>`;
 }
@@ -4821,13 +4857,39 @@ function handoverCSS(){
    والمخزن والحسابات مابيتلمسوش خالص. التعديلات بتتحفظ في خانات خاصة بالإقرار
    (handoverNames · handoverHidden · handoverExtra · handoverReceiver) عشان إعادة
    الطباعة تطلع بنفس الشكل — ومحدش في السيستم بيقراهم غير الإقرار. */
+/* ============ م227: «إقرار استلام سيارة بعد الإصلاح» — تعديلات سيف على الورقة ============
+   • الشركة: «إستلمت أنا / ...» فاضية يكتب فيها المندوب اسمه + «ممثلاً لشركة / اسم الشركة».
+     الفرد: «إستلمت أنا / اسمه» + «نوع العميل : فرد» زي الأول.
+   • «وقد تم استلام قطع الغيار التالفة / المبدلة حسب البيان التالي» بدل «بنود الصيانة».
+   • البنود = قطع الغيار المبدّلة بس — الزيوت والسبريهات (والشحم والفريون ومية التبريد والمنظفات)
+     مابتظهرش لوحدها، وتقدر ترجّع أي واحدة منهم من النافذة (↩️ رجّعه). */
+function hvConsumable227(name){
+  const n = String(name || '').trim();
+  return /^(لتر|عبو[ةه]|جركن|جالون|علب[ةه]|كيس)?\s*(زيت|شحم|فريون|مي[اةه]+\s*(تبريد|رادياتير|ردياتير))/.test(n)
+    || /(ا?سبر[اي]ي|سبراى|بخاخ|spray|فريون|منظف|كلينر|cleaner)/i.test(n);
+}
+/* المحذوف من الإقرار = اللي اتحذف بإيد + الزيوت والسبريهات (إلا اللي اترجّع بإيد) */
+function hvHiddenSet227(job, hidden, shown){
+  const sh = new Set(shown || []);
+  const out = new Set(hidden || []);
+  handoverParts(job).forEach(it=>{ if(!sh.has(it.id) && hvConsumable227(handoverName(job, it))) out.add(it.id); });
+  return out;
+}
+function hvReceiverOf227(job, cust){
+  const isCo = (cust.custType || '') === 'شركة';
+  if(job.handoverReceiver != null){
+    const r = String(job.handoverReceiver).trim();
+    return (isCo && r === String(cust.name || '').trim()) ? '' : r;   // الشركة: المندوب بيكتب اسمه — مش اسم الشركة
+  }
+  return isCo ? '' : String(cust.name || '').trim();
+}
 function handoverView(job){
   const cust = DB.customers.find(c=>c.id===job.customerId) || {};
-  const hidden = new Set(job.handoverHidden || []);
+  const hidden = hvHiddenSet227(job, job.handoverHidden, job.handoverShown);
   const items = handoverParts(job).filter(it=>!hidden.has(it.id)).map(it=>handoverName(job, it))
     .concat((job.handoverExtra || []).map(x=>String(x.name || '').trim()).filter(Boolean));
-  const receiver = job.handoverReceiver != null ? String(job.handoverReceiver).trim() : String(cust.name || '').trim();
-  return { items, receiver, custType: cust.custType || 'فرد' };
+  const receiver = hvReceiverOf227(job, cust);
+  return { items, receiver, custType: cust.custType || 'فرد', isCo: (cust.custType || '') === 'شركة', company: String(cust.name || '').trim() };
 }
 function handoverHTML(job){
   const car  = DB.cars.find(c=>c.id===job.carId) || {};
@@ -4840,22 +4902,23 @@ function handoverHTML(job){
   <div class="binv">
     <div class="binv-head">
       <div>
-        <p class="binv-title">إقرار استلام سيارة</p>
+        <p class="binv-title">إقرار استلام سيارة بعد الإصلاح</p>
         <div style="font-size:13px;color:#555">${s.centerName}</div>
       </div>
       <img src="${LOGO}" alt="logo">
     </div>
-    <div style="text-align:center"><span class="hv-title">إقــرار إســتلام ســيارة للإصلاح</span></div>
+    <div style="text-align:center"><span class="hv-title">إقــرار إســتلام ســيارة بعد الإصلاح</span></div>
     <div class="hv-body">
       إنه فى يوم <span class="hv-fill" style="min-width:120px">${AR_DAYS188[now.getDay()] || ''}</span>
       &nbsp; الموافق : <span class="hv-fill" style="min-width:160px">${now.getDate()} / ${now.getMonth()+1} / ${now.getFullYear()}</span><br>
       إستلمت أنا / ${v.receiver ? `<span class="hv-fill" style="min-width:300px">${_joEsc(v.receiver)}</span>` : `<span class="hv-blank" style="min-width:300px"></span>`}
-      &nbsp; نوع العميل : <span class="hv-fill" style="min-width:90px">${_joEsc(v.custType)}</span><br>
-      بأننى قد تسلمت سيارة ماركة / <span class="hv-fill" style="min-width:220px">${make}</span>
-      &nbsp; لوحات رقم / <span class="hv-fill" style="min-width:180px">${car.plate || '—'}</span><br>
+      ${v.isCo ? `<br>ممثلاً لشركة / <span class="hv-fill" style="min-width:360px">${_joEsc(v.company)}</span>`
+        : `&nbsp; نوع العميل : <span class="hv-fill" style="min-width:90px">${_joEsc(v.custType)}</span>`}<br>
+      سيارة ماركة / <span class="hv-fill" style="min-width:190px">${make}</span>
+      &nbsp; لوحات رقم / <span class="hv-fill" style="min-width:130px">${car.plate || '—'}</span><br>
       وذلك بعد اتمام الاصلاح بمركز ماسترز لصيانة السيارات بالعبور و السيارة بحالة جيده ..
     </div>
-    <div class="hv-sec">بنود الصيانة</div>
+    <div style="font-size:15px;font-weight:800;margin:14px 0 10px">وقد تم استلام قطع الغيار التالفة / المبدلة حسب البيان التالي:</div>
     ${v.items.length ? `<table class="hv-list"><tbody>
       ${v.items.map((nm,i)=>`<tr><td style="width:42px;text-align:center">${i+1}</td><td>${_joEsc(nm)}</td></tr>`).join('')}
     </tbody></table>` : `<div style="font-size:13.5px;color:#777">—</div>`}
@@ -4876,21 +4939,23 @@ function openHandoverModal(jobId){
   const car = DB.cars.find(c=>c.id===job.carId) || {};
   const cust = DB.customers.find(c=>c.id===job.customerId) || {};
   const now = new Date();
-  _hv200 = { jobId, hidden: [...(job.handoverHidden || [])],
+  _hv200 = { jobId, hidden: [...(job.handoverHidden || [])], shown: [...(job.handoverShown || [])],
     extra: (job.handoverExtra || []).map(x=>({ id:x.id, name:x.name })) };
-  const receiver = job.handoverReceiver != null ? job.handoverReceiver : (cust.name || '');
+  const receiver = hvReceiverOf227(job, cust);   /* م227 */
+  const isCo = (cust.custType || '') === 'شركة';
   openModal(`
-    <h3>🧾 إقرار استلام سيارة — أمر شغل #${job.jobNo}</h3>
+    <h3>🧾 إقرار استلام سيارة بعد الإصلاح — أمر شغل #${job.jobNo}</h3>
     <div class="muted" style="font-size:12.5px;margin-bottom:10px">${carLabel(car)} · لوحات ${car.plate || '—'}</div>
     <div class="card" style="padding:11px 13px;margin-bottom:12px;font-size:12.5px;line-height:2.3">
       إنه فى يوم <b>${AR_DAYS188[now.getDay()] || ''}</b> الموافق : <b>${now.getDate()} / ${now.getMonth()+1} / ${now.getFullYear()}</b><br>
-      إستلمت أنا / <input class="f" id="hvReceiver" value="${_joEsc(receiver)}" placeholder="اسم المستلم (لو فاضي بيتكتب باليد)"
+      إستلمت أنا / <input class="f" id="hvReceiver" value="${_joEsc(receiver)}" placeholder="${isCo ? 'اسم المندوب أو السواق (لو فاضي بيتكتب باليد)' : 'اسم المستلم (لو فاضي بيتكتب باليد)'}"
         style="display:inline-block;width:auto;min-width:230px;padding:6px 10px">
-      &nbsp; نوع العميل : <b>${_joEsc(cust.custType || 'فرد')}</b><br>
-      بأننى قد تسلمت سيارة ماركة / <b>${[car.make, car.model].filter(Boolean).join(' ') || '—'}</b> لوحات رقم / <b>${car.plate || '—'}</b><br>
-      وذلك بعد اتمام الاصلاح بمركز ماسترز لصيانة السيارات بالعبور و السيارة بحالة جيده ..
+      ${isCo ? `<br>ممثلاً لشركة / <b>${_joEsc(cust.name || '')}</b>` : `&nbsp; نوع العميل : <b>${_joEsc(cust.custType || 'فرد')}</b>`}<br>
+      سيارة ماركة / <b>${[car.make, car.model].filter(Boolean).join(' ') || '—'}</b> لوحات رقم / <b>${car.plate || '—'}</b><br>
+      وذلك بعد اتمام الاصلاح بمركز ماسترز لصيانة السيارات بالعبور و السيارة بحالة جيده ..<br>
+      <b>وقد تم استلام قطع الغيار التالفة / المبدلة حسب البيان التالي:</b>
     </div>
-    <div class="dsec">بنود الصيانة في الإقرار</div>
+    <div class="dsec">قطع الغيار المبدّلة في الإقرار <span class="muted" style="font-size:11px;font-weight:400">— الزيوت والسبريهات مش بتظهر (تقدر ترجّع أي واحدة)</span></div>
     <div id="hvItems">${handoverItemsEditorHTML(job)}</div>
     <div style="display:flex;gap:6px;margin:8px 0 4px">
       <input class="f" id="hvNewItem" placeholder="➕ اكتب بند عايز العميل يمضي عليه" onkeydown="if(event.key==='Enter')handoverAddItem()">
@@ -4918,14 +4983,15 @@ function _hvSyncFromInputs(job){
   });
 }
 function handoverItemsEditorHTML(job){
-  const st = _hv200 || { hidden:[], extra:[] };
+  const st = _hv200 || { hidden:[], shown:[], extra:[] };
   const names = st.names || {};
-  const hidden = new Set(st.hidden);
+  const hidden = hvHiddenSet227(job, st.hidden, st.shown);   /* م227 */
+  const manual = new Set(st.hidden);
   const parts = handoverParts(job);
   const rows = parts.map((it, i)=>{
     const nm = names[it.id] != null ? names[it.id] : handoverName(job, it);
     if(hidden.has(it.id)) return `<div class="form-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;opacity:.6">
-        <div style="flex:1;padding:8px 10px;font-size:13px"><s>${_joEsc(nm)}</s> <span class="muted" style="font-size:11.5px">— محذوف من الإقرار</span></div>
+        <div style="flex:1;padding:8px 10px;font-size:13px"><s>${_joEsc(nm)}</s> <span class="muted" style="font-size:11.5px">— ${manual.has(it.id) ? 'محذوف من الإقرار' : 'زيوت وسبريهات مابتظهرش في الإقرار'}</span></div>
         <button class="btn btn-sm" onclick="handoverToggleItem('${_joEsc(it.id)}')">↩️ رجّعه</button></div>`;
     return `<div class="form-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
         <input class="f" id="hv188_${i}" value="${_joEsc(nm)}" style="flex:1">
@@ -4946,8 +5012,13 @@ function handoverToggleItem(itemId){
   const job = _hv200 && DB.jobs.find(j=>j.id===_hv200.jobId);
   if(!job) return;
   _hvSyncFromInputs(job);
-  const i = _hv200.hidden.indexOf(itemId);
-  if(i >= 0) _hv200.hidden.splice(i, 1); else _hv200.hidden.push(itemId);
+  /* م227: الزيت/السبراي اللي اتشال لوحده لما يترجّع بيتسجل «اترجّع بإيد» */
+  _hv200.shown = _hv200.shown || [];
+  const isHidden = hvHiddenSet227(job, _hv200.hidden, _hv200.shown).has(itemId);
+  _hv200.hidden = _hv200.hidden.filter(x=>x!==itemId);
+  _hv200.shown = _hv200.shown.filter(x=>x!==itemId);
+  if(!isHidden) _hv200.hidden.push(itemId);
+  else { const it = handoverParts(job).find(x=>x.id===itemId); if(it && hvConsumable227(handoverName(job, it))) _hv200.shown.push(itemId); }
   _hvRerender();
 }
 function handoverAddItem(){
@@ -4987,13 +5058,15 @@ async function _handoverGo(jobId, download){
   if(open){
     _hvSyncFromInputs(job);
     const hidden = _hv200.hidden.filter(id=>handoverParts(job).some(it=>it.id===id));
+    const shown = (_hv200.shown || []).filter(id=>handoverParts(job).some(it=>it.id===id));   /* م227 */
     const extra = _hv200.extra.map(x=>({ id:x.id, name:String(x.name || '').trim() })).filter(x=>x.name);
     if(JSON.stringify(hidden) !== JSON.stringify(job.handoverHidden || [])){ job.handoverHidden = hidden; changed = true; }
+    if(JSON.stringify(shown) !== JSON.stringify(job.handoverShown || [])){ job.handoverShown = shown; changed = true; }
     if(JSON.stringify(extra) !== JSON.stringify(job.handoverExtra || [])){ job.handoverExtra = extra; changed = true; }
     const recEl = document.getElementById('hvReceiver');
     if(recEl){
       const rec = String(recEl.value || '').trim();
-      const cur = job.handoverReceiver != null ? job.handoverReceiver : (cust.name || '');
+      const cur = hvReceiverOf227(job, cust);   /* م227 */
       if(rec !== cur){ job.handoverReceiver = rec; changed = true; }
     }
   }
@@ -9511,13 +9584,34 @@ async function issuePartToJob(job, p, qty, opts){
   let issueCost = (reval179 && reval179.to>0 && (!lp179.date || new Date(reval179.at) > new Date(lp179.date))) ? reval179.to : lp179.price;
   const resCost206 = resLinksCost(links206, qty);   /* م206 */
   if(resCost206 !== null) issueCost = resCost206;
-  const newItem = {id:uid('it'), kind:'part', name:p.name, qty, unitPrice:p.sellPrice, costPrice:issueCost, partId:p.id, addedAt:new Date().toISOString(),
-    addedByName: actorName()};   /* م149 */
-  job.items.push(newItem);
+  /* ============ م224: نفس القطعة على نفس الأمر = بند واحد والكمية بتتزوّد ============
+     طلب سيف: «زيت فتيس 2 وبعدين 1 وبعدين 1» كان بيبقى 3 بنود ⇒ دلوقتي بند واحد 4 لتر.
+     • نفس الصنف بالظبط (نفس الكود ونفس المخزن = نفس partId). مخزن تاني ⇒ بند لوحده
+       (المرتجع بيرجع للمخزن اللي خرجت منه).
+     • سعر البيع والتكلفة لو اختلفوا ⇒ الأعلى (قرار سيف — المحاسب بيظبط سعر البيع وقت الفاتورة).
+     • كل صرفة بتتسجل في issues على البند (الكمية · الوقت · مين · التكلفة · السعر · الحركة)
+       وبتفضل حركة مخزن لوحدها. البنود القديمة المتكررة مابتتلمسش (قرار سيف) — الصرف الجديد
+       بيتجمع على آخر بند لنفس القطعة. */
+  const nowIso224 = new Date().toISOString(), mvId224 = uid('mv');
+  const mergeLine = (job.items || []).slice().reverse().find(it=>it && it.kind==='part' && it.partId===p.id) || null;
+  let newItem = null, before224 = null;
+  if(mergeLine){
+    before224 = JSON.parse(JSON.stringify(mergeLine));
+    if(!Array.isArray(mergeLine.issues) || !mergeLine.issues.length)
+      mergeLine.issues = [{ qty:mergeLine.qty, at:mergeLine.addedAt || null, by:mergeLine.addedByName || '', cost:mergeLine.costPrice, price:mergeLine.unitPrice }];
+    mergeLine.issues.push({ qty, at:nowIso224, by:actorName(), cost:issueCost, price:p.sellPrice, moveId:mvId224 });
+    mergeLine.qty = Math.round(((+mergeLine.qty || 0) + qty) * 1000) / 1000;
+    mergeLine.unitPrice = Math.max(+mergeLine.unitPrice || 0, +p.sellPrice || 0);
+    mergeLine.costPrice = Math.max(+mergeLine.costPrice || 0, +issueCost || 0);
+  } else {
+    newItem = {id:uid('it'), kind:'part', name:p.name, qty, unitPrice:p.sellPrice, costPrice:issueCost, partId:p.id, addedAt:nowIso224,
+      addedByName: actorName()};   /* م149 */
+    job.items.push(newItem);
+  }
   const carDesc = car ? ` — السيارة: ${car.plate}${carLabel(car)?' / '+carLabel(car):''}` : '';
   /* م107: كل حركة صرف بتسجّل **المخزن اللي خرجت منه القطعة** — عشان أي
      مرتجع بعد كده يرجّعها لنفس المخزن تلقائياً من غير ما حد يختار. */
-  const newMove = {id:uid('mv'), partId:p.id, type:'out', qty, unitCost:issueCost, unitPrice:p.sellPrice,
+  const newMove = {id:mvId224, partId:p.id, type:'out', qty, unitCost:issueCost, unitPrice:p.sellPrice,
     warehouseId: partWhId(p),
     date:new Date().toISOString(), note:'صرف لأمر شغل #'+job.jobNo+carDesc, jobId:job.id, customerId:job.customerId, actor:actorName()};
   if(links206.length) newMove.resLinks = links206;   /* م206: الصرف ده بيقفل حجز الأمر */
@@ -9533,7 +9627,8 @@ async function issuePartToJob(job, p, qty, opts){
   try{
     await saveKey('jobs', DB.jobs);
   }catch(e){
-    job.items = job.items.filter(i=>i.id!==newItem.id);
+    if(mergeLine){ const ix = job.items.indexOf(mergeLine); if(ix >= 0) job.items[ix] = before224; }   /* م224 */
+    else job.items = job.items.filter(i=>i.id!==newItem.id);
     p.qty += qty;
     DB.stockMoves = DB.stockMoves.filter(m=>m.id!==newMove.id);
     toast('الحفظ فشل — العملية اترجعت بالكامل ومفيش حاجة اتخصمت. اتأكد من النت وجرّب تاني.', true);
@@ -9551,9 +9646,10 @@ async function issuePartToJob(job, p, qty, opts){
     refreshContent();
     return true;
   }
-  if(!opts.quiet){ toast('تم صرف القطعة لأمر الشغل #'+job.jobNo); refreshContent(); }
+  if(!opts.quiet){ toast(mergeLine ? 'اتضافت على البند الموجود «'+p.name+'» في أمر الشغل #'+job.jobNo+' — الكمية بقت '+mergeLine.qty : 'تم صرف القطعة لأمر الشغل #'+job.jobNo); refreshContent(); }
   await logAction('صرف '+qty+' من '+p.name+' لأمر الشغل #'+job.jobNo
-    +(opts.logSuffix || (links206.length ? ' — 📦 من الحجز' : '')));
+    +(opts.logSuffix || (links206.length ? ' — 📦 من الحجز' : ''))
+    +(mergeLine ? ' — اتجمعت على نفس البند (الكمية بقت '+mergeLine.qty+')' : ''));   /* م224 */
   return true;
 }
 
@@ -15610,7 +15706,11 @@ function downloadInvoice(invId){
    ومعلّم عليه رقم النسخة — مفيش إذن جديد بيتعمل ومفيش رقم بيتغيّر.
    النظام هو اللي بيحدد النوع من المتبقي: صفر ⇒ «مدفوعة بالكامل»،
    أكبر من صفر ⇒ «سداد جزئي» بإقرار والتزام وتوقيع الموظف المسؤول.
-   مفيش أي خانة للـSecurity — بيستلم الإذن للتحقق والسماح بالخروج بس. */
+   مفيش أي خانة للـSecurity — بيستلم الإذن للتحقق والسماح بالخروج بس.
+   م225 (تعديلات سيف على الورقة): العنوان «تصريح خروج سيارة» · المتبقي ⇒ «آجل» من غير مبلغ في الشريط ·
+   اتشال «الموقف المالي» · «بيانات العميل» من غير «تُكتب بخط اليد» وفوقها «وقد تم استلام السيارة بعد
+   الإصلاح والسيارة بحالة جيدة» · اتشال موعد السداد من بيانات العميل واتنقل للإقرار («بتاريخ ...») ·
+   «إقرار سداد مؤجل» · اتشالت خانة الموظف المسؤول بخط اليد — بيمضي تحت على الشمال بس. */
 function exitPermitCSS(){
   return brandedInvoiceCSS() + `
   .ep-status{padding:11px 16px;border-radius:8px;text-align:center;font-weight:900;font-size:17px;margin:12px 0;}
@@ -15625,7 +15725,22 @@ function exitPermitCSS(){
   .ep-sign > div{flex:1;text-align:center;font-size:12px;}
   .ep-sign .box{border-top:1.5px solid #333;margin-top:44px;padding-top:6px;font-weight:800;}
   .ep-copy{text-align:center;color:#a4131b;font-weight:800;font-size:12.5px;border:1.5px dashed #a4131b;padding:6px;border-radius:5px;margin-bottom:10px;}
-  .ep-foot{margin-top:14px;font-size:10.5px;color:#666;text-align:center;line-height:1.9;}`;
+  .ep-foot{margin-top:14px;font-size:10.5px;color:#666;text-align:center;line-height:1.9;}
+  /* م225: الورقة كلها في صفحة واحدة */
+  @page{size:A4;margin:9mm}
+  .ep .binv-head img{width:72px;}
+  .ep .binv-head{padding-bottom:8px;}
+  .ep .binv-title{font-size:23px;}
+  .ep .binv-meta{padding:9px 14px;margin:10px 0;}
+  .ep .ep-status{padding:8px 14px;margin:9px 0;font-size:16px;}
+  .ep .binv-info td{padding:6px 9px;}
+  .ep table:not(.binv-info) td,.ep table:not(.binv-info) th{padding:6px 9px;}
+  .ep .ep-sec{margin:11px 0 6px;padding:6px 11px;}
+  .ep .ep-hand{line-height:2.2;}
+  .ep .ep-legal{line-height:1.9;padding:8px 13px;font-size:12px;page-break-inside:avoid;break-inside:avoid;}
+  .ep .ep-sign{margin-top:12px;page-break-inside:avoid;break-inside:avoid;}
+  .ep .ep-sign .box{margin-top:30px;}
+  .ep .ep-foot{margin-top:10px;}`;
 }
 function exitPermitHTML(inv, p, copyNo){
   const cust = DB.customers.find(c=>c.id===inv.customerId) || {};
@@ -15636,23 +15751,22 @@ function exitPermitHTML(inv, p, copyNo){
   const works = (inv.items||[]).filter(it=>it && it.name);
   const line = (w)=>`<span class="ep-line" style="min-width:${w||170}px"></span>`;
   return `<style>${exitPermitCSS()}</style>
-  <div class="binv">
+  <div class="binv ep">
     <div class="binv-head">
       <div>
-        <p class="binv-title">إذن تصريح خروج سيارة</p>
+        <p class="binv-title">تصريح خروج سيارة</p>
         <div style="font-size:13px;color:#555">${s.centerName}</div>
       </div>
       <img src="${LOGO}" alt="logo">
     </div>
     ${copyNo > 1 ? `<div class="ep-copy">🔁 إعادة طباعة — نسخة رقم ${copyNo} · ${fmtDateTime(new Date().toISOString())}</div>` : ''}
     <div class="binv-meta">
-      <div><div class="lbl">إذن الخروج #</div><div class="val">${p.no}</div></div>
+      <div><div class="lbl">تصريح الخروج #</div><div class="val">${p.no}</div></div>
       <div><div class="lbl">الفاتورة #</div><div class="val">${inv.invNo}</div></div>
       <div><div class="lbl">أمر الشغل #</div><div class="val">${job ? job.jobNo : '—'}</div></div>
     </div>
     <div class="ep-status ${partial ? 'ep-partial' : 'ep-paid'}">
-      ${partial ? '⚠️ تصريح خروج — سداد جزئي' : '✅ تصريح خروج — مدفوعة بالكامل'}
-      ${partial ? `<span class="ep-due">المبلغ المتبقي: ${money(p.balance)}</span>` : ''}
+      ${partial ? '⚠️ تصريح خروج — آجل' : '✅ تصريح خروج — مدفوعة بالكامل'}
     </div>
     <table class="binv-info"><tbody>
       <tr>
@@ -15682,37 +15796,23 @@ function exitPermitHTML(inv, p, copyNo){
       </tbody>
     </table>
 
-    <div class="ep-sec">الموقف المالي وقت إصدار التصريح</div>
-    <table class="binv-info"><tbody>
-      <tr><td class="k">إجمالي الفاتورة</td><td class="v">${money(p.total)}</td>
-          <td class="k">إجمالي المدفوع</td><td class="v">${money(p.paid)}</td></tr>
-      <tr><td class="k">المتبقي</td><td class="v" style="color:${partial?'#a4131b':'#116b31'}">${money(p.balance)}</td>
-          <td class="k">حالة السداد</td><td class="v" style="color:${partial?'#a4131b':'#116b31'}">${partial ? 'مدفوعة جزئياً' : 'مدفوعة بالكامل'}</td></tr>
-    </tbody></table>
-
     ${partial ? `
-    <div class="ep-sec">بيانات العميل (تُكتب بخط اليد)</div>
+    <div class="ep-sec">بيانات العميل</div>
     <div class="ep-hand">
+      <b>وقد تم استلام السيارة بعد الإصلاح، والسيارة بحالة جيدة.</b><br>
       اسم العميل بالكامل: ${line(300)}<br>
       الرقم القومي: ${line(300)}<br>
-      رقم الهاتف: ${line(230)}<br>
-      تاريخ/موعد السداد المتفق عليه: ${line(230)}
+      رقم الهاتف: ${line(230)}
     </div>
 
-    <div class="ep-sec">إقرار والتزام بالسداد</div>
+    <div class="ep-sec">إقرار سداد مؤجل</div>
     <div class="ep-legal">
       أقر أنا العميل الموقّع أدناه باستلام السيارة رقم لوحة (<b>${car ? car.plate : '—'}</b>) من ${s.centerName}،
       مع وجود مبلغ مستحق قدره (<b>${money(p.balance)}</b>) فقط لا غير،
-      وأتعهد بسداد كامل المبلغ المتبقي للمركز وفقاً للاتفاق المبرم مع المركز.
+      وأتعهد بسداد كامل المبلغ المتبقي للمركز وفقاً للاتفاق المبرم مع المركز بتاريخ ${line(120)}.
       <br><br>
       وفي حالة عدم سداد المبلغ المستحق في الموعد المتفق عليه، يحتفظ المركز بحقه في اتخاذ الإجراءات القانونية
       اللازمة للمطالبة بالمبلغ المستحق، وفقاً للقوانين واللوائح المعمول بها.
-    </div>
-
-    <div class="ep-sec">الموظف المسؤول عن خروج السيارة (يُكتب بخط اليد)</div>
-    <div class="ep-hand">
-      الاسم: ${line(250)} &nbsp;&nbsp; التوقيع: ${line(180)}<br>
-      التاريخ: ${line(150)} &nbsp;&nbsp; الوقت: ${line(150)}
     </div>` : ''}
 
     <div class="ep-sign">
@@ -15721,9 +15821,9 @@ function exitPermitHTML(inv, p, copyNo){
       ${partial ? '<div><div class="box">الموظف المسؤول عن خروج السيارة</div></div>' : ''}
     </div>
     <div class="ep-foot">
-      إذن خروج رقم ${p.no} — صدر بتاريخ ${fmtDateTime(p.at)} بواسطة ${p.by}
+      تصريح خروج رقم ${p.no} — صدر بتاريخ ${fmtDateTime(p.at)} بواسطة ${p.by}
       ${copyNo > 1 ? ` · نسخة رقم ${copyNo}` : ''}<br>
-      هذا الإذن مستند رسمي صادر من ${s.centerName} ويُقدَّم للأمن للتحقق والسماح بخروج السيارة.
+      هذا التصريح مستند رسمي صادر من ${s.centerName} ويُقدَّم للأمن للتحقق والسماح بخروج السيارة.
     </div>
   </div>`;
 }
@@ -15778,7 +15878,7 @@ function askExitPermit(invId){
       تحب تطبع <b>إذن تصريح خروج السيارة</b> دلوقتي؟</p>
     <div class="card" style="padding:9px 11px;margin-bottom:12px;font-size:12.5px;border-right:3px solid var(--${partial?'danger':'accent'})">
       ${partial
-        ? '<b style="color:var(--danger)">المتبقي على الفاتورة '+money(b.balance)+'</b> — هيطلع «تصريح خروج سداد جزئي» فيه إقرار والتزام بالسداد وتوقيع الموظف المسؤول عن الخروج.'
+        ? '<b style="color:var(--danger)">المتبقي على الفاتورة '+money(b.balance)+'</b> — هيطلع «تصريح خروج آجل» فيه إقرار سداد مؤجل وتوقيع الموظف المسؤول عن الخروج.'
         : '<b>الفاتورة مدفوعة بالكامل</b> — هيطلع تصريح خروج عادي.'}
     </div>
     <p class="muted" style="font-size:12px;margin:0 0 12px">لو دوست «لا» مش هتخسر حاجة — تقدر تطبعه أي وقت من زرار «🚗 إذن خروج» جنب الفاتورة.</p>
@@ -19799,6 +19899,7 @@ function renderEmployees(){
       <button class="btn btn-sm ${mode==='table'?'btn-accent':''}" onclick="setHrEmpView('table')">📋 سجلات</button>
       <button class="btn btn-sm ${mode==='cards'?'btn-accent':''}" onclick="setHrEmpView('cards')">🗂️ كروت</button>
       ${archivedCount?`<button class="btn" onclick="toggleHrArchive()">${hrShowArchived?'إخفاء الأرشيف':'🗄️ عرض الأرشيف ('+archivedCount+')'}</button>`:''}
+      <button class="btn" onclick="printClearanceForm('')" title="نموذج فاضي يتملي بالقلم">📄 نموذج إخلاء طرف فاضي</button>
       ${can('hr.employees')?`<button class="btn btn-accent" onclick="openNewEmployeeModal()">${ICONS.plus} موظف جديد</button>`:''}
     </div></div>
   <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px">
@@ -19977,6 +20078,7 @@ function openEmployeeDetail(empId){
     hrCanReward() ? `<button class="btn" onclick="openBonusModal('${empId}')">🎁 مكافأة</button>` : '',
     can('hr.penalties') ? `<button class="btn" onclick="openPenaltyModal('${empId}')">⚖️ جزاء</button>` : '',
     sal ? `<button class="btn btn-accent" onclick="openPayslip('${empId}')">🧾 كشف الراتب</button>` : '',
+    `<button class="btn" onclick="openClearanceModal('${empId}')">📄 استقالة / إخلاء طرف</button>`,   /* م222 */
   ].filter(Boolean);
   const tabs = [['all','📒 كل الحركات', moves.length], ['reward','🎁 المكافآت', bonuses.length], ['advance','💰 السلف', advances.length],
     ['penalty','⚖️ الجزاءات', penalties.length], ['absence','🚫 الغياب', absences.length], ['leave','🏖️ الإجازات', leaves.length], ['permit','🚗 الأذونات والمأموريات', permits.length]];
@@ -20859,6 +20961,193 @@ function payslipBonusRows(e, from, to){
     const tot = g[t].reduce((a,b)=>a + (+b.amount || 0), 0);
     return `<tr><td>${escNote(t)} (${g[t].length})</td><td>${g[t].map(b=>fmtDate(b.date) + (b.reason ? ' — ' + escNote(b.reason) : '') + ' (' + money(b.amount) + ')').join(' · ')}</td><td>+ ${money(tot)}</td></tr>`;
   }).join('');
+}
+/* ============ م222: نموذج استقالة / إخلاء طرف + شهادة إخلاء طرف (ورق — للطباعة والإمضاء) ============
+   طلب سيف: الموظف اللي هيمشي (استقالة أو إنهاء خدمة) ورقة بتلف على الجهات تتمضي بالترتيب:
+   المدير المباشر ← اللي ماسكين العهد (العدة · اليونيفورم · أي عهدة تانية — سطور احتياطي فاضية)
+   ← رئيس القسم/المشرف ← الموارد البشرية (غياب · تأخير · عدم بصمة) ← الحسابات (السلف · العهد المالية)
+   ← اعتماد مدير/صاحب المركز ⇒ الحسابات تسوّي مستحقاته مع مرتبات آخر الشهر ⇒ المخالصة النهائية.
+   • قرارات سيف: ورق بس دلوقتي (مفيش متابعة جوه السيستم) · من غير تقييم · من غير القسم في الورقة.
+   • الكلام مزيج نموذج البورصة + النص اللي بعته سيف — عربي رسمي.
+   • تحت كل جهة السيستم بيطبع «حسب السيستم وقت الطباعة» اللي عنده على الموظف عشان اللي بيمضي
+     يراجع على حاجة: العهد العينية · العدد الخاصة اللي لسه معاه · أوامر الشغل المفتوحة عليه ·
+     حضور شهر المرتب · السلف · العهدة المالية · عجز العهدة. المبالغ بنفس قاعدة الصلاحيات
+     (السلف لصاحب صلاحية السلف/الرواتب · الجزاءات لصاحب صلاحية الجزاءات/الرواتب) — ومبالغ
+     الغياب والتأخير مابتتطبعش خالص لأنها بتكشف المرتب. */
+const CLR_DOTS = '....................................';
+function clrCenterName(){ return (DB.settings && DB.settings.centerName) || 'Masters Auto Service'; }
+function clrHeadHTML(title, sub){
+  const s = DB.settings || {};
+  return `<div class="binv-head">
+      <div><h1 class="binv-title">${title}</h1>
+        <div style="font-size:12.5px;color:#444;margin-top:4px">${escNote(clrCenterName())}${s.address ? ' — ' + escNote(s.address) : ''}${s.phone ? ' · ' + escNote(s.phone) : ''}</div>
+        ${sub ? `<div style="font-size:12px;color:#555;margin-top:2px">${sub}</div>` : ''}</div>
+      <img src="${LOGO}" alt="logo"></div>`;
+}
+function clrCSS(){
+  return brandedInvoiceCSS() + `
+  @page{size:A4 portrait;margin:9mm}
+  .clr .binv-head img{width:78px}
+  .clr .binv-title{font-size:22px}
+  .clr p{font-size:13px;line-height:2.05;margin:6px 0}
+  .clr .binv-info td{padding:6px 9px;font-size:12.5px}
+  .clr-type{font-size:13.5px;font-weight:800;margin:10px 0 2px;display:flex;gap:28px;flex-wrap:wrap}
+  .clr-sec{background:#111;color:#F2D410;font-weight:900;font-size:13.5px;padding:6px 12px;border-radius:6px;margin:14px 0 6px;page-break-after:avoid}
+  .clr table.clr-t td,.clr table.clr-t th{padding:6px 7px;font-size:12px;vertical-align:top}
+  .clr table.clr-t tr{page-break-inside:avoid}
+  .clr-snap{font-size:10.5px;color:#333;margin-top:4px;line-height:1.7;border-top:1px dotted #999;padding-top:3px}
+  .clr-res{white-space:nowrap;font-size:12px;line-height:2}
+  .clr-signs{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:12.5px;margin:10px 0 4px;line-height:2.4}
+  .clr-stamp{width:120px;height:120px;border:1.5px dashed #000;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;color:#555;text-align:center}
+  .clr-box{border:1.5px solid #000;border-radius:8px;padding:8px 12px;page-break-inside:avoid}
+  .clr-note{font-size:10.5px;color:#444;margin-top:8px;line-height:1.7}
+  @media print{
+    .clr-sec{background:#fff !important;color:#000 !important;border:1.5px solid #000 !important}
+    .clr-snap,.clr-note{color:#000 !important}
+  }`;
+}
+/* اللي السيستم شايفه على الموظف وقت الطباعة — شهر المرتب اللي آخر يوم عمل فيه (أو النهاردة) */
+function clrSnapshot(e, ds){
+  const rg = hrCycleOf(ds || attDateStr(Date.now()));
+  const STAT = { available:'بحوزته', missing:'غير موجود ❌', damaged:'تالف' };
+  const items = [];
+  DB.empCustody.filter(c=>(c.employeeIds || []).includes(e.id)).forEach(c=>(c.items || []).forEach(it=>items.push(it)));
+  const itTxt = it => escNote(it.name) + ' × ' + (it.qty || 1) + ' (' + (STAT[it.status] || it.status || '') + ')';
+  const toolCats = ['عدة', 'معدات', 'أجهزة'];
+  const tools = items.filter(it=>toolCats.includes(it.category)), uni = items.filter(it=>it.category==='زي');
+  const others = items.filter(it=>!toolCats.includes(it.category) && it.category!=='زي');
+  const toolsOut = DB.toolMoves.filter(m=>m.type==='out' && !m.returnedAt && m.technicianId===e.id)
+    .map(m=>{ const t = DB.tools.find(x=>x.id===m.toolId); return t ? escNote(t.name) + (t.code ? ' (' + escNote(t.code) + ')' : '') : '—'; });
+  const jobs = DB.jobs.filter(j=>!isJobClosed(j) && (j.technicianId===e.id || (j.items || []).some(it=>it.technicianId===e.id))).map(j=>'#' + j.jobNo);
+  const cc = attCloseCalc(e, rg), rec = attCloseFor(e.id, rg);
+  const prevRg = hrCycleOf(attAddDays(rg.from, -1)), prevRec = attCloseFor(e.id, prevRg);
+  const prevHas = DB.attendance.some(r=>r.kind==='session' && r.empId===e.id && r.dateStr>=prevRg.from && r.dateStr<=prevRg.to);
+  const pens = (e.penalties || []).filter(p=>inRange(p.date, rg.from, rg.to));
+  const advs = (e.advances || []).filter(a=>inRange(a.date, rg.from, rg.to));
+  const advSum = Math.round(advs.reduce((s, a)=>s + (+a.amount || 0), 0) * 100) / 100;
+  const penSum = Math.round(pens.reduce((s, p)=>s + (+p.amount || 0), 0) * 100) / 100;
+  const shortage = Math.round(items.filter(it=>it.status==='missing').reduce((s, it)=>s + empcItemTotal(it), 0) * 100) / 100;
+  const fin = empOpenCustody(e.id);
+  const seeAdv = hrCanAdvance() || hrCanSeeSalary(), seePen = can('hr.penalties') || hrCanSeeSalary();
+  const list = a => a.length ? a.join(' · ') : 'لا يوجد';
+  return {
+    rg,
+    manager: 'أوامر شغل مفتوحة عليه: ' + list(jobs),
+    tools: 'عهدة عدة/معدات/أجهزة: ' + list(tools.map(itTxt)) + ' — عدد خاصة بحوزته: ' + list(toolsOut),
+    uniform: 'عهدة زي/يونيفورم: ' + list(uni.map(itTxt)),
+    others: others.length ? 'عهد أخرى مسجلة: ' + others.map(it=>escNote(it.category) + ': ' + itTxt(it)).join(' · ') : '',
+    hr: 'شهر المرتب ' + fmtDate(rg.from) + ' ← ' + fmtDate(rg.to) + ': غياب ' + cc.absentDays + ' يوم · عدم بصمة ' + cc.missingN + ' · تأخير ' + fmtMins(cc.lateMin)
+      + ' · الحضور: ' + (rec ? (rec.status==='approved' ? 'معتمد ✅' : 'بانتظار الاعتماد') : 'لم يُقفل بعد')
+      + (prevHas && !(prevRec && prevRec.status==='approved') ? ' · ⚠️ حضور الشهر السابق لم يُعتمد بعد' : '')
+      + ' · جزاءات الشهر: ' + (pens.length ? pens.length + (seePen ? ' (' + money(penSum) + ')' : '') : 'لا يوجد')
+      + ' · رصيد الإجازات المتبقي: ' + empLeaveStats(e.id).remaining + ' يوم',
+    acc: 'سلف شهر المرتب (تُخصم من آخر مرتب): ' + (advs.length ? (seeAdv ? money(advSum) : 'يوجد سلف') : 'لا يوجد')
+      + ' · عهدة مالية مفتوحة: ' + (fin ? money(fin.amount) : 'لا يوجد')
+      + ' · عجز عهدة: ' + (shortage > 0 ? money(shortage) : 'لا يوجد'),
+  };
+}
+function clrTypeHTML(type){
+  const box = on => on ? '☑' : '☐';
+  return `<div class="clr-type"><span>${box(type==='resign')} استقالة بناءً على طلب الموظف</span><span>${box(type==='term')} إنهاء خدمة بقرار من المركز</span></div>`;
+}
+/* e = null ⇒ نموذج فاضي يتملي بالقلم */
+function clearanceFormHTML(e, opts){
+  opts = opts || {};
+  const v = x => x ? `<b>${escNote(x)}</b>` : CLR_DOTS;
+  const last = opts.lastDay ? fmtDate(opts.lastDay) : '..../..../........';
+  const snap = (e && opts.snap !== false) ? clrSnapshot(e, opts.lastDay) : null;
+  const sn = t => (snap && t) ? `<div class="clr-snap">📋 حسب السيستم: ${t}</div>` : '';
+  const res = `<div class="clr-res">☐ تمام<br>☐ عليه: ..............</div>`;
+  const row = (n, who, what, snapTxt) => `<tr><td style="width:4%;text-align:center">${n}</td><td style="width:19%;font-weight:800">${who}</td><td>${what}${sn(snapTxt)}</td><td style="width:17%">${res}</td><td style="width:21%;line-height:2.2">الاسم: ...............<br>التوقيع: .............</td><td style="width:10%">.../.../......</td></tr>`;
+  const spare = n => row(n, 'عهد أخرى: ................', 'تسليم العهدة ......................................', n===4 && snap ? snap.others : '');
+  return `<div class="binv clr">
+    ${clrHeadHTML('نموذج استقالة / إخلاء طرف', snap ? 'شهر المرتب: ' + fmtDate(snap.rg.from) + ' ← ' + fmtDate(snap.rg.to) : '')}
+    ${clrTypeHTML(opts.type)}
+    <table class="binv-info">
+      <tr><td class="k">اسم الموظف</td><td class="v">${e ? escNote(e.name) : ''}</td><td class="k">الرقم الوظيفي</td><td class="v">${e && e.empNo ? '#' + escNote(e.empNo) : ''}</td></tr>
+      <tr><td class="k">الوظيفة</td><td class="v">${e ? escNote(e.job || '') : ''}</td><td class="k">تاريخ التعيين</td><td class="v">${e && e.hireDate ? fmtDate(e.hireDate) : ''}</td></tr>
+      <tr><td class="k">الرقم القومي</td><td class="v">${e ? escNote(e.nationalId || '') : ''}</td><td class="k">آخر يوم عمل</td><td class="v">${opts.lastDay ? fmtDate(opts.lastDay) : ''}</td></tr>
+      <tr><td class="k">سبب ترك العمل</td><td class="v" colspan="3">&nbsp;</td></tr>
+    </table>
+    <div class="clr-sec">أولاً: إقرار الموظف</div>
+    <p>أقر أنا الموقع أدناه/ ${v(e && e.name)} بأن آخر يوم عمل لي بمركز ${escNote(clrCenterName())} هو ${last}، وأتعهد بتسليم جميع العهد والممتلكات الخاصة بالمركز التي في حوزتي (عدة – معدات – يونيفورم – أجهزة – مفاتيح – مستندات) قبل آخر يوم عمل، وأعلم أن مستحقاتي المالية تُسوّى مع مرتبات آخر الشهر بعد استكمال إخلاء الطرف واعتماده.</p>
+    <div class="clr-signs"><span>توقيع الموظف: ............................</span><span>التاريخ: ..../..../........</span></div>
+    <div class="clr-sec">ثانياً: إخلاء الطرف — توقّع كل جهة بعد التأكد</div>
+    <table class="clr-t"><thead><tr><th>#</th><th>الجهة</th><th>بنود المراجعة</th><th>النتيجة</th><th>الاسم والتوقيع</th><th>التاريخ</th></tr></thead><tbody>
+      ${row(1, 'المدير المباشر', 'تسليم الأعمال وأوامر الشغل التي بحوزته، وعدم وجود أي متعلقات أو التزامات عليه داخل العمل.', snap && snap.manager)}
+      ${row(2, 'أمين العدة', 'تسليم جميع العدة والمعدات والأجهزة المسلّمة إليه بحالة سليمة.', snap && snap.tools)}
+      ${row(3, 'مسؤول اليونيفورم', 'تسليم اليونيفورم ومهمات الأمان المسلّمة إليه.', snap && snap.uniform)}
+      ${spare(4)}${spare(5)}${spare(6)}
+      ${row(7, 'رئيس القسم / المشرف', 'اعتماد القسم: استلام جميع العهد والأعمال الخاصة بالموظف.', '')}
+      ${row(8, 'الموارد البشرية', 'عدم وجود غياب أو تأخير أو عدم بصمة أو جزاءات غير مُسوّاة، وتسوية رصيد الإجازات.', snap && snap.hr)}
+      ${row(9, 'الحسابات', 'خصم جميع السلف، وعدم وجود عهد مالية أو تسويات مفتوحة أو عجز في العهد.', snap && snap.acc)}
+    </tbody></table>
+    <div class="clr-sec">ثالثاً: اعتماد مدير / صاحب المركز</div>
+    <div class="clr-box" style="display:flex;justify-content:space-between;gap:14px;align-items:center">
+      <div style="flex:1"><p style="margin:0">بعد الاطلاع على ما سبق يُعتمد إخلاء طرف الموظف المذكور، وتُحال الأوراق للحسابات لتسوية مستحقاته المالية مع مرتبات شهر ................</p>
+        <div class="clr-signs" style="margin:6px 0 0"><span>الاسم: ............................</span><span>التوقيع: ........................</span><span>التاريخ: ..../..../........</span></div></div>
+      <div class="clr-stamp">ختم المركز</div>
+    </div>
+    <div class="clr-sec">رابعاً: المخالصة النهائية — وقت صرف المستحقات مع مرتبات آخر الشهر</div>
+    <div class="clr-box">
+      <p style="margin:0">أقر أنا/ ${v(e && e.name)} بأنني استلمت كامل مستحقاتي المالية عن فترة عملي بالمركز وقدرها (.................... جنيه) فقط ...................................................... لا غير، وليس لي أي مطالبات مالية أو غير مالية تجاه المركز عن فترة عملي.</p>
+      <div class="clr-signs" style="margin:6px 0 0"><span>توقيع الموظف: ........................</span><span>الحسابات: ........................</span><span>التاريخ: ..../..../........</span></div>
+    </div>
+    ${snap ? `<div class="clr-note">📋 «حسب السيستم» = البيانات المسجلة في السيستم وقت الطباعة للمراجعة فقط، والمرجع النهائي هو توقيع كل جهة.</div>` : ''}
+  </div>`;
+}
+/* شهادة إخلاء طرف — ورقة قصيرة بتتسلم للموظف لو طلبها (زي نموذج البورصة) */
+function clearanceCertHTML(e, opts){
+  opts = opts || {};
+  const v = x => x ? `<b>${escNote(x)}</b>` : CLR_DOTS;
+  return `<div class="binv clr">
+    ${clrHeadHTML('شهادة إخلاء طرف', '')}
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin:16px 0 6px"><b>إلى من يهمه الأمر</b><span>التاريخ: ..../..../........</span></div>
+    <p style="font-size:14px;line-height:2.3">يشهد مركز ${escNote(clrCenterName())} بأنه قد تم إخلاء طرف الموظف/ ${v(e && e.name)}، الذي كان يشغل وظيفة ${v(e && e.job)} لدى المركز، وذلك اعتبارًا من تاريخ ${opts.lastDay ? '<b>' + fmtDate(opts.lastDay) + '</b>' : '..../..../........'} بعد انتهاء علاقة العمل بينه وبين المركز.</p>
+    <p style="font-size:14px;line-height:2.3">ونُقر بأنه قد قام بتسليم جميع العهد والممتلكات الخاصة بالمركز التي كانت بحوزته أثناء فترة عمله، ولا توجد عليه أي التزامات إدارية أو تشغيلية أو مالية تجاه المركز، وقد تمت تسوية مستحقاته المالية وفق النظام المتبع بالمركز.</p>
+    <p style="font-size:14px;line-height:2.3">وقد حُررت هذه الشهادة بناءً على طلبه لتقديمها لمن يهمه الأمر، دون أدنى مسؤولية على المركز.</p>
+    <p style="font-size:14px;margin-top:14px">وتفضلوا بقبول فائق الاحترام،</p>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:36px">
+      <div style="font-size:13px;line-height:2.6"><b>إدارة شؤون الموظفين</b><br>الاسم: ............................<br>التوقيع: ..........................</div>
+      <div class="clr-stamp">ختم المركز</div>
+    </div>
+  </div>`;
+}
+function openClearanceModal(empId){
+  if(!hrCanViewEmps()){ toast('مالكش صلاحية ملفات الموظفين', true); return; }
+  const e = DB.employees.find(x=>x.id===empId); if(!e) return;
+  openModal(`
+    <h3>📄 استقالة / إخلاء طرف — ${escNote(e.name)}</h3>
+    <div class="muted" style="font-size:12.5px;line-height:1.9;margin-bottom:10px">الورقة بتتطبع وتلف على الجهات تتمضي بالترتيب: المدير المباشر ← اللي ماسكين العهد ← رئيس القسم ← الموارد البشرية ← الحسابات ← اعتماد مدير المركز — وبعدها الحسابات تسوّي مستحقاته مع مرتبات آخر الشهر ويمضي المخالصة.</div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">النوع</label>
+        <select class="f" id="clrType"><option value="">سيبه فاضي (يتعلّم بالقلم)</option><option value="resign">استقالة بناءً على طلب الموظف</option><option value="term">إنهاء خدمة بقرار من المركز</option></select></div>
+      <div class="form-row"><label class="f-label">آخر يوم عمل (اختياري)</label><input class="f" id="clrLast" type="date"></div>
+    </div>
+    <label style="font-size:12.5px;display:block;margin-bottom:12px"><input type="checkbox" id="clrSnap" checked> اطبع اللي السيستم شايفه عليه تحت كل جهة (العهد · العدة اللي معاه · أوامر الشغل · الحضور · السلف)</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-accent" style="flex:1" onclick="printClearanceForm('${e.id}')">🖨 نموذج الاستقالة وإخلاء الطرف</button>
+      <button class="btn" style="flex:1" onclick="printClearanceCert('${e.id}')">🖨 شهادة إخلاء طرف (للموظف)</button>
+    </div>`);
+}
+function _clrOpts(){
+  return { type:(document.getElementById('clrType') || {}).value || '', lastDay:(document.getElementById('clrLast') || {}).value || '',
+    snap:!!(document.getElementById('clrSnap') || { checked:true }).checked };
+}
+function printClearanceForm(empId){
+  if(!hrCanViewEmps()){ toast('مالكش صلاحية ملفات الموظفين', true); return; }
+  const e = empId ? DB.employees.find(x=>x.id===empId) : null;
+  if(empId && !e) return;
+  const o = e ? _clrOpts() : {};
+  printHTML('<style>' + clrCSS() + '</style>' + clearanceFormHTML(e, o));
+  logAction('🖨 طباعة نموذج استقالة / إخلاء طرف' + (e ? ' — ' + e.name + (o.lastDay ? ' (آخر يوم عمل ' + o.lastDay + ')' : '') : ' (فاضي)'));
+}
+function printClearanceCert(empId){
+  if(!hrCanViewEmps()){ toast('مالكش صلاحية ملفات الموظفين', true); return; }
+  const e = DB.employees.find(x=>x.id===empId); if(!e) return;
+  const o = _clrOpts();
+  printHTML('<style>' + clrCSS() + '</style>' + clearanceCertHTML(e, o));
+  logAction('🖨 طباعة شهادة إخلاء طرف — ' + e.name);
 }
 function printPayslip(empId, from, to){
   printHTML('<style>'+brandedInvoiceCSS()+'</style>'+payslipHTML(empId, from, to));
