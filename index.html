@@ -2,12 +2,22 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!-- م234: «تطبيق» على الموبايل والتابلت — الأيقونة والاسم وفتح ملو الشاشة (الملفات جنب index.html) -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#000000">
+<meta name="application-name" content="Masters Auto Service">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Masters Auto Service">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <!-- منع كاش المتصفح: أي نسخة جديدة تترفع تظهر فوراً على كل الأجهزة بدون مسح كاش يدوي -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>نظام إدارة مركز الصيانة</title>
+<title>Masters Auto Service</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800;900&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -254,6 +264,87 @@ tr:hover td{background:var(--surface-2);}
 .est-alert-card{background:var(--surface);color:var(--text);border:2px solid var(--accent);border-radius:14px;padding:16px 18px;width:100%;max-width:440px;max-height:90vh;overflow:auto}
 .est-alert-h{font-size:16px;font-weight:900;margin-bottom:6px}
 .est-alert-it{border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-top:8px;font-size:13px;line-height:1.8}
+/* م234: شكل التطبيق على الموبايل والتابلت */
+.m-only{display:none}
+.m-back-btn{display:none}
+.m-fab{display:none}
+.app-splash{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#000;color:#f4f4f2;text-align:center;padding:24px}
+.app-splash img{width:118px;height:118px;border-radius:26px;animation:spPop .5s ease-out}
+.app-splash-n{font-family:Cairo,Tajawal,sans-serif;font-weight:900;font-size:20px;letter-spacing:.5px}
+.app-splash-m{color:#9a9a93;font-size:13px}
+.app-spin{width:30px;height:30px;border:3px solid rgba(242,212,16,.25);border-top-color:#F2D410;border-radius:50%;animation:spSpin .8s linear infinite;margin-top:6px}
+@keyframes spSpin{to{transform:rotate(360deg)}}
+@keyframes spPop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
+.pwa-banner{display:flex;gap:12px;align-items:center;margin-bottom:14px;border:1px solid var(--accent);padding:12px}
+.pwa-steps{line-height:2.2;font-size:14px;padding-right:20px;margin:6px 0 10px}
+.pwa-k{display:inline-block;border:1px solid var(--border);border-radius:6px;padding:0 7px;background:var(--surface-2);font-weight:800}
+.ptr-ind{position:fixed;top:0;left:50%;transform:translate(-50%,-70px);z-index:300;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:20px;padding:7px 16px;font-size:13px;font-weight:800;opacity:0;transition:opacity .15s;box-shadow:0 6px 18px rgba(0,0,0,.35);pointer-events:none}
+.ptr-ind.go{border-color:var(--accent);color:var(--accent)}
+html[data-touch]{-webkit-tap-highlight-color:transparent}
+html[data-touch] body{overscroll-behavior-y:contain}
+html[data-touch] button,html[data-touch] .btn,html[data-touch] .nav-item,html[data-touch] .card{touch-action:manipulation}
+html[data-touch] .btn{min-height:40px}
+html[data-touch] .btn.btn-sm{min-height:34px}
+html[data-touch] .content{animation:pgIn .18s ease-out}
+@keyframes pgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media(max-width:900px){
+  .m-only{display:block}
+  .pwa-banner.m-only{display:flex}
+  .m-back-btn{display:inline-flex;font-size:18px;padding:6px 12px;margin-left:6px;font-weight:900}
+  .m-home{margin-bottom:16px}
+  .m-hello{font-family:Cairo,Tajawal,sans-serif;font-size:19px;font-weight:900;margin:2px 2px 10px}
+  .m-sec{font-size:12px;color:var(--muted);font-weight:800;margin:12px 2px 8px}
+  .m-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px}
+  .m-tile{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:92px;padding:12px 6px;background:var(--surface);border:1px solid var(--border);border-radius:16px;color:var(--text);font-weight:800;font-size:12.5px;line-height:1.35;text-align:center}
+  .m-tile:active{transform:scale(.96);background:var(--surface-2)}
+  .m-tile-qa{border-color:rgba(242,212,16,.35)}
+  .m-tile-i{font-size:28px;line-height:1}
+  .m-tile-b{position:absolute;top:7px;left:8px;background:var(--accent-2);color:#fff;border-radius:10px;font-size:11px;padding:0 7px;line-height:18px}
+  .m-fab{display:flex;align-items:center;gap:6px;position:fixed;left:14px;bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:44;background:var(--accent);color:#241704;border:0;border-radius:28px;padding:13px 18px;font-weight:900;font-size:14px;box-shadow:0 8px 22px rgba(0,0,0,.45)}
+  .m-fab span{font-size:18px}
+  .m-fab:active{transform:scale(.95)}
+}
+/* التابلت بالطول (آيباد/أندرويد): نفس الشريط اللي تحت بتاع الموبايل */
+@media(min-width:701px) and (max-width:900px){
+  body .m-bottomnav{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:45;background:var(--surface);border-top:1px solid var(--border);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));justify-content:space-around;align-items:flex-end}
+  .m-bottomnav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;color:var(--muted);background:none;border:0;padding:5px 2px 4px;font-weight:700;min-width:0;position:relative;border-radius:14px}
+  .m-bottomnav button.active{color:var(--accent);background:rgba(242,212,16,.12)}
+  .m-bottomnav .m-scan{background:var(--accent);color:#241704;border-radius:16px;margin-top:-22px;padding:9px 4px;box-shadow:0 4px 14px rgba(0,0,0,.35);max-width:88px}
+  .m-nav-i{font-size:22px;line-height:1.1}
+  .m-nav-b{position:absolute;top:0;left:24%;margin:0}
+  .content{padding-bottom:100px}
+  body .toast-wrap{bottom:calc(100px + env(safe-area-inset-bottom,0px))}
+}
+@media(max-width:700px){
+  .m-bottomnav button{position:relative;border-radius:14px;padding:5px 2px 4px;transition:background .15s}
+  .m-bottomnav button.active{background:rgba(242,212,16,.12)}
+  .m-nav-i{font-size:21px;line-height:1.1}
+  .m-nav-b{position:absolute;top:0;left:18%;margin:0}
+  .overlay .modal{animation:sheetUp .22s ease-out}
+  .modal-close{width:40px;height:40px;border-radius:50%;background:var(--surface-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:17px}
+  @keyframes sheetUp{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+  /* كل الجداول كروت: «العنوان: القيمة» */
+  table.rt{display:block;overflow:visible;border:0;background:transparent;width:100%}
+  table.rt thead{display:none}
+  table.rt tbody,table.rt tr{display:block;width:100%}
+  table.rt tr{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:6px 12px;margin-bottom:10px}
+  table.rt td{display:flow-root;width:100%;text-align:left;padding:7px 0;border:0;border-bottom:1px dashed var(--border);font-size:13.5px;line-height:1.6;white-space:normal}
+  table.rt td:last-child{border-bottom:0}
+  table.rt td::before{content:attr(data-label);float:right;margin-left:12px;color:var(--muted);font-size:12px;font-weight:800;text-align:right;max-width:46%}
+  table.rt td[data-label=""]::before{display:none}
+  table.rt td[data-label=""]{text-align:right}
+  table.rt td.rt-full{text-align:center}
+  table.rt td .btn{margin:2px}
+}
+/* م233: أمر شغل جديد بالبحث الذكي */
+.nj-hint{padding:18px 10px;text-align:center;color:var(--muted);font-size:13px}
+.nj-grp{padding:10px 12px;margin-bottom:10px}
+.nj-cust{padding-bottom:6px;border-bottom:1px solid var(--border);margin-bottom:4px;font-size:14px}
+.nj-car{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 2px;border-bottom:1px dashed var(--border);font-size:13px;line-height:1.6}
+.nj-act{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.nj-open{color:var(--danger);font-size:12px;font-weight:800}
+.nj-add{margin-top:8px}
+.nj-none{border:1.5px dashed var(--danger);text-align:center;padding:18px 14px}
 .est-mini{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;margin-top:5px;cursor:pointer;font-size:12.5px}
 @media (max-width:760px){   /* الموبايل: اسم الصنف سطر لوحده والباقي تحته */
   .est-two{grid-template-columns:minmax(0,1fr)}
@@ -1001,7 +1092,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v254';
+const APP_VERSION = 'v255';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -2432,7 +2523,7 @@ function askConfirmReason(msg, cb){
 function render(){
   const root = document.getElementById('root');
   applyUserTheme();   // الملاحظة 48: ثيم المستخدم الحالي بيتطبق مع كل رسم
-  if(!loaded){ root.innerHTML = '<div class="login-wrap"><div class="muted">جاري التحميل...</div></div>'; return; }
+  if(!loaded){ root.innerHTML = appSplashHTML(); return; }   /* م234 */
   if(!session){ root.innerHTML = loginHTML(); return; }
   root.innerHTML = shellHTML();
   estInboxSoon();   /* م230: العداد والرسايل بعد أي رسم (دخول/خروج/تنقل) */
@@ -2610,7 +2701,8 @@ async function doLogin(){
   logAction('🔑 دخول بالرقم السري — قسم '+(ROLE_LABEL[pickedRole]||pickedRole)).catch(()=>{});   /* م179ب */
 }
 function logout(){
-  try{ if(session) logAction('🚪 تسجيل خروج').catch(()=>{}); }catch(e){}   /* م179ب */
+  try{ if(session) logAction('🚪 تسجيل خروج').catch(()=>{}); }catch(e){}
+  try{ _navStack234.length = 0; }catch(e){}   /* م234: اللي هيدخل بعده مايرجعش لشاشات حد تاني */   /* م179ب */
   session=null; pickedRole=null; render();
 }
 
@@ -2761,19 +2853,283 @@ function mToggleMenu(force){
   if(bd) bd.classList.toggle('open', open);
 }
 const M_NAV220 = [['dashboard', '🏠', 'الرئيسية'], ['jobs', '🛠️', 'أوامر الشغل'], ['stockmoves', '📦', 'حركة المخزن'], ['invoices', '🧾', 'الفواتير'], ['inventory', '🗃️', 'المخزون'], ['customers', '👥', 'العملاء']];
+/* م234: الشريط اللي تحت حسب شغل كل قسم (أهم 3 شاشات + الرئيسية) */
+const M_NAV_PRI234 = { reception:['jobs','customers','estimates','appointments'], warehouse:['inventory','stockmoves','estimates','suppliers'],
+  accounts:['jobs','invoices','receivables','hr'], hr:['hr'], owner:['jobs','stockmoves','invoices','inventory'] };
+const M_NAV_LBL234 = { dashboard:'الرئيسية', jobs:'أوامر الشغل', customers:'العملاء', estimates:'المقايسات', appointments:'المواعيد', inventory:'المخزون',
+  stockmoves:'حركة المخزن', suppliers:'الموردين', invoices:'الفواتير', receivables:'المديونيات' };
 function mBottomNavHTML(tabs){
-  const list = M_NAV220.filter(([t])=>tabs.includes(t)).slice(0, 4);
+  const pri = (M_NAV_PRI234[session && session.role] || M_NAV_PRI234.owner).concat(M_NAV220.map(x=>x[0]), ['estimates','receivables','hr','suppliers']);
+  const picked = tabs.includes('dashboard') ? ['dashboard'] : [];
+  pri.forEach(t=>{ if(picked.length < 4 && tabs.includes(t) && !picked.includes(t)) picked.push(t); });
+  const list = picked.map(t=>[t, M_TAB_ICON234[t] || '📄', M_NAV_LBL234[t] || mTabLabel(t)]);
   const canScan = tabs.includes('inventory');
-  const btn = ([t, ic, lbl]) => `<button class="${currentTab === t ? 'active' : ''}" onclick="goTab('${t}')"><span style="font-size:20px">${ic}</span>${lbl}</button>`;
+  const estN = estBadgeCount();
+  const btn = ([t, ic, lbl]) => `<button class="${currentTab === t ? 'active' : ''}" onclick="goTab('${t}')"><span class="m-nav-i">${ic}</span>${lbl}${t === 'estimates' ? `<b id="estNavCntM" class="est-cnt m-nav-b"${estN ? '' : ' style="display:none"'}>${estN || ''}</b>` : ''}</button>`;
   const half = Math.ceil(list.length / 2);
   return `<nav class="m-bottomnav">
     ${list.slice(0, half).map(btn).join('')}
     ${canScan ? `<button class="m-scan" onclick="openCamScanner('', 'inv')"><span style="font-size:22px">📷</span>سكان</button>` : ''}
     ${list.slice(half).map(btn).join('')}
-    <button onclick="mToggleMenu(true)"><span style="font-size:20px">☰</span>المزيد${tabs.includes('estimates') ? (()=>{ const n = estBadgeCount(); return `<b id="estMoreCnt" class="est-cnt"${n ? '' : ' style="display:none"'}>${n || ''}</b>`; })() : ''}</button>
+    <button onclick="mToggleMenu(true)"><span class="m-nav-i">☰</span>المزيد${tabs.includes('estimates') && !picked.includes('estimates') ? (()=>{ const n = estBadgeCount(); return `<b id="estMoreCnt" class="est-cnt"${n ? '' : ' style="display:none"'}>${n || ''}</b>`; })() : ''}</button>
   </nav>`;
 }
-function goTab(id){ camClose(); currentTab=id; render(); }
+/* ============ م234: Masters Auto Service «تطبيق» على الموبايل والتابلت ============
+   طلب سيف: الموظفين هيشتغلوا على الموبايل والتابلت (أندرويد + آيفون + آيباد) — عايزه يحس إنه فاتح تطبيق
+   مش موقع: أيقونة على الشاشة الرئيسية تفتح السيستم علطول ملو الشاشة، وواجهة سهلة واحترافية لكل الشاشات.
+   • «تطبيق ويب» (PWA): manifest.webmanifest + sw.js + أيقونات جنب index.html ⇒ «📲 نزّل التطبيق» (أندرويد:
+     تثبيت بدوسة · آيفون/آيباد: خطوتين من زرار المشاركة). من الأيقونة بيفتح من غير شريط المتصفح.
+     ملف التشغيل مابيخزّنش أي نسخة — التحديثات زي ما هي (كل فتحة بآخر نسخة).
+   • زرار الرجوع بتاع الموبايل: بيقفل النافذة/الكاميرا/القايمة أو يرجع للشاشة اللي قبلها — مابيخرّجش من السيستم
+     (ودوستين ورا بعض في الرئيسية = خروج).
+   • اسحب لتحت للتحديث · شاشة بداية بمربعات حسب شغل كل موظف · زرار عايم للعملية الأساسية · الشريط اللي تحت
+     حسب القسم · كل الجداول بتتحول كروت على الموبايل (كل الشاشات بنفس الأهمية — قرار سيف).
+   الكمبيوتر مابيتغيّرش. */
+function isStandaloneApp(){
+  try{ return !!((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true); }catch(e){ return false; }
+}
+function isIOSDevice(){
+  try{ const ua = navigator.userAgent || ''; return /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1); }catch(e){ return false; }
+}
+let _pwaPrompt = null;
+function pwaCanOffer(){
+  try{ return !isStandaloneApp() && location.protocol === 'https:' && (isTouchDevice() || !!_pwaPrompt); }catch(e){ return false; }
+}
+function pwaPaint(){
+  try{
+    const show = pwaCanOffer();
+    ['pwaBtn','pwaBanner','pwaMoreBtn'].forEach(id=>{ const el = document.getElementById(id); if(el && el.style) el.style.display = show ? '' : 'none'; });
+  }catch(e){}
+}
+function pwaBannerOff(){
+  try{ localStorage.setItem('mers_pwa_banner_off', '1'); }catch(e){}
+  const el = document.getElementById('pwaBanner'); if(el) el.remove();
+}
+function pwaBannerHTML(){
+  let off = false;
+  try{ off = localStorage.getItem('mers_pwa_banner_off') === '1'; }catch(e){}
+  if(off || !pwaCanOffer()) return '';
+  return `<div class="card m-only pwa-banner" id="pwaBanner">
+    <img src="${LOGO}" alt="" style="width:46px;height:46px;border-radius:12px;flex-shrink:0">
+    <div style="flex:1;min-width:0;line-height:1.7"><b>نزّل تطبيق Masters Auto Service</b>
+      <div class="muted" style="font-size:12px">يفتح من أيقونة على الشاشة الرئيسية ملو الشاشة — زي أي تطبيق.</div></div>
+    <div style="display:flex;flex-direction:column;gap:6px"><button class="btn btn-sm btn-accent" onclick="pwaInstall()">📲 نزّل</button>
+      <button class="btn btn-sm" onclick="pwaBannerOff()">بعدين</button></div>
+  </div>`;
+}
+async function pwaInstall(){
+  if(_pwaPrompt){
+    const p = _pwaPrompt; _pwaPrompt = null;
+    try{ p.prompt(); const r = await p.userChoice; if(r && r.outcome === 'accepted') toast('✅ بيتنزّل — هتلاقي أيقونة Masters Auto Service على الشاشة الرئيسية'); }catch(e){}
+    pwaPaint();
+    return;
+  }
+  const ios = isIOSDevice();
+  openModal(`
+    <h3>📲 نزّل تطبيق Masters Auto Service</h3>
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px"><img src="${LOGO}" alt="" style="width:64px;height:64px;border-radius:16px">
+      <div class="muted" style="font-size:13px;line-height:1.8">بعد التنزيل هتلاقي أيقونة <b>Masters Auto Service</b> على الشاشة الرئيسية — بتفتح السيستم علطول ملو الشاشة، وبتاخد التحديثات لوحدها.</div></div>
+    ${ios ? `<ol class="pwa-steps">
+        <li>لازم تكون فاتح اللينك من <b>Safari</b>.</li>
+        <li>دوس على زرار <b>المشاركة</b> <span class="pwa-k">⬆︎</span> (في الآيفون تحت في النص · في الآيباد فوق).</li>
+        <li>انزل في القايمة واختار <b>«إضافة إلى الشاشة الرئيسية»</b> (Add to Home Screen).</li>
+        <li>دوس <b>«إضافة»</b> فوق — وخلاص.</li></ol>`
+      : `<ol class="pwa-steps">
+        <li>افتح اللينك من <b>Chrome</b>.</li>
+        <li>دوس على <span class="pwa-k">⋮</span> فوق في الركن.</li>
+        <li>اختار <b>«تثبيت التطبيق»</b> أو <b>«إضافة إلى الشاشة الرئيسية»</b>.</li>
+        <li>أكّد بـ<b>«تثبيت»</b> — وهتلاقي الأيقونة على الشاشة.</li></ol>`}
+    <button class="btn" style="width:100%;margin-top:6px" onclick="closeModal()">تمام</button>`);
+}
+
+/* ---------- الرجوع: زرار الموبايل نفسه + زرار ← فوق ---------- */
+const _navStack234 = [];
+let _backExitAt234 = 0;
+function appBack(){
+  try{
+    if(document.body && document.body.classList && document.body.classList.contains('cam-open')){ camClose(); return true; }
+    if(document.getElementById('estAlert')){ estAlertClose(); return true; }
+    if(document.getElementById('modalOverlay')){ closeModal(); return true; }
+    const sb = document.querySelector && document.querySelector('.sidebar');
+    if(sb && sb.classList && sb.classList.contains('open')){ mToggleMenu(false); return true; }
+  }catch(e){}
+  if(!session) return false;
+  while(_navStack234.length){
+    const prev = _navStack234.pop();
+    if(prev && prev !== currentTab && (canScreen(prev) || ['newPurchase','inventoryCount'].includes(prev))){ currentTab = prev; render(); mScrollTop(); return true; }
+  }
+  const home = firstVisibleTab();
+  if(currentTab !== home){ currentTab = home; render(); mScrollTop(); return true; }
+  return false;
+}
+function mScrollTop(){ try{ window.scrollTo(0, 0); }catch(e){} }
+function appBackInit(){
+  try{
+    if(!window.history || !history.pushState || !isTouchDevice()) return;
+    history.pushState({ mers234:1 }, '');
+    window.addEventListener('popstate', ()=>{
+      if(appBack()){ history.pushState({ mers234:1 }, ''); _backExitAt234 = 0; return; }
+      if(Date.now() - _backExitAt234 < 2200){ history.back(); return; }   // دوستين ورا بعض في الرئيسية = خروج
+      _backExitAt234 = Date.now();
+      history.pushState({ mers234:1 }, '');
+      toast('دوس «رجوع» تاني عشان تخرج من السيستم');
+    });
+  }catch(e){}
+}
+
+/* ---------- اسحب لتحت للتحديث ---------- */
+function pullRefreshInit(){
+  try{
+    if(!isTouchDevice() || !document.addEventListener) return;
+    let y0 = null, dist = 0, pulling = false, busy = false;
+    const ind = ()=>{ let d = document.getElementById('ptrInd'); if(!d){ d = document.createElement('div'); d.id = 'ptrInd'; d.className = 'ptr-ind'; document.body.appendChild(d); } return d; };
+    const hide = ()=>{ const d = document.getElementById('ptrInd'); if(d){ d.style.opacity = '0'; d.style.transform = 'translate(-50%,-70px)'; } };
+    document.addEventListener('touchstart', e=>{
+      y0 = null;
+      if(busy || !session || !loaded || document.getElementById('modalOverlay') || document.getElementById('estAlert')) return;
+      if(document.body.classList && document.body.classList.contains('cam-open')) return;
+      if((window.scrollY || document.documentElement.scrollTop || 0) > 0) return;
+      const sb = document.querySelector('.sidebar'); if(sb && sb.classList.contains('open')) return;
+      y0 = e.touches[0].clientY; dist = 0; pulling = false;
+    }, { passive:true });
+    document.addEventListener('touchmove', e=>{
+      if(y0 === null) return;
+      dist = e.touches[0].clientY - y0;
+      if(dist > 14 && (window.scrollY || 0) <= 0){
+        pulling = true;
+        const d = ind(), go = dist > 85;
+        d.style.opacity = String(Math.min(1, dist / 90));
+        d.style.transform = 'translate(-50%,' + (Math.min(dist, 120) - 56) + 'px)';
+        d.textContent = go ? '⟳ سيب عشان تحدّث' : '↓ اسحب للتحديث';
+        d.classList.toggle('go', go);
+      } else if(dist < 0){ y0 = null; hide(); }
+    }, { passive:true });
+    document.addEventListener('touchend', ()=>{
+      if(pulling && dist > 85 && !busy){
+        busy = true;
+        const d = ind(); d.textContent = '⏳ بيحدّث...';
+        Promise.resolve(refreshData()).catch(()=>{}).then(()=>{ busy = false; hide(); });
+      } else hide();
+      y0 = null; pulling = false; dist = 0;
+    }, { passive:true });
+  }catch(e){}
+}
+
+/* ---------- كل الجداول كروت على الموبايل (من غير ما نلمس شاشة شاشة) ----------
+   كل خانة بتاخد اسم عمودها من رأس الجدول وتتعرض «العنوان: القيمة» جوه كارت لكل سطر */
+function rtLabelTables(root){
+  try{
+    if(!(window.matchMedia && window.matchMedia('(max-width:700px)').matches)) return;
+    const tables = (root || document).querySelectorAll ? (root || document).querySelectorAll('table') : [];
+    tables.forEach(tb=>{
+      if(tb.closest && (tb.closest('#printArea') || tb.closest('.no-rt'))) return;
+      const head = tb.tHead; if(!head || !head.rows || !head.rows.length) return;
+      const hr = head.rows[head.rows.length - 1];
+      const labels = [];
+      [...hr.cells].forEach(th=>{ const n = th.colSpan || 1, tx = String(th.textContent || '').trim(); for(let i = 0; i < n; i++) labels.push(tx); });
+      if(labels.length < 3) return;
+      if(tb.classList) tb.classList.add('rt');
+      [...(tb.tBodies || [])].forEach(tbody=>[...tbody.rows].forEach(tr=>{
+        let col = 0;
+        [...tr.cells].forEach(td=>{
+          const span = td.colSpan || 1;
+          if(!td.hasAttribute('data-label')) td.setAttribute('data-label', span >= labels.length - 1 ? '' : (labels[col] || ''));
+          if(span >= labels.length - 1 && td.classList) td.classList.add('rt-full');
+          col += span;
+        });
+      }));
+    });
+  }catch(e){}
+}
+let _rtT234 = null;
+function rtLabelInit(){
+  try{
+    if(typeof MutationObserver === 'undefined' || !document.body) return;
+    const go = ()=>{ clearTimeout(_rtT234); _rtT234 = setTimeout(()=>rtLabelTables(document), 60); };
+    new MutationObserver(go).observe(document.body, { childList:true, subtree:true });
+    window.addEventListener('resize', go);
+    window.addEventListener('orientationchange', go);
+  }catch(e){}
+}
+
+/* ---------- شاشة البداية على الموبايل: مربعات حسب شغل كل موظف ---------- */
+const M_TAB_ICON234 = { dashboard:'🏠', notifications:'🔔', customers:'👥', custservice:'🎧', jobs:'🛠️', estimates:'📋', openjobs:'📊',
+  appointments:'📅', inventory:'🗃️', invanalysis:'📈', stockmoves:'📦', tools:'🧰', empcustody:'🎒', suppliers:'🚚', invoices:'🧾',
+  receivables:'💳', finance:'🏦', expenses:'💸', hr:'👔', reports:'📑', services:'📚', activitylog:'🕒', settings:'⚙️' };
+function mTabLabel(t){
+  if(t === 'estimates') return 'المقايسات';
+  if(t === 'hr') return session && session.role === 'reception' ? 'الإجازات والأذونات' : 'الموارد البشرية';
+  return SCREEN_LABELS[t] || t;
+}
+function mQuickActions(){
+  const a = [];
+  if(can('jobs.create')) a.push(['🔧', 'أمر شغل جديد', 'openPickCarForJob()']);
+  if(can('customers.create')) a.push(['👤', 'عميل جديد', 'openNewCustomerSearch()']);
+  if(can('inv.issue') && canScreen('stockmoves')) a.push(['📦', 'صرف على أمر', "goTab('stockmoves')"]);
+  if(can('inv.receive') && canScreen('inventory')) a.push(['🧾', 'فاتورة شراء', 'openNewPurchaseInvoicePage()']);
+  if(canScreen('inventory')) a.push(['📷', 'سكان قطعة', "openCamScanner('', 'inv')"]);
+  if(can('est.write')) a.push(['💰', 'تسعير مقايسة', 'estPickJob()']);
+  if(can('est.request')) a.push(['📦', 'طلب قطع غيار', "estPickJob('request')"]);
+  return a;
+}
+function mHomeTilesHTML(){
+  if(!session) return '';
+  const tabs = visibleTabs().filter(t=>t !== 'dashboard');
+  const qa = mQuickActions();
+  const badge = t=>{
+    if(t === 'estimates'){ const n = estBadgeCount(); return n ? `<b class="m-tile-b">${n}</b>` : ''; }
+    if(t === 'notifications'){ const n = pendingNotifCount(); return n ? `<b class="m-tile-b">${n}</b>` : ''; }
+    return '';
+  };
+  const hour = new Date().getHours(), hi = hour < 12 ? 'صباح الخير' : 'مساء الخير';
+  return `<div class="m-only m-home">
+    <div class="m-hello">${hi}${session.staffName ? ' يا ' + _joEsc(String(session.staffName).split(' ')[0]) : ''} 👋</div>
+    ${qa.length ? `<div class="m-sec">⚡ إجراءات سريعة</div>
+    <div class="m-tiles m-tiles-qa">${qa.map(([ic, lbl, fn])=>`<button class="m-tile m-tile-qa" onclick="${fn}"><span class="m-tile-i">${ic}</span><span>${lbl}</span></button>`).join('')}</div>` : ''}
+    <div class="m-sec">📱 الشاشات</div>
+    <div class="m-tiles">${tabs.map(t=>`<button class="m-tile" onclick="goTab('${t}')"><span class="m-tile-i">${M_TAB_ICON234[t] || '📄'}</span><span>${_joEsc(mTabLabel(t))}</span>${badge(t)}</button>`).join('')}</div>
+  </div>`;
+}
+/* زرار عايم للعملية الأساسية في الشاشة (الموبايل بس) */
+function mFabHTML(){
+  const map = {
+    jobs: can('jobs.create') ? ['🔧', 'أمر شغل', 'openPickCarForJob()'] : null,
+    customers: can('customers.create') ? ['👤', 'عميل جديد', 'openNewCustomerSearch()'] : null,
+    estimates: can('est.write') ? ['💰', 'مقايسة', 'estPickJob()'] : (can('est.request') ? ['📦', 'طلب قطع', "estPickJob('request')"] : null),
+    inventory: can('inv.item_create') ? ['➕', 'صنف جديد', 'openNewPartModal()'] : null,
+  };
+  const a = map[currentTab];
+  return a ? `<button class="m-fab" onclick="${a[2]}" aria-label="${a[1]}"><span>${a[0]}</span>${a[1]}</button>` : '';
+}
+/* شاشة البداية (Splash) وقت تحميل البيانات — زي التطبيقات */
+function appSplashHTML(msg){
+  return `<div class="app-splash"><img src="${LOGO}" alt="Masters Auto Service"><div class="app-splash-n">Masters Auto Service</div>
+    <div class="app-spin"></div><div class="app-splash-m">${msg || 'جاري التحميل...'}</div></div>`;
+}
+function pwaInit(){
+  try{
+    const de = document.documentElement;
+    if(de && de.setAttribute){
+      if(isTouchDevice()) de.setAttribute('data-touch', '1');
+      if(isStandaloneApp()) de.setAttribute('data-app', '1');
+    }
+  }catch(e){}
+  try{ if(navigator.serviceWorker && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(()=>{}); }catch(e){}
+  try{
+    window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); _pwaPrompt = e; pwaPaint(); });
+    window.addEventListener('appinstalled', ()=>{ _pwaPrompt = null; toast('✅ اتنزّل تطبيق Masters Auto Service — هتلاقي الأيقونة على الشاشة الرئيسية'); pwaPaint(); });
+  }catch(e){}
+  appBackInit();
+  pullRefreshInit();
+  rtLabelInit();
+}
+try{ if(typeof document !== 'undefined' && document.body) pwaInit(); }catch(e){}
+
+function goTab(id){
+  camClose();
+  if(id !== currentTab){ _navStack234.push(currentTab); if(_navStack234.length > 30) _navStack234.shift(); }   /* م234: للرجوع */
+  currentTab = id; render(); mScrollTop();
+}
 
 function shellHTML(){
   const tabs = visibleTabs();   // الشاشات الممنوعة بتختفي تماماً — مش بتظهر مقفولة
@@ -2819,6 +3175,7 @@ function shellHTML(){
             ${THEME_MODES.map(([v,l])=>`<option value="${v}" ${getUserThemeMode()===v?'selected':''}>${l}</option>`).join('')}
           </select>
         </div>
+        <button class="logout-btn" id="pwaBtn" style="margin-bottom:8px;${pwaCanOffer() ? '' : 'display:none'}" onclick="mToggleMenu(false);pwaInstall()">📲 نزّل التطبيق على الجهاز</button>
         <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
         <p class="role-tag" id="syncStatus" style="margin:8px 0 0;text-align:center;font-size:11px" title="حالة المزامنة مع باقي الأجهزة">${syncStatusHTML()}</p>
         <p class="role-tag" style="margin:4px 0 0;text-align:center;font-size:11px;cursor:pointer" onclick="checkForUpdate(false)" title="اضغط للتحقق من وجود تحديث">النسخة ${APP_VERSION} · 🔄</p>
@@ -2827,6 +3184,7 @@ function shellHTML(){
     <div class="main">
       <div class="topbar">
         <button class="btn btn-sm m-menu-btn" onclick="mToggleMenu()" title="القائمة">☰</button>
+        ${(_navStack234.length || currentTab !== firstVisibleTab()) ? `<button class="btn btn-sm m-back-btn" onclick="appBack()" title="رجوع" aria-label="رجوع">→</button>` : ''}
         <h2>${titles[currentTab] || ''}</h2>
         ${['dashboard','customers','jobs','stockmoves'].includes(currentTab) ? `
         <div class="search-box">
@@ -2838,6 +3196,7 @@ function shellHTML(){
       <div class="content" id="contentArea">${renderTab()}</div>
     </div>
     ${mBottomNavHTML(tabs)}
+    ${mFabHTML()}
   </div>`;
 }
 async function refreshData(){
@@ -2942,6 +3301,8 @@ function renderDashboard(){
   const recentJobs = [...DB.jobs].filter(j=>!isJobClosed(j)).sort((a,b)=>new Date(b.receivedAt)-new Date(a.receivedAt)).slice(0,4);
 
   return `
+    ${pwaBannerHTML()}
+    ${mHomeTilesHTML()}
     ${(isOwnerSession() && !_deviceAuthed) ? `
     <div class="card" style="margin-bottom:18px;border:1px solid var(--danger)">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -3717,8 +4078,9 @@ async function saveNewCustomer(force){
   await logAction('عميل جديد: '+name+' — '+phone);
   closeModal(); toast('تم حفظ العميل'); refreshContent();
 }
-function openAddCarModal(customerId){
+function openAddCarModal(customerId, thenJob){
   if(!can('customers.create')){ toast('مالكش صلاحية إضافة سيارات', true); return; }
+  window._carThenJob = thenJob ? customerId : null;   /* م233: من «أمر شغل جديد» ⇐ بعد الحفظ يفتح الأمر علطول */
   const cust = DB.customers.find(c=>c.id===customerId);
   openModal(`
     <h3>سيارة جديدة${cust?' — '+cust.name:''}</h3>
@@ -3733,7 +4095,7 @@ function openAddCarModal(customerId){
       <div class="form-row"><label class="f-label">سنة الصنع (اختياري)</label><input class="f" id="carYear" type="number" min="1970" max="2100"></div>
       <div class="form-row"><label class="f-label">اللون</label><input class="f" id="carColor"></div>
     </div>
-    <button class="btn btn-accent" style="width:100%" onclick="saveNewCar('${customerId}')">حفظ السيارة</button>
+    <button class="btn btn-accent" style="width:100%" onclick="saveNewCar('${customerId}')">${thenJob && can('jobs.create') ? 'حفظ السيارة وفتح أمر شغل' : 'حفظ السيارة'}</button>
   `);
 }
 /* (6) كشف مباشر لتكرار السيارة أثناء الكتابة */
@@ -3768,9 +4130,13 @@ async function saveNewCar(customerId){
     notify('dup_item', 'محاولة تسجيل سيارة مكررة ('+dup.by+') — مسجلة تحت: '+(owner?owner.name:'—'), { category:'system', refType:'customer', refId:owner?owner.id:null });
     return;
   }
-  DB.cars.push({id:uid('car'), customerId, plate, make, model, year, color, vin});
+  const carId233 = uid('car');
+  DB.cars.push({id:carId233, customerId, plate, make, model, year, color, vin});
   await saveKey('cars', DB.cars);
   await logAction('سيارة جديدة: '+plate+' '+model+(vin?' — شاسيه: '+vin:'')+' — للعميل: '+((DB.customers.find(c=>c.id===customerId)||{}).name||'—'));
+  const thenJob233 = window._carThenJob === customerId && can('jobs.create');
+  window._carThenJob = null;
+  if(thenJob233){ toast('تم حفظ السيارة — كمّل بيانات أمر الشغل'); openNewJobModal(carId233); return; }   /* م233 */
   closeModal(); toast('تم حفظ السيارة'); refreshContent();
 }
 /* ============ م177: تعديل بيانات سيارة — تصحيح أخطاء التسجيل (من غير نقل ملكية) ============
@@ -3990,24 +4356,101 @@ function renderJobs(){
   <div class="grid g3">${list.length? list.map(ticketCard).join('') : emptyState('لسه مفيش أوامر شغل')}</div>
   `;
 }
-function openPickCarForJob(){
-  if(DB.cars.length===0){ toast('سجل عميل وسيارة الأول', true); openNewCustomerSearch(); return; }
-  // سيارات العملاء المؤرشفين مش بتظهر في اختيار أمر شغل جديد
-  const activeCars = DB.cars.filter(car=>{
-    if(car.archived) return false;                       // السيارات المؤرشفة مستبعدة (م64)
-    const cust = DB.customers.find(c=>c.id===car.customerId);
-    return !cust || !cust.archived;
+/* ============ م233: «أمر شغل جديد» ببحث ذكي في العربيات المتسجلة ============
+   طلب سيف: كانت قايمة منسدلة طويلة بكل العربيات (بتاخد وقت كتير مع عدد العربيات)، والموظف كان بيروح
+   شاشة العملاء يدوّر ويرجع. دلوقتي خانة بحث واحدة: اسم العميل · اسم الشركة · الموبايل · اللوحة
+   (متلزقة أو بمسافات) · الشاسيه · الماركة والموديل — والنتايج متجمعة بالعميل وتحته عربياته:
+   • اسم شركة/عميل ⇐ الشركة/العميل بكل عربياته · رقم لوحة ⇐ صاحبها والعربية دي.
+   • قدام كل عربية «🔧 فتح أمر شغل» — ولو عليها أمر مفتوح «مفتوح #0850 — افتحه» (مفيش أمر تاني:
+     الحماية في saveNewJob زي ما هي) · «➕ إضافة سيارة جديدة للعميل ده» ⇐ بعد الحفظ يفتح أمر الشغل علطول.
+   • مالقاش ⇐ «السيارة دي مش متسجلة في السيستم» + زرار يوديك شاشة العملاء (قرار سيف: تسجّل العميل
+     والعربية هناك وتفتح الأمر). العملاء والعربيات المؤرشفة مش بتتفتح (بتقول إنها في الأرشيف). */
+function njCustActive(c){ return !!c && !c.merged && !c.archived; }
+function njCarHit(car, cust, term){
+  const qp = normPlate(term);
+  if(qp.length >= 2 && normPlate(car.plate).includes(qp)) return true;   // «ابج1234» = «أ ب ج 1234»
+  return smartMatch(term, [car.plate, car.make, car.brand, car.model, car.year, car.vin, car.color,
+    cust && cust.name, cust && cust.phone, cust && cust.phone2, cust && cust.custType]);
+}
+function njCustHit(c, term){
+  if(smartMatch(term, [c.name, c.phone, c.phone2, c.nationalId, c.email, c.custType])) return true;
+  const qd = normPhone(term);
+  return qd.length >= 4 && [c.phone, c.phone2].some(p=>normPhone(p).includes(qd));
+}
+/* النتايج: [{ cust, cars:[...], all:bool }] — العميل نفسه طابق ⇐ كل عربياته · العربية بس ⇐ العربيات اللي طابقت */
+function njSearch(term){
+  const t = String(term || '').trim();
+  if(!t) return { groups:[], archived:[] };
+  const groups = new Map(), archived = [];
+  DB.customers.forEach(c=>{
+    if(!c || c.merged || !njCustHit(c, t)) return;
+    if(c.archived){ archived.push({ kind:'cust', cust:c }); return; }
+    groups.set(c.id, { cust:c, cars:DB.cars.filter(x=>x.customerId===c.id && !x.archived), all:true });
   });
-  if(activeCars.length===0){ toast('كل العملاء مؤرشفين — رجّع عميل من الأرشيف أو سجّل عميل جديد', true); return; }
-  const opts = activeCars.map(car=>{
+  DB.cars.forEach(car=>{
     const cust = DB.customers.find(c=>c.id===car.customerId);
-    return `<option value="${car.id}">${car.plate} — ${carLabel(car)} (${cust?cust.name:''})</option>`;
-  }).join('');
+    if(!njCarHit(car, cust, t)) return;
+    if(car.archived || !njCustActive(cust)){ archived.push({ kind:'car', car, cust }); return; }
+    const g = groups.get(cust.id);
+    if(g){ if(!g.cars.some(x=>x.id===car.id)) g.cars.push(car); return; }
+    groups.set(cust.id, { cust, cars:[car], all:false });
+  });
+  const list = [...groups.values()];
+  /* الأقرب الأول: اللي اسمه أو لوحته بتبدأ بالكلام اللي اتكتب */
+  const nt = normSearch(t), qp = normPlate(t);
+  const score = g=>(normSearch(g.cust.name).startsWith(nt) ? 0 : 1) + (g.cars.some(c=>qp && normPlate(c.plate).startsWith(qp)) ? -1 : 0);
+  list.sort((a,b)=>score(a) - score(b) || cmpName(a.cust, b.cust));
+  return { groups:list, archived };
+}
+function njCarRowHTML(car){
+  const open = DB.jobs.find(j=>j.carId===car.id && !isJobClosed(j));
+  const right = open
+    ? `<span class="nj-open">⚠️ عليها أمر شغل مفتوح #${_joEsc(open.jobNo)} (${_joEsc(open.status || '')})</span>
+       <button class="btn btn-sm" onclick="closeModal();openJobDetail('${open.id}')">افتح الأمر</button>`
+    : `<button class="btn btn-sm btn-accent" onclick="openNewJobModal('${car.id}')">🔧 فتح أمر شغل</button>`;
+  return `<div class="nj-car">
+    <div style="flex:1;min-width:0"><b>🚗 ${_joEsc(car.plate || '—')}</b> — ${_joEsc(carLabel(car) || '—')}
+      ${car.vin ? `<span class="muted" style="font-size:11.5px"> · شاسيه ${_joEsc(car.vin)}</span>` : ''}${car.color ? `<span class="muted" style="font-size:11.5px"> · ${_joEsc(car.color)}</span>` : ''}</div>
+    <div class="nj-act">${right}</div>
+  </div>`;
+}
+function njResultsHTML(term){
+  const t = String(term || '').trim();
+  if(!t) return `<div class="nj-hint">🔎 اكتب أي حاجة عن العميل أو العربية — والنتايج هتظهر وإنت بتكتب.</div>`;
+  const { groups, archived } = njSearch(t);
+  const canCar = can('customers.create');
+  if(!groups.length){
+    const arch = archived.length ? `<div class="muted" style="font-size:12.5px;margin-top:8px">🗄️ فيه ${archived.length === 1 ? (archived[0].kind === 'car' ? 'عربية' : 'عميل') : archived.length + ' نتيجة'} بالبحث ده في <b>الأرشيف</b> — رجّعه من شاشة العملاء الأول.</div>` : '';
+    return `<div class="card nj-none">
+      <div style="font-size:15px;font-weight:800;color:var(--danger)">🚫 السيارة دي مش متسجلة في السيستم</div>
+      <div style="font-size:13px;line-height:1.9;margin-top:4px">سجّل العميل والعربية من <b>شاشة العملاء</b> الأول، وبعدين افتح لها أمر الشغل.</div>${arch}
+      ${canScreen('customers') ? `<button class="btn btn-accent" style="margin-top:10px" onclick="closeModal();goTab('customers')">👥 روح لشاشة العملاء</button>` : ''}
+    </div>`;
+  }
+  const shown = groups.slice(0, 25);
+  return shown.map(g=>{
+    const c = g.cust, co = c.custType === 'شركة';
+    return `<div class="card nj-grp">
+      <div class="nj-cust"><b>${co ? '🏢' : '👤'} ${_joEsc(c.name || '—')}</b>
+        <span class="muted" style="font-size:12px"> · ${co ? 'شركة' : 'فرد'}${c.phone ? ' · ' + _joEsc(c.phone) : ''} · ${DB.cars.filter(x=>x.customerId===c.id && !x.archived).length} عربية</span></div>
+      ${g.cars.length ? g.cars.map(njCarRowHTML).join('') : `<div class="muted" style="font-size:12.5px;padding:8px 2px">مفيش عربيات متسجلة للعميل ده.</div>`}
+      ${!g.all ? `<div class="muted" style="font-size:11.5px;padding:4px 2px">ظاهر العربية اللي طابقت البحث بس — اكتب اسم العميل عشان تشوف كل عربياته.</div>` : ''}
+      ${canCar ? `<button class="btn btn-sm nj-add" onclick="openAddCarModal('${c.id}', 1)">➕ إضافة سيارة جديدة للعميل ده</button>` : ''}
+    </div>`;
+  }).join('') + (groups.length > shown.length ? `<div class="muted" style="font-size:12.5px;text-align:center;padding:8px">و${groups.length - shown.length} عميل كمان — زوّد كلمة في البحث عشان تقرّب</div>` : '');
+}
+function njRender(){
+  const i = document.getElementById('njSearch'), b = document.getElementById('njResults');
+  if(b) b.innerHTML = njResultsHTML(i ? i.value : '');
+}
+function openPickCarForJob(){
+  if(!can('jobs.create')){ toast('مالكش صلاحية إنشاء أوامر شغل', true); return; }
   openModal(`
-    <h3>اختار السيارة</h3>
-    <div class="form-row"><select class="f" id="pickCarSel">${opts}</select></div>
-    <button class="btn btn-accent" style="width:100%" onclick="openNewJobModal(document.getElementById('pickCarSel').value)">التالي</button>
-  `);
+    <h3>🔧 أمر شغل جديد</h3>
+    <p class="muted" style="font-size:12.5px;line-height:1.8;margin:0 0 8px">دوّر على العربية: <b>اسم العميل · اسم الشركة · الموبايل · رقم اللوحة · الشاسيه · الماركة والموديل</b> — وبعدين دوس «فتح أمر شغل» قدام العربية.</p>
+    <div class="form-row"><input class="f" id="njSearch" autocomplete="off" oninput="njRender()" placeholder="🔍 مثال: شركة النصر · 0100 · ابج1234 · سيراتو"></div>
+    <div id="njResults">${njResultsHTML('')}</div>`, true);
+  setTimeout(()=>{ const i = document.getElementById('njSearch'); if(i && i.focus) i.focus(); }, 50);
 }
 /* ============ هوية الفني: الربط بالرقم الوظيفي مش بالاسم (الملاحظة 30) ============
    كل بند شغل بيتخزن معاه technicianId (معرف الموظف) + technician (لقطة من الاسم للسجلات القديمة والطباعة).
@@ -5159,7 +5602,7 @@ function estBadgeCount(){
 }
 function estPaintBadges(n){
   try{
-    ['estNavCnt','estMoreCnt','estJobsCnt'].forEach(id=>{
+    ['estNavCnt','estMoreCnt','estJobsCnt','estNavCntM'].forEach(id=>{
       const el = document.getElementById(id);
       if(el){ el.textContent = n ? String(n) : ''; if(el.style) el.style.display = n ? '' : 'none'; }
     });
