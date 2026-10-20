@@ -232,6 +232,17 @@ tr:hover td{background:var(--surface-2);}
 .est-rv{grid-template-columns:20px minmax(0,1.4fr) 58px 86px 92px 82px 36px}
 .est-rp{grid-template-columns:44px minmax(0,1.4fr) 50px 140px minmax(0,1fr)}
 .est-ro{grid-template-columns:20px minmax(0,1.4fr) 50px 90px 96px 86px}
+.est-rq{grid-template-columns:20px minmax(0,1.4fr) 50px 120px 110px}
+.est-chg{display:block;font-size:11px;color:var(--accent-2);font-weight:800}
+.est-chg-row{background:rgba(229,115,85,.10)}
+.est-stale{border:1.5px solid var(--accent-2);border-radius:9px;padding:8px 11px;margin:6px 0;font-size:12.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between}
+.est-det{margin-top:6px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);padding:0 10px}
+.est-det>summary{cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:8px 0;font-size:12.5px}
+.est-det>summary::-webkit-details-marker{display:none}
+.est-det-btn{font-size:11.5px;font-weight:800;color:var(--accent);border:1px solid var(--accent);border-radius:14px;padding:1px 10px;white-space:nowrap}
+.est-det[open] .est-det-btn{background:var(--accent);color:#111}
+.est-det .est-mini{background:var(--surface);margin:0 0 6px}
+.est-none{font-size:12.5px;color:var(--muted);padding:6px 2px}
 .est-rp input[type=checkbox]{width:20px;height:20px;accent-color:var(--success)}
 .est-pend{background:rgba(242,212,16,.09)}
 .est-pend-t{color:var(--accent);font-size:12px;font-weight:700}
@@ -260,6 +271,25 @@ tr:hover td{background:var(--surface-2);}
 .est-row-mine{border-right:3px solid var(--accent-2)}
 .est-late{color:var(--accent-2)}
 .est-cnt{display:inline-block;background:var(--accent-2);color:#fff;border-radius:10px;padding:0 7px;font-size:11px;line-height:18px;margin-right:4px;font-weight:800}
+/* م240: الحجوزات */
+.ap-card{padding:12px 14px;margin-bottom:10px}
+.ap-done{opacity:.78}
+.ap-top{display:flex;gap:12px;align-items:flex-start}
+.ap-time{font-size:19px;font-weight:900;color:var(--accent);min-width:78px;text-align:center;line-height:1.3}
+.ap-why{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.ap-chip{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:2px 10px;font-size:12.5px;font-weight:700}
+.ap-prob{border-color:var(--danger)}
+.ap-tel{color:var(--accent);font-weight:700;text-decoration:none;direction:ltr;unicode-bidi:embed}
+.ap-est{margin-top:8px;font-size:12.5px}
+.ap-est summary{cursor:pointer}
+.ap-act{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.ap-day{font-weight:800;margin:16px 0 8px}
+.ap-line{display:grid;grid-template-columns:1fr 64px 92px auto;gap:6px;margin-bottom:6px;align-items:center}
+.ap-line-h{font-size:11.5px;color:var(--muted);margin-bottom:2px}
+.ap-slots{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;margin:-2px 0 12px}
+.ap-slot{font-size:12.5px;padding:3px 0;border-bottom:1px dashed var(--border)}
+.ap-slot:last-child{border-bottom:0}
+@media (max-width:600px){ .ap-line{grid-template-columns:1fr 52px 76px auto} .ap-time{min-width:64px;font-size:17px} }
 .est-alert{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:440;display:flex;align-items:center;justify-content:center;padding:16px}
 .est-alert-card{background:var(--surface);color:var(--text);border:2px solid var(--accent);border-radius:14px;padding:16px 18px;width:100%;max-width:440px;max-height:90vh;overflow:auto}
 .est-alert-h{font-size:16px;font-weight:900;margin-bottom:6px}
@@ -336,6 +366,9 @@ html[data-touch] .content{animation:pgIn .18s ease-out}
   table.rt td.rt-full{text-align:center}
   table.rt td .btn{margin:2px}
 }
+/* م236: حركة اتلغت من أمر الشغل */
+.mv-void{font-size:11.5px;color:var(--danger);margin-top:3px;line-height:1.6;font-weight:600}
+tr.mv-voided td{background:rgba(224,37,37,.06)}
 /* م233: أمر شغل جديد بالبحث الذكي */
 .nj-hint{padding:18px 10px;text-align:center;color:var(--muted);font-size:13px}
 .nj-grp{padding:10px 12px;margin-bottom:10px}
@@ -364,6 +397,7 @@ html[data-touch] .content{animation:pgIn .18s ease-out}
   .est-rp>span:first-child{display:block;grid-column:span 1}
   .est-rp>:nth-child(2){grid-column:span 5}
   .est-rp>:nth-child(n+3){grid-column:span 2}
+  .est-rq>:nth-child(n+3){grid-column:span 2}
   .est-ev{grid-template-columns:76px minmax(0,1fr)}
 }
 .tag-partial{background:#3a3220;color:#F2A93B;}
@@ -718,6 +752,7 @@ let _loadGen = 0;   /* م179: بيزيد مع كل تحميل كامل — عش�
 
 const _dirtyAfterSave = {};   // م85: مفاتيح اتغيّرت أثناء الرفع ومحتاجة حفظة تانية
 function saveKey(key){
+  window._saveCalls = (window._saveCalls || 0) + 1;   /* م237: عدّاد الحفظ — الحماية من التكرار بتعرف منه إن العملية حفظت فعلاً */
   // حفظ بالفروقات: بيقارن الحالة الحالية بآخر حالة محفوظة ويرسل المتغير فقط
   // + دمج: لو نفس الجدول في الطابور، الحفظة المنتظرة هتشمل التعديل الحالي
   if(_queuedKeys[key]) return _queuedKeys[key];
@@ -823,6 +858,7 @@ const MERGE_SUBARRAYS = {
   invoices:   ['payments','items'],
   purchases:  ['items','payments','history'],
   customers:  ['attachments'],
+  employees:  ['salaryPays','advances','bonuses','penalties','absences'],   /* م239: الصرف والسلف والجزاءات من أجهزة مختلفة مايمسحوش بعض */
 };
 window._mergeRescues = 0;
 window._mergeBlocked = 0;    /* م203: بنود اتمنعت من الرجوع بعد ما اتشالت من جهاز تاني */
@@ -900,6 +936,16 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
         (u.data._rm = (u.data._rm && typeof u.data._rm === 'object') ? u.data._rm : {})[f] = [...tomb];
         changed = true;
       }
+      /* م239: السجل عندنا مالوش القايمة دي خالص (موظف قديم لسه مااتصرفلوش) وجهاز تاني ضافها دلوقتي ⇒ ناخدها، مانمسحهاش */
+      if(!localArr && remArr && remArr.length && !(base && Array.isArray(base[f]))){
+        const keep = remArr.filter(it=>it && !(it.id && tomb.has(it.id)));
+        if(keep.length){
+          u.data[f] = JSON.parse(JSON.stringify(keep));
+          changed = true;
+          keep.forEach(it=>rescued.push({ key, rowId:u.id, field:f, name:(it.name||it.id) }));
+        }
+        return;
+      }
       if(!localArr || !remArr) return;
       /* (3) نسخة قديمة فيها بند اتشال من جهاز تاني ⇒ يتشال منها، ومايرجعش */
       if(tomb.size){
@@ -963,14 +1009,15 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
     });
     if(changed && nextShadow) nextShadow.set(u.id, JSON.stringify(u.data));
   });
-  if(blocked.length){
-    window._mergeBlocked += blocked.length;
-    const names = [...new Set(blocked.map(r=>r.name))].slice(0,4).join(' · ');
-    console.warn('م203: بند اتشال من جهاز تاني ومارجعش', blocked);
+  window._mergeBlocked += blocked.length;
+  if(blocked.length) console.warn('م203: بند اتشال من جهاز تاني ومارجعش', blocked);
+  const shownBlk = blocked.filter(r=>r.key !== 'employees');   /* م239: ملف الموظف — متوقع، ومن غير أسماء بنود تتقري */
+  if(shownBlk.length){
+    const names = [...new Set(shownBlk.map(r=>r.name))].slice(0,4).join(' · ');
     setTimeout(()=>{
       try{
-        toast('ℹ️ ' + blocked.length + ' بند كان اتشال من جهاز تاني ومارجعش: ' + names, false);
-        logAction('🛡️ منع رجوع ' + blocked.length + ' بند اتشال عن قصد من جهاز تاني (نسخة قديمة)'
+        toast('ℹ️ ' + shownBlk.length + ' بند كان اتشال من جهاز تاني ومارجعش: ' + names, false);
+        logAction('🛡️ منع رجوع ' + shownBlk.length + ' بند اتشال عن قصد من جهاز تاني (نسخة قديمة)'
           + auditDetails([['البنود', names], ['الجدول', key]]));
       }catch(e){}
     }, 0);
@@ -978,7 +1025,7 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
   /* م230: «وصلت/اتفتحت» في خط المقايسة الزمني بتتكتب من جهاز المستلم والتاني بيحفظ بعدها بثواني —
      ضمّها عادي ومتوقع، فمابنزعجش حد بيه (ولا إشعار لصاحب المركز) */
   window._mergeRescues += rescued.length;
-  const loud230 = rescued.filter(r=>!(r.key==='repairEstimates' && r.field==='events'));
+  const loud230 = rescued.filter(r=>!(r.key==='repairEstimates' && r.field==='events') && r.key !== 'employees');   /* م239: صرف من الحسابات + جزاء من الـHR على نفس الموظف = متوقع */
   if(loud230.length){
     const names = [...new Set(loud230.map(r=>r.name))].slice(0,4).join(' · ');
     console.warn('م100: اتنقذ ' + loud230.length + ' بند من المسح', loud230);
@@ -1092,7 +1139,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v255';
+const APP_VERSION = 'v261';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1110,7 +1157,7 @@ const ROLE_TABS = {
    الشاشة الممنوعة بتختفي تماماً — مش بتظهر مقفولة. المالك عنده كل حاجة دايماً. */
 const SCREEN_LABELS = {
   dashboard:'الرئيسية', notifications:'مركز الإشعارات', customers:'العملاء والسيارات', custservice:'خدمة العملاء', jobs:'أوامر الشغل', openjobs:'الأوامر المفتوحة', empcustody:'عهدة الموظفين',
-  appointments:'المواعيد', inventory:'المخزون', invanalysis:'تحليل حركة المخزون', stockmoves:'حركة المخزن', tools:'العدد الخاصة',
+  appointments:'الحجوزات', inventory:'المخزون', invanalysis:'تحليل حركة المخزون', stockmoves:'حركة المخزن', tools:'العدد الخاصة',
   suppliers:'الموردين', invoices:'الفواتير', receivables:'المديونيات', finance:'الخزنة والحسابات',
   expenses:'المصروفات', hr:'الموارد البشرية', reports:'التقارير', services:'قوائم الخدمات',
   activitylog:'سجل العمليات', settings:'الإعدادات'
@@ -1151,8 +1198,8 @@ const ACTION_GROUPS = [
     ['est.write','كتابة المقايسة وإرسالها للتسعير + أسعار المصنعيات'],
     ['est.approve','تسجيل موافقة العميل واعتماد المقايسة'],
     ['est.price','تسعير قطع غيار المقايسة (المخزن)'],
-    ['est.prepare','تجهيز المقايسة المعتمدة (المخزن)'],
-    ['est.request','طلب قطع غيار (من غير تسعير — العميل موافق)'],   /* م231 */
+    ['est.prepare','تجهيز طلبات صرف قطع الغيار (المخزن)'],
+    ['est.request','طلب صرف قطع غيار (من غير تسعير — العميل موافق)'],   /* م231 */
   ]],
   ['العملاء', [
     ['customers.create','إضافة عميل وسيارة'],
@@ -1283,10 +1330,10 @@ const PERM_INFO = {
   'wip.export':'طباعة الـ Snapshot (وتقدر تحفظها PDF من نافذة الطباعة) وتصديرها Excel. قراءة فقط.',
   'wip.delete':'حذف Snapshot محفوظة نهائياً بسبب إلزامي. حساسة — دي مراجع محاسبية للإقفال.',
   'est.write':'كتابة المقايسة على السيستم: «📝 مقايسة إصلاح» ⇐ «💰 تسعير مقايسة إصلاح» ⇐ المصنعيات وقطع الغيار بالكميات (كتابة باليد) ⇐ إرسالها للمخزن يسعّرها. وكمان أسعار المصنعيات، وإضافة بنود جديدة أو شيلها قبل الاعتماد، وطباعتها للعميل. بتظهّر شاشة «📋 المقايسات». <b>مابتلمسش المخزون ولا بنود أمر الشغل.</b>',
-  'est.approve':'تسجيل رد العميل على المقايسة المتسعرة: علامة ✗ على البنود اللي رفضها و«✅ تم اعتماد المقايسة» (الباقي يتحسب موافق)، أو «العميل رفضها كلها». القطع المعتمدة بتروح للمخزن يجهّزها.',
+  'est.approve':'تسجيل رد العميل على المقايسة المتسعرة: علامة ✗ على البنود اللي رفضها و«✅ تم اعتماد المقايسة» (الباقي يتحسب موافق)، أو «العميل رفضها كلها». المقايسة المعتمدة بتتحوّل لوحدها لـ«📦 طلب صرف قطع غيار» عند المخزن يجهّزه.',
   'est.price':'المخزن: كتابة <b>سعر البيع</b> لكل قطعة في المقايسة (من المخزن · من بره · مش متوفرة) و«✅ تم التسعير». مالوش دعوة بالمصنعيات. بتظهّر شاشة «📋 المقايسات» ورسايل «مقايسة محتاجة تسعير».',
-  'est.prepare':'المخزن: تجهيز القطع المعتمدة في المقايسة (علامة «جاهزة» لكل قطعة) و«✅ تم تجهيز المقايسة» — الاستقبال بيوصله إشعار. <b>علامة بس</b> — الصرف على الأمر بيفضل بالطريقة العادية وبصلاحياته.',
-  'est.request':'«📦 طلب قطع غيار»: العميل موافق من الأول ⇐ تكتب القطع بالكميات على أمر الشغل وتبعتها للمخزن <b>يجهّزها علطول من غير تسعير ولا موافقة</b>. الطلب ده معتمد بالنيابة عن العميل. مابيلمسش المخزون — الصرف بيفضل بالطريقة العادية.',
+  'est.prepare':'المخزن: تجهيز <b>طلبات صرف قطع الغيار</b> (اللي جاية من مقايسة اعتمدها العميل، أو من الاستقبال علطول): لكل قطعة «✓ اتجهزت» أو «مش متوفرة» (من المخزن / من مورد بره)، و«✅ تم التجهيز» — الاستقبال بيوصله إشعار «اتجهز 3 من 5». <b>علامة بس</b> — الصرف على الأمر بيفضل بالطريقة العادية وبصلاحياته.',
+  'est.request':'«📦 طلب صرف قطع غيار»: العميل موافق من الأول ⇐ تكتب القطع بالكميات على أمر الشغل وتبعتها للمخزن <b>يجهّزها علطول من غير تسعير ولا موافقة</b>. الطلب ده معتمد بالنيابة عن العميل. مابيلمسش المخزون — الصرف بيفضل بالطريقة العادية.',
   'customers.create':'إضافة عملاء جدد وسياراتهم. <b>مابتديش</b> حق تعديل بيانات عميل موجود — دي صلاحية منفصلة.',
   'customers.edit':'تعديل بيانات عميل موجود: الاسم · نوع العميل (فرد/شركة) · الموبايل · التليفون الإضافي · الرقم القومي · الإيميل. كل تعديل بيتسجّل بقبل/بعد وبسبب في سجل العمليات والإشعارات.',
   'cars.edit':'تعديل بيانات سيارة مسجلة: اللوحة · الماركة · الموديل · السنة · اللون · الشاسيه — لتصحيح أخطاء التسجيل. بنفس حماية منع التكرار (مينفعش لوحة/شاسيه سيارة تانية)، وبسبب إلزامي وقبل/بعد في السجل والإشعارات. تاريخ السيارة (أوامر وفواتير) بيفضل مربوط بيها زي ما هو. <b>مفيش نقل ملكية</b> — السيارة بتفضل لعميلها.',   /* م177 */
@@ -1666,7 +1713,12 @@ function kindLabel(it){
 function kindLabelFull(it){
   return it.kind==='part'?'قطعة غيار':it.kind==='ext_part'?'قطعة غيار خارجية':it.kind==='ext_work'?'أعمال خارجية':'خدمة / مصنعية';
 }
-function money(n){ return (Math.round((n||0)*100)/100).toLocaleString('ar-EG')+' ج.م'; }
+/* م235: طلب سيف — كل الأرقام في السيستم كله إنجليزي (1 2 3) للتوحيد ومنع اللخبطة: الشاشات والطباعة
+   (أمر الشغل · الفاتورة · المقايسة · الإقرارات) والواتساب. الكلام وأسامي الشهور والأيام و«ص/م» عربي زي ما هم.
+   التاريخ: يوم/شهر/سنة «01/10/2026» (قرار سيف). */
+const NUM_LOCALE = 'ar-EG-u-nu-latn';
+function _noBidi(s){ return String(s).replace(/[\u200e\u200f\u061c]/g, ''); }   // علامات الاتجاه كانت بتقلب التاريخ «2026/10/01»
+function money(n){ return (Math.round((n||0)*100)/100).toLocaleString(NUM_LOCALE)+' ج.م'; }
 function carLabel(car){
   if(!car) return '';
   return [car.make, car.model, car.year].filter(Boolean).join(' ') || car.model || '';
@@ -1674,10 +1726,10 @@ function carLabel(car){
 /* الملاحظة 50: قراءة العداد للفاتورة — الأصل قراءة أمر الشغل وقت الاستلام، وإلا آخر قراءة للسيارة */
 function jobOdometer(job, car){
   const km = (job && job.odometer) || (car && car.currentOdometer) || 0;
-  return km ? Number(km).toLocaleString('ar-EG')+' كم' : '—';
+  return km ? Number(km).toLocaleString(NUM_LOCALE)+' كم' : '—';
 }
-function fmtDate(d){ const dt=new Date(d); return dt.toLocaleDateString('ar-EG',{day:'2-digit',month:'2-digit',year:'numeric'}); }
-function fmtDateTime(d){ const dt=new Date(d); return dt.toLocaleDateString('ar-EG',{day:'2-digit',month:'2-digit'})+' '+dt.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}); }
+function fmtDate(d){ const dt=new Date(d); return _noBidi(dt.toLocaleDateString(NUM_LOCALE,{day:'2-digit',month:'2-digit',year:'numeric'})); }
+function fmtDateTime(d){ const dt=new Date(d); return _noBidi(dt.toLocaleDateString(NUM_LOCALE,{day:'2-digit',month:'2-digit'}))+' '+_noBidi(dt.toLocaleTimeString(NUM_LOCALE,{hour:'2-digit',minute:'2-digit'})); }
 function durationText(from, to){
   const ms = new Date(to||new Date()) - new Date(from);
   if(ms < 0) return '—';
@@ -2856,7 +2908,7 @@ const M_NAV220 = [['dashboard', '🏠', 'الرئيسية'], ['jobs', '🛠️',
 /* م234: الشريط اللي تحت حسب شغل كل قسم (أهم 3 شاشات + الرئيسية) */
 const M_NAV_PRI234 = { reception:['jobs','customers','estimates','appointments'], warehouse:['inventory','stockmoves','estimates','suppliers'],
   accounts:['jobs','invoices','receivables','hr'], hr:['hr'], owner:['jobs','stockmoves','invoices','inventory'] };
-const M_NAV_LBL234 = { dashboard:'الرئيسية', jobs:'أوامر الشغل', customers:'العملاء', estimates:'المقايسات', appointments:'المواعيد', inventory:'المخزون',
+const M_NAV_LBL234 = { dashboard:'الرئيسية', jobs:'أوامر الشغل', customers:'العملاء', estimates:'المقايسات', appointments:'الحجوزات', inventory:'المخزون',
   stockmoves:'حركة المخزن', suppliers:'الموردين', invoices:'الفواتير', receivables:'المديونيات' };
 function mBottomNavHTML(tabs){
   const pri = (M_NAV_PRI234[session && session.role] || M_NAV_PRI234.owner).concat(M_NAV220.map(x=>x[0]), ['estimates','receivables','hr','suppliers']);
@@ -2865,7 +2917,7 @@ function mBottomNavHTML(tabs){
   const list = picked.map(t=>[t, M_TAB_ICON234[t] || '📄', M_NAV_LBL234[t] || mTabLabel(t)]);
   const canScan = tabs.includes('inventory');
   const estN = estBadgeCount();
-  const btn = ([t, ic, lbl]) => `<button class="${currentTab === t ? 'active' : ''}" onclick="goTab('${t}')"><span class="m-nav-i">${ic}</span>${lbl}${t === 'estimates' ? `<b id="estNavCntM" class="est-cnt m-nav-b"${estN ? '' : ' style="display:none"'}>${estN || ''}</b>` : ''}</button>`;
+  const btn = ([t, ic, lbl]) => `<button class="${currentTab === t ? 'active' : ''}" onclick="goTab('${t}')"><span class="m-nav-i">${ic}</span>${lbl}${t === 'estimates' ? `<b id="estNavCntM" class="est-cnt m-nav-b"${estN ? '' : ' style="display:none"'}>${estN || ''}</b>` : ''}${t === 'appointments' ? (()=>{ const n = apptTodayLeft(); return `<b id="apptNavCntM" class="est-cnt m-nav-b"${n ? '' : ' style="display:none"'}>${n || ''}</b>`; })() : ''}</button>`;
   const half = Math.ceil(list.length / 2);
   return `<nav class="m-bottomnav">
     ${list.slice(0, half).map(btn).join('')}
@@ -3069,7 +3121,7 @@ function mQuickActions(){
   if(can('inv.receive') && canScreen('inventory')) a.push(['🧾', 'فاتورة شراء', 'openNewPurchaseInvoicePage()']);
   if(canScreen('inventory')) a.push(['📷', 'سكان قطعة', "openCamScanner('', 'inv')"]);
   if(can('est.write')) a.push(['💰', 'تسعير مقايسة', 'estPickJob()']);
-  if(can('est.request')) a.push(['📦', 'طلب قطع غيار', "estPickJob('request')"]);
+  if(can('est.request')) a.push(['📦', 'طلب صرف قطع غيار', "estPickJob('request')"]);
   return a;
 }
 function mHomeTilesHTML(){
@@ -3079,6 +3131,7 @@ function mHomeTilesHTML(){
   const badge = t=>{
     if(t === 'estimates'){ const n = estBadgeCount(); return n ? `<b class="m-tile-b">${n}</b>` : ''; }
     if(t === 'notifications'){ const n = pendingNotifCount(); return n ? `<b class="m-tile-b">${n}</b>` : ''; }
+    if(t === 'appointments'){ const n = apptTodayLeft(); return n ? `<b class="m-tile-b">${n}</b>` : ''; }   /* م240 */
     return '';
   };
   const hour = new Date().getHours(), hi = hour < 12 ? 'صباح الخير' : 'مساء الخير';
@@ -3141,7 +3194,7 @@ function shellHTML(){
     jobs: navItem('jobs','أوامر الشغل',ICONS.wrench),
     estimates: estNavItemHTML(),   /* م230 */
     openjobs: navItem('openjobs','الأوامر المفتوحة',ICONS.chart),
-    appointments: navItem('appointments','المواعيد',ICONS.calendar),
+    appointments: apptNavItemHTML(),   /* م240 */
     inventory: navItem('inventory','المخزون',ICONS.box),
     invanalysis: navItem('invanalysis','تحليل حركة المخزون',ICONS.chart),
     stockmoves: navItem('stockmoves','حركة المخزن',ICONS.arrows),
@@ -3158,7 +3211,7 @@ function shellHTML(){
     activitylog: navItem('activitylog','سجل العمليات',ICONS.clock),
     settings: navItem('settings','الإعدادات',ICONS.gear),
   };
-  const titles = {dashboard:'الرئيسية',notifications:'🔔 مركز الإشعارات والحوكمة',customers:'العملاء والسيارات',custservice:'🎧 خدمة العملاء ومتابعة الرضا',jobs:'أوامر الشغل',estimates:'📋 المقايسات — تسعير واعتماد',openjobs:'تقارير أوامر الشغل المفتوحة',appointments:'المواعيد',inventory:'المخزون',invanalysis:'📊 تحليل حركة المخزون',stockmoves:'حركة المخزن',tools:'العدد الخاصة (Special Tools)',empcustody:'🧰 عهدة الموظفين',suppliers:'الموردين',invoices:'الفواتير',receivables:'المديونيات والمستحقات',finance:'الخزنة والحسابات المالية',expenses:'المصروفات',hr:(session.role==='reception'?'الإجازات والأذونات':'الموارد البشرية (HR)'),reports:'التقارير',services:'قوائم الخدمات',activitylog:'سجل العمليات',settings:'الإعدادات',newPurchase:'فاتورة شراء مورد جديدة',inventoryCount:'جرد المخزن'};
+  const titles = {dashboard:'الرئيسية',notifications:'🔔 مركز الإشعارات والحوكمة',customers:'العملاء والسيارات',custservice:'🎧 خدمة العملاء ومتابعة الرضا',jobs:'أوامر الشغل',estimates:'📋 المقايسات — تسعير واعتماد',openjobs:'تقارير أوامر الشغل المفتوحة',appointments:'📅 الحجوزات',inventory:'المخزون',invanalysis:'📊 تحليل حركة المخزون',stockmoves:'حركة المخزن',tools:'العدد الخاصة (Special Tools)',empcustody:'🧰 عهدة الموظفين',suppliers:'الموردين',invoices:'الفواتير',receivables:'المديونيات والمستحقات',finance:'الخزنة والحسابات المالية',expenses:'المصروفات',hr:(session.role==='reception'?'الإجازات والأذونات':'الموارد البشرية (HR)'),reports:'التقارير',services:'قوائم الخدمات',activitylog:'سجل العمليات',settings:'الإعدادات',newPurchase:'فاتورة شراء مورد جديدة',inventoryCount:'جرد المخزن'};
 
   return `
   <div class="shell">
@@ -3245,7 +3298,7 @@ function renderTab(){
     default: return '';
   }
 }
-function refreshContent(){ const c=document.getElementById('contentArea'); if(c) c.innerHTML = renderTab(); estInboxSoon(); }
+function refreshContent(){ const c=document.getElementById('contentArea'); if(c) c.innerHTML = renderTab(); estInboxSoon(); apptPaintBadges(); }
 /* ============ م229: «تحميل المزيد» في كل القوايم الطويلة ============
    طلب سيف: أي قايمة طويلة (تنبيه النفاد في الرئيسية · المخزون · الفواتير · العملاء · سجل العمليات …)
    بتعرض أول 100 سطر بس وتحتها «⬇ تحميل المزيد (100 كمان)» و«عرض الكل» — عشان ماينزلش لتحت كتير.
@@ -3263,9 +3316,9 @@ function pgCtlHTML(key, total, redraw){
   if(total <= shown) return '';
   const step = Math.min(PG229, total - shown), go = redraw || 'refreshContent()';
   return `<div class="pg-more" style="grid-column:1/-1;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;padding:10px">
-    <span class="muted" style="font-size:12px">ظاهر ${shown.toLocaleString('ar-EG')} من ${total.toLocaleString('ar-EG')}</span>
-    <button class="btn btn-sm btn-accent" onclick="pgMore('${key}');${go}">⬇ تحميل المزيد (${step.toLocaleString('ar-EG')} كمان)</button>
-    <button class="btn btn-sm" onclick="pgMore('${key}',1);${go}">عرض الكل (${total.toLocaleString('ar-EG')})</button></div>`;
+    <span class="muted" style="font-size:12px">ظاهر ${shown.toLocaleString(NUM_LOCALE)} من ${total.toLocaleString(NUM_LOCALE)}</span>
+    <button class="btn btn-sm btn-accent" onclick="pgMore('${key}');${go}">⬇ تحميل المزيد (${step.toLocaleString(NUM_LOCALE)} كمان)</button>
+    <button class="btn btn-sm" onclick="pgMore('${key}',1);${go}">عرض الكل (${total.toLocaleString(NUM_LOCALE)})</button></div>`;
 }
 function pgRowHTML(key, total, cols, redraw){ const c = pgCtlHTML(key, total, redraw); return c ? `<tr><td colspan="${cols}" style="padding:0">${c}</td></tr>` : ''; }
 
@@ -3333,7 +3386,7 @@ function renderDashboard(){
       <tbody>${pgSlice('dashLow', lowStock).map(p=>`<tr><td>${p.name}</td><td class="low-stock">${p.qty}</td><td>${p.minQty}</td></tr>`).join('')}${pgRowHTML('dashLow', lowStock.length, 3)}</tbody></table>
     </div>` : ''}
     ${['reception','owner'].includes(session.role) ? renderServiceRemindersWidget() : ''}
-    ${['reception','owner'].includes(session.role) ? renderTodayAppointmentsWidget() : ''}
+    ${canScreen('appointments') ? renderTodayAppointmentsWidget() : ''}
   `;
 }
 function renderNotifCenterWidget(){
@@ -3390,13 +3443,12 @@ function renderServiceRemindersWidget(){
   }).join('')}</tbody></table></div>`;
 }
 function renderTodayAppointmentsWidget(){
-  const todayStr = new Date().toDateString();
-  const list = DB.appointments.filter(a=>a.status!=='ملغي' && new Date(a.date).toDateString()===todayStr).sort((a,b)=>new Date(a.date)-new Date(b.date));
-  if(list.length===0) return '';
+  const list = apptOfDay(apptDayKey(new Date()));   /* م240: اللي لسه ماوصلوش */
+  if(!list.length) return '';
   return `
-  <div class="section-head" style="margin-top:26px"><h3>مواعيد اليوم (${list.length})</h3><button class="btn btn-sm" onclick="goTab('appointments')">عرض كل المواعيد</button></div>
-  <div class="card"><table><thead><tr><th>الوقت</th><th>العميل</th><th>السيارة</th><th>ملاحظة</th></tr></thead>
-  <tbody>${list.map(a=>`<tr><td>${new Date(a.date).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}</td><td>${a.customerName}</td><td>${a.carInfo||'—'}</td><td class="muted">${a.note||'—'}</td></tr>`).join('')}</tbody></table></div>`;
+  <div class="section-head" style="margin-top:26px"><h3>📅 حجوزات النهاردة (${list.length})</h3><button class="btn btn-sm" onclick="goTab('appointments')">افتح الحجوزات</button></div>
+  <div class="card"><table><thead><tr><th>الساعة</th><th>العميل</th><th>العربية</th><th>جاي ليه</th></tr></thead>
+  <tbody>${list.map(a=>`<tr><td><b>${apptTime(a)}</b></td><td>${escNote(a.customerName || '')}</td><td>${escNote(a.carInfo || '—')}</td><td>${escNote(apptReasonText(a))}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function stat(num,lbl,danger){
   return `<div class="card stat-card"><div class="num" style="${danger?'color:var(--danger)':''}">${num}</div><div class="lbl">${lbl}</div></div>`;
@@ -3496,7 +3548,7 @@ function customerCard(c){
     <div class="flex-between">
       <div>
         <div style="font-weight:800;font-size:15px">${c.name} ${c.archived?'<span class="muted" style="font-size:11px">🗄️ أرشيف</span>':''}</div>
-        <div class="muted" style="font-size:12.5px;margin-top:2px">${c.phone}</div>
+        <div class="muted" style="font-size:12.5px;margin-top:2px">${c.phone||'—'}</div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
         <button class="btn btn-sm" onclick="openCustomerHistory('${c.id}')">سجل العميل</button>
@@ -3508,7 +3560,7 @@ function customerCard(c){
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
       ${cars.length? cars.map(car=>`
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;background:var(--surface-2);padding:8px 10px;border-radius:8px;font-size:12.5px">
-          <span>${car.plate} — ${carLabel(car)}</span>
+          <span>${car.plate||'—'} — ${carLabel(car)}</span>
           <span style="display:flex;gap:4px;flex-wrap:wrap">
             ${c.archived||!can('jobs.create')?'':`<button class="btn btn-sm btn-accent" onclick="openNewJobModal('${car.id}')">أمر شغل</button>`}
             ${(can('cars.delete')||can('cars.archive'))?`<button class="btn btn-sm" title="حذف أو أرشفة السيارة" onclick="openRemoveCarModal('${car.id}')">🗑</button>`:''}
@@ -3926,9 +3978,9 @@ function custInvTableHTML(customerId){
   }).join('') : `<tr><td colspan="7" class="empty">مفيش فواتير للوحة دي عند العميل دة</td></tr>`}
   ${rows.length > shown.length ? `<tr><td colspan="7" style="text-align:center;padding:10px">
     <button class="btn btn-sm btn-accent" onclick="custHistMore('${customerId}')">⬇ تحميل المزيد (${Math.min(100, rows.length-shown.length)} كمان)</button>
-    <button class="btn btn-sm" onclick="custHistLimit=Infinity;custHistMore('${customerId}')">عرض الكل (${rows.length.toLocaleString('ar-EG')})</button></td></tr>` : ''}
+    <button class="btn btn-sm" onclick="custHistLimit=Infinity;custHistMore('${customerId}')">عرض الكل (${rows.length.toLocaleString(NUM_LOCALE)})</button></td></tr>` : ''}
   </tbody></table>
-  <div class="muted" style="font-size:12px;margin-top:6px"><b>${rows.length.toLocaleString('ar-EG')}</b> فاتورة${q?' للوحة دي':''} · إجمالي الساري منها: <b>${money(activeTotal)}</b></div>`;
+  <div class="muted" style="font-size:12px;margin-top:6px"><b>${rows.length.toLocaleString(NUM_LOCALE)}</b> فاتورة${q?' للوحة دي':''} · إجمالي الساري منها: <b>${money(activeTotal)}</b></div>`;
 }
 /* ============ الملاحظة 57: منع تكرار العملاء والمطابقة الذكية ============ */
 function activeCustomers(){ return DB.customers.filter(c=>!c.merged); }
@@ -4205,7 +4257,7 @@ function openMergeCustomers(){
 function mergeCustomersHTML(){
   return `
     <h3>🔀 دمج عملاء مكررين</h3>
-    <div class="muted" style="font-size:12px;margin-bottom:12px">أداة لتصحيح العملاء المكررين الموجودين. هننقل <b>كل</b> بيانات العميل المصدر (السيارات · أوامر الشغل · الفواتير · المدفوعات · السجل · المواعيد) للعميل الوجهة، والمصدر يتأرشف كـ«مدموج» ويختفي من البحث. <b>مفيش أي بيانات بتتحذف.</b></div>
+    <div class="muted" style="font-size:12px;margin-bottom:12px">أداة لتصحيح العملاء المكررين الموجودين. هننقل <b>كل</b> بيانات العميل المصدر (السيارات · أوامر الشغل · الفواتير · المدفوعات · السجل · الحجوزات) للعميل الوجهة، والمصدر يتأرشف كـ«مدموج» ويختفي من البحث. <b>مفيش أي بيانات بتتحذف.</b></div>
     <label class="f-label">1) العميل المصدر (المكرر — هيتأرشف)</label>
     <input class="f" id="mrgSrcSearch" autocomplete="off" placeholder="دوّر بالاسم/الموبايل..." oninput="mergeSearch('src', this.value)" style="margin-bottom:6px">
     <div id="mrgSrcRes" style="max-height:150px;overflow-y:auto"></div>
@@ -4259,7 +4311,7 @@ function mergeShowPreview(){
   const n = mergeCounts(mergeSrcId);
   box.innerHTML = `<div class="card" style="padding:10px;margin-bottom:10px;font-size:12.5px">
     <div style="margin-bottom:6px">هيتنقل من <b>${src.name}</b> ← إلى <b>${dst.name}</b>:</div>
-    <div class="grid g4">${stat(String(n.cars),'سيارة')}${stat(String(n.jobs),'أمر شغل')}${stat(String(n.invoices),'فاتورة')}${stat(String(n.appts),'موعد')}</div>
+    <div class="grid g4">${stat(String(n.cars),'سيارة')}${stat(String(n.jobs),'أمر شغل')}${stat(String(n.invoices),'فاتورة')}${stat(String(n.appts),'حجز')}</div>
     <div class="muted" style="margin-top:6px">وبعدها «${src.name}» هيتأرشف كـ«مدموج» ويختفي من القوائم.</div>
   </div>`;
 }
@@ -4269,7 +4321,7 @@ function confirmMergeCustomers(){
   if(mergeSrcId===mergeDstId){ toast('لازم عميلين مختلفين', true); return; }
   const src = DB.customers.find(c=>c.id===mergeSrcId), dst = DB.customers.find(c=>c.id===mergeDstId);
   const n = mergeCounts(mergeSrcId);
-  askConfirmReason(`دمج «${src.name}» في «${dst.name}»؟<br><span class="muted" style="font-size:12px">هيتنقل ${n.cars} سيارة · ${n.jobs} أمر شغل · ${n.invoices} فاتورة · ${n.appts} موعد. «${src.name}» هيتأرشف كمدموج. مفيش أي بيانات بتتحذف.</span>`,
+  askConfirmReason(`دمج «${src.name}» في «${dst.name}»؟<br><span class="muted" style="font-size:12px">هيتنقل ${n.cars} سيارة · ${n.jobs} أمر شغل · ${n.invoices} فاتورة · ${n.appts} حجز. «${src.name}» هيتأرشف كمدموج. مفيش أي بيانات بتتحذف.</span>`,
     (reason)=>doMergeCustomers(mergeSrcId, mergeDstId, reason));
 }
 async function doMergeCustomers(srcId, dstId, reason){
@@ -4349,7 +4401,7 @@ function renderJobs(){
   <div class="section-head"><h3>أوامر الشغل النشطة (${list.length})</h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" onclick="exportJobsScreenCSV()">⬇ Export Excel</button>
-      ${(can('jobs.print') || can('est.write') || can('est.request'))?`<button class="btn" onclick="openEstimateModal()">📝 مقايسة إصلاح / طلب قطع غيار${(()=>{ const n = isOwnerSession() ? 0 : estBadgeCount(); return ` <b id="estJobsCnt" class="est-cnt"${n ? '' : ' style="display:none"'}>${n || ''}</b>`; })()}</button>`:''}
+      ${(can('jobs.print') || can('est.write') || can('est.request'))?`<button class="btn" onclick="openEstimateModal()">📝 مقايسة إصلاح / طلب صرف قطع غيار${(()=>{ const n = isOwnerSession() ? 0 : estBadgeCount(); return ` <b id="estJobsCnt" class="est-cnt"${n ? '' : ' style="display:none"'}>${n || ''}</b>`; })()}</button>`:''}
       ${can('jobs.create')?`<button class="btn btn-accent" onclick="openPickCarForJob()">${ICONS.plus} أمر شغل جديد</button>`:''}
     </div></div>
   ${closedCount>0 ? `<div class="muted" style="margin-bottom:14px;font-size:12.5px">القاعدة: وجود الأمر هنا = السيارة لسه داخل المركز. ${closedCount} أمر صدرت له فاتورة أو أُلغي — انتقلوا لشاشة الفواتير وسجل العميل.</div>` : ''}
@@ -4587,7 +4639,7 @@ function itemAgeText(at){
   if(days <= 0) return 'النهارده';
   if(days === 1) return 'امبارح';
   if(days === 2) return 'من يومين';
-  return 'من ' + days.toLocaleString('ar-EG') + (days <= 10 ? ' أيام' : ' يوم');
+  return 'من ' + days.toLocaleString(NUM_LOCALE) + (days <= 10 ? ' أيام' : ' يوم');
 }
 function itemStampHTML(st, it, opts){
   const verb = (it.kind==='part' || it.kind==='ext_part') ? 'اتصرفت' : 'اتسجلت';
@@ -4598,7 +4650,7 @@ function itemStampHTML(st, it, opts){
     let pd = '', pb = '';   /* نفس اليوم ⇒ الساعة بس · نفس الموظف ⇒ مايتكررش */
     const one = x => { const d2 = x.at ? new Date(x.at) : null; let s = '<b>' + (+x.qty || 0) + '</b>';
       if(d2){ const dk = d2.toDateString();
-        const when = dk === pd ? d2.toLocaleTimeString('ar-EG', { hour:'2-digit', minute:'2-digit' }) : (AR_DAYS188[d2.getDay()] || '') + ' ' + fmtDateTime(x.at);
+        const when = dk === pd ? d2.toLocaleTimeString(NUM_LOCALE, { hour:'2-digit', minute:'2-digit' }) : (AR_DAYS188[d2.getDay()] || '') + ' ' + fmtDateTime(x.at);
         const who = (!noBy && x.by && x.by !== pb) ? ' · ' + _joEsc(x.by) : '';
         pd = dk; if(x.by) pb = x.by; s += ' (' + when + who + ')'; }
       return s; };
@@ -4634,8 +4686,8 @@ function jobDetailHTML(jobId){
   const total = job.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
   const hasInvoice = DB.invoices.some(i=>i.jobId===job.id && !i.cancelled);
   return `
-  <h3>أمر شغل #${job.jobNo} — ${car.plate}</h3>
-  <div class="muted" style="font-size:13px;margin-bottom:6px">${cust.name} · ${cust.phone} · ${carLabel(car)}${job.odometer?' · العداد: '+job.odometer+' كم':''}</div>
+  <h3>أمر شغل #${job.jobNo} — ${car.plate||'—'}</h3>
+  <div class="muted" style="font-size:13px;margin-bottom:6px">${cust.name||'—'} · ${cust.phone||'—'} · ${carLabel(car)}${job.odometer?' · العداد: '+job.odometer+' كم':''}</div>
   <div style="font-size:12.5px;margin-bottom:14px;color:var(--accent-2)">
     📅 دخول السيارة: ${fmtDateTime(job.receivedAt)}
     ${job.status==='تم التسليم' && job.deliveredAt
@@ -4748,13 +4800,16 @@ function jobDetailHTML(jobId){
   </div>`;
   })() : ''}
 
-  ${can('rep.profit') && (job.internalCosts||[]).length ? `
+  ${(can('rep.profit') || can('jobs.item_delete')) && (job.internalCosts||[]).length ? (()=>{
+    /* م236: اللي معاه «حذف بنود من أمر الشغل» بيشوف الخامات ويشيل الغلط — والتكلفة لصاحب صلاحية الربحية بس */
+    const pc = can('rep.profit'), del = can('jobs.item_delete') && !isJobClosed(job);
+    return `
   <div class="form-row">
     <label class="f-label" style="color:var(--accent)">🎨 خامات دهان (تكلفة داخلية — لا تظهر للعميل)</label>
-    <table class="items-table"><thead><tr><th>الخامة</th><th>الكمية</th><th>تكلفة الوحدة</th><th>الإجمالي</th></tr></thead>
-    <tbody>${job.internalCosts.map(ic=>`<tr><td>${ic.name} <div class="muted" style="font-size:10.5px">${ic.by||''} · ${fmtDateTime(ic.date)}</div></td><td>${ic.qty} ${ic.unit||''}</td><td>${money(ic.unitCost)}</td><td>${money(ic.total)}</td></tr>`).join('')}</tbody></table>
-    <div class="flex-between" style="margin-top:8px"><span class="muted" style="font-size:12.5px">إجمالي تكلفة الخامات</span><span style="font-weight:800;color:var(--accent)">${money(job.internalCosts.reduce((s,ic)=>s+ic.total,0))}</span></div>
-  </div>` : ''}
+    <table class="items-table"><thead><tr><th>الخامة</th><th>الكمية</th>${pc ? '<th>تكلفة الوحدة</th><th>الإجمالي</th>' : ''}${del ? '<th></th>' : ''}</tr></thead>
+    <tbody>${job.internalCosts.map(ic=>`<tr><td>${_joEsc(ic.name)} <div class="muted" style="font-size:10.5px">${_joEsc(ic.by||'')} · ${fmtDateTime(ic.date)}</div></td><td>${ic.qty} ${_joEsc(ic.unit||'')}</td>${pc ? `<td>${money(ic.unitCost)}</td><td>${money(ic.total)}</td>` : ''}${del ? `<td style="white-space:nowrap"><button class="btn btn-sm btn-danger" onclick="deletePaintCost('${job.id}','${ic.id}')" title="شيل الخامة دي (بسبب)">🗑 شيل</button></td>` : ''}</tr>`).join('')}</tbody></table>
+    ${pc ? `<div class="flex-between" style="margin-top:8px"><span class="muted" style="font-size:12.5px">إجمالي تكلفة الخامات</span><span style="font-weight:800;color:var(--accent)">${money(job.internalCosts.reduce((s,ic)=>s+ic.total,0))}</span></div>` : ''}
+  </div>`; })() : ''}
 
   ${jobInternalNotesHTML(job)}
 
@@ -5156,7 +5211,7 @@ function jobOrderFormHTML(job){
   const cust = DB.customers.find(c=>c.id===job.customerId) || {};
   const s = DB.settings || {};
   const at = job.receivedAt ? new Date(job.receivedAt) : null;
-  const time = at ? at.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}) : '';
+  const time = at ? at.toLocaleTimeString(NUM_LOCALE,{hour:'2-digit',minute:'2-digit'}) : '';
   const odo = jobOdometer(job, car);
   const fld = (ar, en, v)=> `<div class="jo-f"><div class="jo-fl"><b>${ar}</b><small>${en}</small></div>`
     + `<div class="jo-fv">${_joEsc(v || '')}</div></div>`;
@@ -5318,7 +5373,7 @@ function estimateHTML(job, est){
     + `<div class="es-fv">${_joEsc(v || '')}</div></div>`;
   /* م230: مقايسة متسعرة من السيستم ⇐ نفس الورقة مليانة بالبنود والأسعار.
      المرفوض (✗) مش بيتطبع · «مش متوفرة» بتتطبع قبل الاعتماد بس عشان العميل يعرف */
-  const fN230 = n=>(Math.round((+n || 0)*100)/100).toLocaleString('ar-EG');
+  const fN230 = n=>(Math.round((+n || 0)*100)/100).toLocaleString(NUM_LOCALE);
   const lD230 = est ? (est.labor || []).filter(l=>l && String(l.name || '').trim() && l.dec !== 'no').map(l=>[l.name, l.price == null ? '' : fN230(l.price)]) : null;
   const pD230 = est ? (est.parts || []).filter(p=>p && String(p.name || '').trim() && p.dec !== 'no')
     .map(p=>[p.name, fN230(p.qty), p.src === 'na' ? 'غير متوفرة' : (+p.price > 0 ? fN230(estLineTotal(p)) : '')]) : null;
@@ -5336,7 +5391,7 @@ function estimateHTML(job, est){
       <div><div class="es-title">مقايسة إصلاح${est ? ' #' + _joEsc(est.estNo) + ((est.round || 1) > 1 ? ' <span style="font-size:14px">(إضافية ' + est.round + ')</span>' : '') : ''}${apv230 ? ' — معتمدة' : ''} <small>Repair Estimate</small></div>
         <div class="es-cn">${_joEsc(s.centerName || '')} — مركز صيانة السيارات بالعبور</div></div>
       <div class="es-tops">
-        <div class="es-stamp"><small>التاريخ</small><b>${fmtDate(now.toISOString())}</b>${now.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}</div>
+        <div class="es-stamp"><small>التاريخ</small><b>${fmtDate(now.toISOString())}</b>${now.toLocaleTimeString(NUM_LOCALE,{hour:'2-digit',minute:'2-digit'})}</div>
         <div class="es-stamp"><small>أمر شغل</small><b class="es-no">${job ? '#'+_joEsc(job.jobNo) : ''}</b></div>
       </div>
       <img src="${LOGO}" alt="logo">
@@ -5417,12 +5472,12 @@ function openEstimateModal(){
   if(!canP230 && !canW230 && !canR231){ toast('مالكش صلاحية طباعة أوامر الشغل', true); return; }
   const sys231 = (canW230 || canR231) ? `<div class="dsec" style="margin-top:12px">على السيستم</div>
     ${canW230 ? `<button class="btn btn-accent" style="width:100%" onclick="estPickJob()">💰 تسعير مقايسة إصلاح</button>
-      <div class="muted" style="font-size:11.5px;margin:3px 2px 0">المخزن يسعّر ⇐ العميل يوافق ⇐ المخزن يجهّز</div>` : ''}
-    ${canR231 ? `<button class="btn" style="width:100%;margin-top:8px" onclick="estPickJob('request')">📦 طلب قطع غيار</button>
+      <div class="muted" style="font-size:11.5px;margin:3px 2px 0">المخزن يسعّر ⇐ العميل يوافق ⇐ تتحوّل لطلب صرف قطع غيار</div>` : ''}
+    ${canR231 ? `<button class="btn" style="width:100%;margin-top:8px" onclick="estPickJob('request')">📦 طلب صرف قطع غيار</button>
       <div class="muted" style="font-size:11.5px;margin:3px 2px 0">العميل موافق ⇐ المخزن يجهّز علطول من غير تسعير</div>` : ''}` : '';
-  if(!canP230){ openModal(`<h3>📝 مقايسة إصلاح / طلب قطع غيار</h3>${sys231}`); return; }
+  if(!canP230){ openModal(`<h3>📝 مقايسة إصلاح / طلب صرف قطع غيار</h3>${sys231}`); return; }
   openModal(`
-    <h3>📝 مقايسة إصلاح / طلب قطع غيار</h3>
+    <h3>📝 مقايسة إصلاح / طلب صرف قطع غيار</h3>
     <p class="muted" style="font-size:12.5px;line-height:1.8;margin:0 0 8px">دوّر برقم الأمر أو اللوحة أو العربية أو العميل أو الموبايل،
       ودوس على العربية ⇐ المقايسة تتطبع ببياناتها. جداول المصنعيات وقطع الغيار بتطلع فاضية للمهندس.</p>
     <div class="form-row"><input class="f" id="estSearch" autocomplete="off" oninput="renderEstimateResults()"
@@ -5484,7 +5539,8 @@ const EST_EV230 = {
   resent:'📤 بنود جديدة اتبعتت للتسعير', pulled:'↩ اتسحبت من المخزن للتعديل', approved:'✅ اتعتمدت',
   rejected:'❌ العميل رفضها كلها', ready:'🟢 المخزن جهّز القطع', ack:'👌 الاستقبال اتبلغ إن القطع جاهزة',
   cancelled:'🚫 اتلغت', edit:'✏️ تعديل', noprep:'✅ خلصت — مفيش قطع غيار للتجهيز',
-  reqsent:'📦 اتبعت للمخزن يجهّزه علطول (العميل موافق)'   /* م231 */
+  reqsent:'📦 اتبعت للمخزن يجهّزه علطول (العميل موافق)',   /* م231 */
+  convert:'🔁 اتحولت لطلب صرف قطع غيار', fromest:'📦 اتعمل من مقايسة اعتمدها العميل — راح للمخزن يجهّزه'   /* م237 */
 };
 /* ============ م231: «📦 طلب قطع غيار» — العميل موافق من الأول ⇐ المخزن يجهّز علطول ============
    طلب سيف: أوقات العميل بيوافق شفوي من غير ما يعرف الأسعار («غيّر التيل والزيت والفلاتر») — مالوش لازمة
@@ -5497,6 +5553,161 @@ function estIsReq(e){ return !!e && e.kind === 'request'; }
 /* قطع المرحلة دي عند المخزن: المطلوب (مش المرفوض) — و«مش متوفرة» وقت التجهيز بتفضل ظاهرة */
 function estPrepRows(e){ return (e.parts || []).filter(p=>p && String(p.name || '').trim() && p.dec !== 'no'); }
 function estPrepNA(e){ return estPrepRows(e).filter(p=>p.src === 'na'); }
+/* ============ م237: المقايسة المعتمدة ⇐ «📦 طلب صرف قطع غيار» ============
+   قرارات سيف (2026-10-19):
+   • المقايسة اللي العميل اعتمدها **بتتحوّل لوحدها لطلب صرف قطع غيار** (برقم جديد) يروح للمخزن — والمقايسة نفسها
+     بتتقفل «اتعتمدت ⇐ اتحولت لطلب صرف #…». يعني التجهيز دايماً شغل واحد عند المخزن: طلبات الصرف.
+   • **طلب الصرف مابيتلغيش** بعد ما يتبعت للمخزن. لو حاجة اتغيرت: طلب صرف جديد (تاني وتالت…)، واللي زيادة
+     المخزن يرجّعه بمرتجع عادي. المسودة اللي لسه مااتبعتتش بس هي اللي تتلغي.
+   • كل قطعة لازم تتعلّم: «✓ اتجهزت» (من المخزن أو من مورد بره) أو «مش متوفرة» (مش موجودة ومش هنعرف نجيبها)
+     — «✅ تم التجهيز» مابيتفتحش غير لما كل القطع تتعلّم. الاستقبال بيتبلغ «اتجهز 3 من 5 — ما عدا …».
+   • طباعة لطلب الصرف (ورقة في إيد أمين المخزن يعلّم عليها) — للاستقبال وللمخزن.
+   • جوه أمر الشغل: سطر للمقايسات وسطر لطلبات الصرف — بالعدد والحالة — و«تفاصيل» بتفتح القايمة. */
+function estNames(list, n){
+  n = n || 3;
+  const a = (list || []).map(p=>p.name);
+  return a.slice(0, n).join('، ') + (a.length > n ? ' و' + (a.length - n) + ' كمان' : '');
+}
+function estPrepProg(e){
+  const rows = estPrepRows(e);
+  const na = rows.filter(p=>p.src === 'na').length, ok = rows.filter(p=>p.ready && p.src !== 'na').length;
+  return { n:rows.length, ok, na, left:rows.length - ok - na };
+}
+function estProgText(e){
+  if(!e || !['approved','ready','done'].includes(e.status)) return '';
+  if(!estIsReq(e) && (e.status === 'done' || e.convertedTo)) return '';
+  const g = estPrepProg(e);
+  if(!g.n) return '';
+  return 'اتجهز ' + g.ok + ' من ' + g.n + (g.na ? ' · ' + g.na + ' مش متوفرة' : '');
+}
+/* حالة كل واحدة بالكلام اللي سيف بيقوله */
+function estStShort(e){
+  const st = EST_ST230[e.status] || {};
+  if(estIsReq(e)){
+    return { draft:'مسودة — لسه مااتبعتش', approved:'عند المخزن بيتجهز', ready:'اتجهز — مستني الاستقبال يتبلغ',
+      done:'خلص', cancelled:'المسودة اتلغت' }[e.status] || st.short || e.status;
+  }
+  if(e.status === 'done' && e.convertedNo) return 'اتعتمدت ⇐ اتحولت لطلب صرف #' + e.convertedNo;
+  return { draft:'مسودة — لسه بتتكتب', pricing:'في مرحلة التسعير (عند المخزن)', priced:'في مرحلة الاعتماد (مستنية موافقة العميل)',
+    done:'خلصت', rejected:'العميل رفضها', cancelled:'اتلغت' }[e.status] || st.short || e.status;
+}
+function estKindWord(e){ return estIsReq(e) ? 'الطلب ده' : 'المقايسة دي'; }
+/* «في حاجة اتكتبت ولسه ماتحفظتش في الورقة المفتوحة؟» — بنقارن نسخة الشغل باللي اتفتح */
+function _estSig(w){
+  const pr = v=>(v == null || v === '') ? null : +v;
+  const P = (w.parts || []).filter(p=>p && String(p.name || '').trim()).map(p=>[p.id, String(p.name).trim(), +(estNum(p.qty) || 0), String(p.note || '').trim(),
+    pr(p.price), p.src || 'stock', String(p.wnote || '').trim(), p.dec || 'ok', !!p.ready]);
+  const L = (w.labor || []).filter(l=>l && String(l.name || '').trim()).map(l=>[l.id, String(l.name).trim(), pr(l.price), l.dec || 'ok']);
+  return JSON.stringify([P, L, String(w.note || '').trim()]);
+}
+function estEdDirty(){
+  const ed = _estEd;
+  if(!ed || !document.getElementById('estEd')) return false;
+  try{ estHarvest(); }catch(e){}
+  if(ed.isNew) return (ed.work.parts || []).some(p=>String(p.name || '').trim()) || (ed.work.labor || []).some(l=>String(l.name || '').trim()) || !!String(ed.work.note || '').trim();
+  return !!ed.base && _estSig(ed.work) !== _estSig(ed.base);
+}
+/* الورقة المفتوحة بتتحدّث لوحدها لو اتغيرت من جهاز تاني — ولو فيها كتابة لسه ماتحفظتش: تنبيه بزرار */
+function estEdLiveSync(){
+  const ed = _estEd;
+  if(!ed || ed.isNew || !document.getElementById('estEd')) return;
+  const real = estById(ed.id);
+  if(!real) return;
+  const box = document.getElementById('estStale');
+  if((real.rev || 0) === ed.rev){ if(box && box.innerHTML) box.innerHTML = ''; return; }
+  if(!estEdDirty()){
+    ed.rev = real.rev || 0;
+    ed.base = JSON.parse(JSON.stringify(real));
+    ed.work = estPad(JSON.parse(JSON.stringify(real)));
+    estEdRedraw();
+    return;
+  }
+  if(box) box.innerHTML = `<div class="est-stale"><span>⚠️ ${estKindWord(real)} اتعدّل من جهاز تاني دلوقتي (${_joEsc(real.stageByName || '')}) — اللي انت كاتبه لسه ماتحفظش.</span>
+    <button class="btn btn-sm btn-accent" onclick="openEstEditor('${real.id}')">🔄 اعرض آخر نسخة</button></div>`;
+}
+/* م237: السعر اللي اتغيّر بعد ما العميل شافه ⇐ «كان …» */
+function estFmtP(v){ return v === 'na' ? 'مش متوفرة' : (Math.round((+v || 0)*100)/100).toLocaleString(NUM_LOCALE); }
+function estPriceLive(){
+  try{
+    const ed = _estEd;
+    if(!ed) return;
+    let tot = 0;
+    (ed.work.parts || []).forEach(p=>{
+      if(!String(p.name || '').trim() || p.dec === 'no') return;
+      const pe = document.getElementById('estP_pr_' + p.id), se = document.getElementById('estP_s_' + p.id), le = document.getElementById('estP_lt_' + p.id);
+      const pr = pe ? estNum(pe.value) : p.price, src = se ? se.value : p.src;
+      const lt = (src !== 'na' && +pr > 0) ? _estR2((+p.qty || 0) * +pr) : 0;
+      if(le) le.textContent = lt ? money(lt) : '—';
+      tot += lt;
+    });
+    const te = document.getElementById('estPrTot');
+    if(te) te.textContent = money(_estR2(tot));
+  }catch(e){}
+}
+/* ورقة «طلب صرف قطع غيار» المطبوعة — أمين المخزن بيعلّم عليها ✓ / ✗ بإيده */
+function partsRequestHTML(job, r){
+  const car  = DB.cars.find(c=>c.id===((job && job.carId) || r.carId)) || {};
+  const cust = DB.customers.find(c=>c.id===((job && job.customerId) || r.customerId)) || {};
+  const s = DB.settings || {};
+  const now = new Date();
+  const odo = job ? jobOdometer(job, car) : '';
+  const fld = (ar, en, v)=> `<div class="es-f"><div class="es-fl"><b>${ar}</b><small>${en}</small></div><div class="es-fv">${_joEsc(v || '')}</div></div>`;
+  const rows = estPrepRows(r), g = estPrepProg(r);
+  const srcL = { stock:'من المخزن', outside:'من مورد بره' };
+  const nR = Math.max(10, rows.length);
+  const box = '<span class="es-ckb"></span>';
+  const body = Array.from({length:nR}, (_, i)=>{
+    const p = rows[i];
+    if(!p) return `<div class="es-r es-rq"><div>${i+1}</div><div></div><div></div><div></div><div class="es-ck">${box}</div><div class="es-ck">${box}</div><div></div></div>`;
+    const na = p.src === 'na', rd = !!p.ready && !na;
+    return `<div class="es-r es-fill es-rq"><div>${i+1}</div><div>${_joEsc(p.name)}${p.note ? ' — <span style="font-weight:400">' + _joEsc(p.note) + '</span>' : ''}</div>
+      <div>${_joEsc(estFmtP(p.qty))}</div><div>${na ? '' : _joEsc(srcL[p.src] || '')}</div>
+      <div class="es-ck">${rd ? '✓' : (na ? '' : box)}</div><div class="es-ck">${na ? '✗' : (rd ? '' : box)}</div><div>${_joEsc(p.wnote || '')}</div></div>`;
+  }).join('');
+  const prog = ['ready','done'].includes(r.status) || g.ok || g.na;
+  return `<style>${estimateCSS()}
+    .es-rq{grid-template-columns:24px minmax(0,1fr) 46px 84px 58px 64px minmax(0,.8fr)}
+    .es-ck{text-align:center;font-size:15px;font-weight:900}
+    .es-ckb{display:inline-block;width:13px;height:13px;border:1.4px solid #111;border-radius:2px;vertical-align:middle}
+    .es-info{font-size:11.5px;padding:5px 9px;line-height:1.7}
+  </style>
+  <div class="es">
+    <div class="es-head">
+      <div><div class="es-title">طلب صرف قطع غيار #${_joEsc(r.estNo)} <small>Parts Issue Request</small></div>
+        <div class="es-cn">${_joEsc(s.centerName || '')} — مركز صيانة السيارات بالعبور</div></div>
+      <div class="es-tops">
+        <div class="es-stamp"><small>التاريخ</small><b>${fmtDate(now.toISOString())}</b>${now.toLocaleTimeString(NUM_LOCALE,{hour:'2-digit',minute:'2-digit'})}</div>
+        <div class="es-stamp"><small>أمر شغل</small><b class="es-no">#${_joEsc(r.jobNo || '')}</b></div>
+      </div>
+      <img src="${LOGO}" alt="logo">
+    </div>
+    <div class="es-box"><div class="es-grid">
+      ${fld('اسم العميل','Customer Name', cust.name)}
+      ${fld('رقم الموبايل','Tel. No.', cust.phone)}
+      ${fld('الماركة والموديل','Car Model', carLabel(car))}
+      ${fld('رقم اللوحة','Plate No.', car.plate)}
+      ${fld('رقم الشاسيه','Chassis No.', car.vin)}
+      ${fld('كيلومتر','Mileage', odo === '—' ? '' : odo)}
+    </div></div>
+    <div class="es-box"><div class="es-info">
+      <b>اتطلب:</b> ${_joEsc(r.createdBy || '')} — ${fmtDateTime(r.approvedAt || r.createdAt)}
+      ${r.fromEstNo ? ' · <b>من مقايسة #' + _joEsc(r.fromEstNo) + '</b> (العميل اعتمدها)' : ' · العميل موافق'}
+      ${r.note ? '<br><b>ملاحظة:</b> ' + _joEsc(r.note) : ''}
+    </div></div>
+    <div class="es-box">
+      <div class="es-h">قطع الغيار المطلوبة <small>SPARE PARTS</small></div>
+      <div class="es-r es-rq es-th"><div>م</div><div>الصنف · Item Description</div><div>الكمية</div><div>المصدر</div><div>✓ اتجهزت</div><div>✗ مش متوفرة</div><div>ملاحظة المخزن</div></div>
+      ${body}
+      <div class="es-sum" style="grid-template-columns:1fr 210px"><div>عدد القطع: ${g.n}</div><div>${prog ? 'اتجهز ' + g.ok + ' · مش متوفر ' + g.na : 'اتجهز ____ · مش متوفر ____'}</div></div>
+    </div>
+    <div class="es-sign" style="grid-template-columns:repeat(3,1fr)">
+      <div>طلب بواسطة <small>(الاستقبال)</small></div>
+      <div>جهّز <small>(أمين المخزن)</small></div>
+      <div>استلم <small>(الفني)</small></div>
+    </div>
+    <div class="es-foot"><span>📍 ${_joEsc(s.address || '')}</span><span>طلب الصرف مابيتلغيش — أي تغيير بمرتجع أو طلب صرف جديد</span></div>
+  </div>`;
+}
 const EST_SRC230 = [['stock','من المخزن'], ['outside','من بره (مورد)'], ['na','مش متوفرة']];
 function estTableOk(){ return window._estTableOk !== false; }
 function estAnyPerm(){ return !!session && (isOwnerSession() || EST_ACTIONS.some(a=>can(a))); }
@@ -5536,13 +5747,13 @@ function estJobCar(e){
   return { job, car, cust };
 }
 function estTitle(e){
-  if(estIsReq(e)) return 'طلب قطع غيار #' + (e.estNo || 'جديد');   /* م231 */
+  if(estIsReq(e)) return 'طلب صرف قطع غيار #' + (e.estNo || 'جديد');   /* م231 */
   return 'مقايسة #' + (e.estNo || 'جديدة') + ((e.round||1) > 1 ? ' (إضافية ' + e.round + ')' : '');
 }
 /* أرقام بالعربي أو بالإنجليزي · «1,250» · «12٫5» */
 function estNum(v){
   if(typeof v === 'number') return isNaN(v) ? null : v;
-  const s = String(v == null ? '' : v).replace(/[٠-٩]/g, d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[,،\s]/g, '').replace('٫', '.');
+  const s = String(v == null ? '' : v).replace(/[٠-٩]/g, d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[,،٬\s]/g, '').replace('٫', '.');   /* م235: «١٬٢٥٠» = 1250 */
   if(s === '') return null;
   const n = parseFloat(s);
   return isNaN(n) ? null : n;
@@ -5570,7 +5781,7 @@ function estAgo(iso){ return iso ? 'من ' + estDur(Date.now() - new Date(iso).g
 function estTime(iso){
   if(!iso) return '—';
   const d = new Date(iso);
-  return new Date().toDateString() === d.toDateString() ? d.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}) : fmtDateTime(iso);
+  return new Date().toDateString() === d.toDateString() ? d.toLocaleTimeString(NUM_LOCALE,{hour:'2-digit',minute:'2-digit'}) : fmtDateTime(iso);
 }
 /* العدادات «من 25 دقيقة» بتتحدّث لوحدها كل نص دقيقة */
 function estTickAges(){
@@ -5619,6 +5830,7 @@ function estPaintBadges(n){
 let _estInboxT = null;
 function estInboxSoon(){ clearTimeout(_estInboxT); _estInboxT = setTimeout(estInboxCheck, 300); }
 function estInboxCheck(){
+  try{ estEdLiveSync(); }catch(e){}   /* م237 */
   try{
     if(!session || !loaded || !estTableOk() || !estAnyPerm()){ estAlertClose(); estPaintBadges(0); return; }
     estPaintBadges(estBadgeCount());
@@ -5645,11 +5857,15 @@ function estAlertTitle(e){
   const last = (e.events||[]).slice().reverse().find(v=>v && v.seq===e.stageSeq && v.type!=='delivered' && v.type!=='opened');
   switch(e.status){
     case 'pricing': return (last && last.type==='resent') ? '🏷️ بنود جديدة في مقايسة محتاجة تسعير' : '🏷️ مقايسة جديدة محتاجة تسعير';
-    case 'priced': return '📋 مقايسة اتسعرت — اطبعها للعميل';
-    case 'approved': return estIsReq(e) ? '📦 طلب قطع غيار جديد — جهّزه (العميل موافق)' : '📦 مقايسة معتمدة — جهّز قطع الغيار';
+    case 'priced': {
+      /* م237: سعر اتغيّر بعد ما العميل شافه ⇐ الاستقبال لازم يعرف قبل ما يطبع تاني */
+      const pc = e.priceChg, it = (pc && pc.at === e.stageAt) ? (pc.items || []) : [];
+      return '📋 مقايسة اتسعرت — اطبعها للعميل' + (it.length ? ' — ⚠️ اتغيّر سعر: ' + it.slice(0, 3).map(x=>x[0] + ' ' + estFmtP(x[1]) + ' ← ' + estFmtP(x[2])).join('، ') + (it.length > 3 ? ' و' + (it.length - 3) + ' كمان' : '') : '');
+    }
+    case 'approved': return estIsReq(e) ? '📦 طلب صرف قطع غيار جديد — جهّزه' + (e.fromEstNo ? ' (مقايسة #' + e.fromEstNo + ' — العميل اعتمدها)' : ' (العميل موافق)') : '📦 مقايسة معتمدة — جهّز قطع الغيار';
     case 'ready': {
-      const na = estPrepNA(e);   /* م231: «جاهزة ما عدا …» عشان الورشة تعرف علطول */
-      return (estIsReq(e) ? '🟢 قطع غيار الطلب جاهزة' : '🟢 قطع غيار المقايسة جاهزة في المخزن')
+      const na = estPrepNA(e), g = estPrepProg(e);   /* م231: «جاهزة ما عدا …» · م237: «اتجهز 3 من 5» */
+      return (estIsReq(e) ? '🟢 طلب صرف قطع الغيار اتجهز' : '🟢 قطع غيار المقايسة جاهزة في المخزن') + ' — ' + g.ok + ' من ' + g.n + ' جاهزة'
         + (na.length ? ' — ما عدا: ' + na.map(p=>p.name).join('، ') + ' (مش متوفرة)' : '');
     }
   }
@@ -5707,8 +5923,20 @@ function estAlertClose(){
   if(el) el.remove();
 }
 function estAlertOpen(id){
-  /* نافذة مفتوحة (فاتورة/صرف…)؟ مانقفلهاش ونضيّع اللي فيها */
-  if(document.getElementById('modalOverlay')){ toast('اقفل النافذة اللي مفتوحة الأول — المقايسة مستنياك في «📋 المقايسات»', true); return; }
+  /* م237 (مراجعة سيف): الرسالة كانت بتغطي الشاشة و«افتح» بيقول «اقفل النافذة الأول» — ومش عارف يقفلها.
+     ورقة مقايسة/طلب مفتوحة من غير كتابة ماتحفظتش ⇐ بتتقفل وتتفتح اللي في الرسالة علطول.
+     نافذة تانية (فاتورة/صرف…) أو كتابة ماتحفظتش ⇐ مانضيّعهاش: الرسالة بتقفل عشان يقدر يكمّل/يقفل، والعداد الأحمر فاضل. */
+  if(document.getElementById('modalOverlay')){
+    const ed = !!document.getElementById('estEd');
+    if(!ed || estEdDirty()){
+      const e = estById(id);
+      estAlertClose();
+      toast((ed ? 'عندك كتابة لسه ماتحفظتش في الورقة المفتوحة — احفظها أو اقفلها' : 'اقفل النافذة اللي مفتوحة الأول')
+        + ' — ' + (e && estIsReq(e) ? 'الطلب' : 'المقايسة') + ' مستنياك في «📋 المقايسات» (العداد الأحمر)', true);
+      return;
+    }
+    closeModal();
+  }
   estAlertClose();
   openEstEditor(id);
 }
@@ -5719,7 +5947,7 @@ let estSearch = '';
 function estMatches(e, term){
   const { job, car, cust } = estJobCar(e);
   if(job && jobMatchesSearch(job, term)) return true;
-  const hay = normSearch([e.estNo, e.jobNo, car.plate, normPlate(car.plate || ''), carLabel(car), cust.name, cust.phone]
+  const hay = normSearch([e.estNo, e.jobNo, e.fromEstNo, e.convertedNo, car.plate, normPlate(car.plate || ''), carLabel(car), cust.name, cust.phone]
     .concat((e.parts||[]).map(p=>p.name)).concat((e.labor||[]).map(l=>l.name)).join(' '));
   return normSearch(term).split(/\s+/).filter(Boolean).every(w=>hay.includes(w));
 }
@@ -5732,12 +5960,12 @@ function renderEstimates(){
   if(!estTableOk()) return `<div class="card"><div class="empty" style="line-height:2.1">📋 المقايسات محتاجة تحديث لقاعدة البيانات الأول.<br>
     ${isOwnerSession() ? 'نفّذ ملف <b>db/تحديث-م230-المقايسات.sql</b> مرة واحدة في Supabase ← SQL Editor ← Run، وبعدها اعمل تحديث للصفحة.' : 'كلّم صاحب المركز.'}</div></div>`;
   const L = estViewLists(), view = estCurView();
-  const chip = (v, lbl, n)=>`<button class="btn btn-sm ${view===v?'btn-accent':''}" onclick="estView='${v}';refreshContent()">${lbl} (${n.toLocaleString('ar-EG')})</button>`;
+  const chip = (v, lbl, n)=>`<button class="btn btn-sm ${view===v?'btn-accent':''}" onclick="estView='${v}';refreshContent()">${lbl} (${n.toLocaleString(NUM_LOCALE)})</button>`;
   return `
-  <div class="section-head"><h3>📋 المقايسات</h3>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">${can('est.write') ? `<button class="btn btn-accent" onclick="estPickJob()">💰 تسعير مقايسة إصلاح</button>` : ''}${can('est.request') ? `<button class="btn" onclick="estPickJob('request')">📦 طلب قطع غيار</button>` : ''}</div></div>
-  <div class="muted" style="font-size:12.5px;margin:-4px 0 10px;line-height:1.8">💰 المقايسة: الاستقبال يكتب ⇐ المخزن يسعّر ⇐ العميل يوافق ⇐ المخزن يجهّز ⇐ الاستقبال يتبلغ.
-    📦 طلب قطع غيار: العميل موافق ⇐ المخزن يجهّز علطول ⇐ الاستقبال يتبلغ. كل خطوة متسجلة بالوقت واسم اللي عملها.</div>
+  <div class="section-head"><h3>📋 المقايسات وطلبات الصرف</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${can('est.write') ? `<button class="btn btn-accent" onclick="estPickJob()">💰 تسعير مقايسة إصلاح</button>` : ''}${can('est.request') ? `<button class="btn" onclick="estPickJob('request')">📦 طلب صرف قطع غيار</button>` : ''}</div></div>
+  <div class="muted" style="font-size:12.5px;margin:-4px 0 10px;line-height:1.8">💰 المقايسة: الاستقبال يكتب ⇐ المخزن يسعّر ⇐ العميل يعتمد ⇐ <b>تتحوّل لطلب صرف قطع غيار</b>.
+    📦 طلب صرف قطع غيار: المخزن يجهّز (✓ اتجهزت / مش متوفرة) ⇐ الاستقبال يتبلغ — وطلب الصرف <b>مابيتلغيش</b>. كل خطوة متسجلة بالوقت واسم اللي عملها.</div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
     ${isOwnerSession() ? '' : chip('mine', '🔴 عليك الدور', L.mine.length)}
     ${chip('live', '⏳ الجارية كلها', L.live.length)}
@@ -5754,7 +5982,7 @@ function estListHTML(){
   if(estSearch.trim()) list = list.filter(e=>estMatches(e, estSearch));
   if(view === 'done') list.sort((a,b)=>String(b.stageAt||'').localeCompare(String(a.stageAt||'')));
   else list.sort((a,b)=>String(a.stageAt||'').localeCompare(String(b.stageAt||'')));   // الأقدم انتظاراً فوق
-  if(!list.length) return `<div class="card"><div class="empty">${view==='mine' ? 'مفيش مقايسات عليك دلوقتي 👌' : 'مفيش مقايسات هنا'}</div></div>`;
+  if(!list.length) return `<div class="card"><div class="empty">${view==='mine' ? 'مفيش مقايسات ولا طلبات صرف عليك دلوقتي 👌' : 'مفيش حاجة هنا'}</div></div>`;
   const key = pgKey('est', [view, estSearch]);
   return pgSlice(key, list).map(estRowHTML).join('') + pgCtlHTML(key, list.length, 'estRenderList()');
 }
@@ -5767,10 +5995,11 @@ function estRowHTML(e){
   return `<div class="card est-row${mine ? ' est-row-mine' : ''}" onclick="openEstEditor('${e.id}')">
     <div style="flex:1;min-width:0">
       <div style="font-weight:800;line-height:1.6">${estIsReq(e) ? '📦' : (st.icon || '')} ${_joEsc(estTitle(e))} — 🔧 أمر #${_joEsc(e.jobNo)} — ${_joEsc(car.plate || '—')} — ${_joEsc(carLabel(car) || '')}${cust.name ? ` <span class="muted" style="font-weight:600">· ${_joEsc(cust.name)}</span>` : ''}</div>
-      <div class="muted" style="font-size:12px;margin-top:3px;line-height:1.9"><span class="tag ${st.cls || ''}">${st.short || e.status}</span>
+      <div class="muted" style="font-size:12px;margin-top:3px;line-height:1.9"><span class="tag ${st.cls || ''}">${_joEsc(estStShort(e))}</span>
+        ${estProgText(e) ? ' · <b>' + estProgText(e) + '</b>' : ''}${e.fromEstNo ? ' · من مقايسة #' + _joEsc(e.fromEstNo) : ''}
         · آخر خطوة: ${_joEsc(e.stageByName || '—')} الساعة ${estTime(e.stageAt)}
         ${live ? ` · <b class="${mine ? 'est-late' : ''}" data-est-since="${escAttr(e.stageAt || '')}">${estAgo(e.stageAt)}</b>` : ''}
-        · ${(e.parts||[]).length} قطعة${estIsReq(e) ? '' : ' · ' + (e.labor||[]).length + ' مصنعية'}${t.all ? ` · الإجمالي ${money(t.all)}` : ''}</div>
+        · ${(e.parts||[]).length} قطعة${estIsReq(e) ? '' : ' · ' + (e.labor||[]).length + ' مصنعية'}${!estIsReq(e) && t.all ? ` · الإجمالي ${money(t.all)}` : ''}</div>
     </div>
     <button class="btn btn-sm${mine ? ' btn-accent' : ''}" onclick="event.stopPropagation();openEstEditor('${e.id}')">افتح</button>
   </div>`;
@@ -5779,21 +6008,33 @@ function estNavItemHTML(){
   const n = estBadgeCount();
   return `<button class="nav-item ${currentTab==='estimates' ? 'active' : ''}" onclick="goTab('estimates')">${ICONS.list}<span>📋 المقايسات <b id="estNavCnt" class="est-cnt"${n ? '' : ' style="display:none"'}>${n || ''}</b></span></button>`;
 }
-/* جوه أمر الشغل: مقايسات الأمر وحالتها + زرار مقايسة جديدة/إضافية */
+/* جوه أمر الشغل — م237 (طلب سيف): عشان الأمر مايتملاش داتا: سطر للمقايسات وسطر لطلبات الصرف بالعدد والحالة،
+   و«تفاصيل» بتفتح القايمة. المقايسة اللي اتعتمدت بتبان «اتحولت لطلب صرف #…» والطلب بيبان «من مقايسة #…». */
 function jobEstimatesBoxHTML(job){
   if(!job || !estAnyPerm() || !estTableOk()) return '';
-  const list = estOfJob(job.id), ests = list.filter(e=>!estIsReq(e));
+  const list = estOfJob(job.id), ests = list.filter(e=>!estIsReq(e)), reqs = list.filter(estIsReq);
   const canNew = can('est.write') && !isJobClosed(job) && !ests.some(e=>EST_OPEN230.includes(e.status));
   const canReq = can('est.request') && !isJobClosed(job);   /* م231: أكتر من طلب على نفس الأمر عادي */
   if(!list.length && !canNew && !canReq) return '';
+  const row = e=>{
+    const st = EST_ST230[e.status] || {}, t = estTotals(e), prog = estProgText(e);
+    const live = EST_LIVE230.includes(e.status) || e.status === 'ready';
+    return `<div class="est-mini" onclick="openEstEditor('${e.id}')"><span>${estIsReq(e) ? '📦' : (e.convertedTo ? '🔁' : (st.icon || ''))} <b>${_joEsc(estTitle(e))}</b> · ${_joEsc(estStShort(e))}${prog ? ' · <b>' + prog + '</b>' : ''}${e.fromEstNo ? ' <span class="muted">(من مقايسة #' + _joEsc(e.fromEstNo) + ')</span>' : ''}${live ? ` · <span class="muted" data-est-since="${escAttr(e.stageAt || '')}">${estAgo(e.stageAt)}</span>` : ''}</span><span>${!estIsReq(e) && t.all ? money(t.all) : ''}</span></div>`;
+  };
+  const lastE = ests[ests.length - 1];
+  const estSum = !ests.length ? '' : (ests.length === 1 ? 'يوجد 1 مقايسة — ' + estStShort(lastE) : 'يوجد ' + ests.length + ' مقايسة — آخر واحدة: ' + estStShort(lastE));
+  const cnt = st=>reqs.filter(e=>e.status === st).length;
+  const parts = [[cnt('draft'), 'مسودة'], [cnt('approved'), 'بيتجهز'], [cnt('ready'), 'اتجهز'], [cnt('done'), 'خلص']].filter(x=>x[0]).map(x=>x[0] + ' ' + x[1]);
+  const reqSum = !reqs.length ? '' : 'يوجد ' + reqs.length + ' طلب' + (parts.length ? ' — ' + parts.join(' · ') : '');
+  const det = (icon, lbl, sum, arr)=>arr.length
+    ? `<details class="est-det"><summary><span>${icon} ${lbl}: <b>${_joEsc(sum)}</b></span><span class="est-det-btn">تفاصيل</span></summary>${arr.map(row).join('')}</details>`
+    : `<div class="est-none">${icon} ${lbl}: لسه مفيش</div>`;
   return `<div class="form-row">
-    <div class="flex-between" style="gap:6px;flex-wrap:wrap"><label class="f-label" style="margin:0">📋 المقايسات وطلبات القطع (${list.length})</label>
+    <div class="flex-between" style="gap:6px;flex-wrap:wrap"><label class="f-label" style="margin:0">📋 المقايسات وطلبات صرف قطع الغيار</label>
       <span style="display:flex;gap:6px;flex-wrap:wrap">${canNew ? `<button class="btn btn-sm btn-accent" onclick="estOpenForJob('${job.id}')">💰 ${ests.length ? 'مقايسة إضافية' : 'تسعير مقايسة إصلاح'}</button>` : ''}
-      ${canReq ? `<button class="btn btn-sm" onclick="estOpenRequest('${job.id}')">📦 طلب قطع غيار</button>` : ''}</span></div>
-    ${list.map(e=>{
-      const st = EST_ST230[e.status] || {}, t = estTotals(e);
-      return `<div class="est-mini" onclick="openEstEditor('${e.id}')"><span>${estIsReq(e) ? '📦' : (st.icon || '')} <b>${_joEsc(estTitle(e))}</b> · ${st.short || ''}${(EST_LIVE230.includes(e.status) || e.status === 'ready') ? ` · <span class="muted" data-est-since="${escAttr(e.stageAt || '')}">${estAgo(e.stageAt)}</span>` : ''}</span><span>${t.all ? money(t.all) : ''}</span></div>`;
-    }).join('') || '<div class="muted" style="font-size:12.5px">لسه مفيش مقايسة على الأمر ده</div>'}
+      ${canReq ? `<button class="btn btn-sm" onclick="estOpenRequest('${job.id}')">📦 طلب صرف قطع غيار</button>` : ''}</span></div>
+    ${det('💰', 'المقايسات', estSum, ests)}
+    ${det('📦', 'طلبات صرف قطع الغيار', reqSum, reqs)}
   </div>`;
 }
 
@@ -5801,11 +6042,11 @@ function jobEstimatesBoxHTML(job){
 let _estPkKind = '';   /* م231: '' = تسعير مقايسة · 'request' = طلب قطع غيار */
 function estPickJob(kind){
   const req = kind === 'request';
-  if(!can(req ? 'est.request' : 'est.write')){ toast(req ? 'مالكش صلاحية «طلب قطع غيار» — كلّم صاحب المركز' : 'مالكش صلاحية كتابة المقايسات — كلّم صاحب المركز', true); return; }
+  if(!can(req ? 'est.request' : 'est.write')){ toast(req ? 'مالكش صلاحية «طلب صرف قطع غيار» — كلّم صاحب المركز' : 'مالكش صلاحية كتابة المقايسات — كلّم صاحب المركز', true); return; }
   if(!estGuard()) return;
   _estPkKind = req ? 'request' : '';
   openModal(`
-    <h3>${req ? '📦 طلب قطع غيار' : '💰 تسعير مقايسة إصلاح'}</h3>
+    <h3>${req ? '📦 طلب صرف قطع غيار' : '💰 تسعير مقايسة إصلاح'}</h3>
     <p class="muted" style="font-size:12.5px;line-height:1.8;margin:0 0 8px">${req
       ? 'العميل موافق من الأول؟ اختار أمر الشغل ⇐ اكتب قطع الغيار اللي عايزها بالكميات ⇐ تتبعت للمخزن <b>يجهّزها علطول</b> من غير تسعير.'
       : 'اختار أمر الشغل ⇐ هتفتحلك ورقة المقايسة ببيانات العميل والعربية: اكتب المصنعيات وقطع الغيار بالكميات بإيدك، وابعتها للمخزن يسعّرها.'}</p>
@@ -5826,7 +6067,7 @@ function estPkHTML(term, kind){
     let tag = '';
     if(req){
       const rq = estOfJob(j.id).filter(estIsReq), live = rq.filter(e=>EST_LIVE230.includes(e.status));
-      tag = rq.length ? `<span class="muted" style="font-size:11.5px">عليه ${rq.length} طلب قبل كده${live.length ? ' (' + live.length + ' لسه بيتجهز)' : ''}</span>` : '';
+      tag = rq.length ? `<span class="muted" style="font-size:11.5px">عليه ${rq.length} طلب صرف قبل كده${live.length ? ' (' + live.length + ' لسه بيتجهز)' : ''}</span>` : '';
     } else {
       const ests = estOfJob(j.id).filter(e=>!estIsReq(e)), open = ests.find(e=>EST_OPEN230.includes(e.status));
       tag = open ? `<span class="tag ${EST_ST230[open.status].cls}">${EST_ST230[open.status].icon} ${_joEsc(estTitle(open))}: ${EST_ST230[open.status].short}</span>`
@@ -5858,10 +6099,10 @@ function estOpenRequest(jobId){
   if(!estGuard()) return;
   const job = DB.jobs.find(j=>j.id===jobId);
   if(!job){ toast('أمر الشغل ده مش موجود — اعمل تحديث للبيانات', true); return; }
-  if(!can('est.request')){ toast('مالكش صلاحية «طلب قطع غيار» — كلّم صاحب المركز', true); return; }
+  if(!can('est.request')){ toast('مالكش صلاحية «طلب صرف قطع غيار» — كلّم صاحب المركز', true); return; }
   const dr = estOfJob(jobId).find(e=>estIsReq(e) && e.status === 'draft' && (!e.createdById || e.createdById === estMyId()));
   if(dr){ openEstEditor(dr.id); return; }
-  if(isJobClosed(job)){ toast('أمر الشغل ده اتقفل (اتفوتر أو اتلغى) — مينفعش طلب قطع غيار عليه', true); return; }
+  if(isJobClosed(job)){ toast('أمر الشغل ده اتقفل (اتفوتر أو اتلغى) — مينفعش طلب صرف قطع غيار عليه', true); return; }
   _estEd = { id:null, rev:0, isNew:true,
     work: estPad({ kind:'request', jobId:job.id, jobNo:job.jobNo, carId:job.carId, customerId:job.customerId, round:1, status:'draft', parts:[], labor:[], note:'', events:[] }) };
   estEdOpen();
@@ -5892,7 +6133,7 @@ function openEstEditor(id){
   if(!e){ toast('المقايسة دي مش موجودة — اعمل تحديث للبيانات', true); return; }
   if(!estAnyPerm()){ toast('مالكش صلاحية على المقايسات', true); return; }
   estMarkOpened(e);
-  _estEd = { id:e.id, rev:e.rev || 0, isNew:false, work:estPad(JSON.parse(JSON.stringify(e))) };
+  _estEd = { id:e.id, rev:e.rev || 0, isNew:false, base:JSON.parse(JSON.stringify(e)), work:estPad(JSON.parse(JSON.stringify(e))) };
   estEdOpen();
 }
 function estEdOpen(){ openModal(`<div id="estEd">${estEdHTML()}</div>`, true); }
@@ -5929,19 +6170,21 @@ function estMarkOpened(e){
 function estModeHint(mode, w){
   if(estIsReq(w)){   /* م231 */
     const hr = {
-      write:'📦 <b>طلب قطع غيار — العميل موافق.</b> اكتب القطع اللي عايزها بالكميات. الطلب ده <b>معتمد</b> وهيروح للمخزن يجهّزه علطول من غير تسعير. لما تخلص دوس «📦 إرسال للمخزن».',
-      prepare:'📦 <b>طلب قطع غيار — العميل موافق.</b> قدام كل قطعة اختار المصدر (من المخزن / من مورد بره / مش متوفرة) وعلّم «جاهزة». لما تخلص دوس «✅ تم الانتهاء». <b>الصرف على الأمر بيفضل بالطريقة العادية.</b>'
+      write:'📦 <b>طلب صرف قطع غيار — العميل موافق.</b> اكتب القطع اللي عايزها بالكميات. الطلب ده <b>معتمد ونهائي</b> — بعد ما يتبعت للمخزن <b>مابيتلغيش</b> (أي تغيير: طلب صرف جديد، واللي زيادة المخزن يرجّعه بمرتجع). لما تخلص دوس «📦 إرسال للمخزن».',
+      prepare:'📦 <b>طلب صرف قطع غيار' + (w.fromEstNo ? ' — من مقايسة #' + _joEsc(w.fromEstNo) + ' اعتمدها العميل' : ' — العميل موافق') + '.</b> قدام كل قطعة اختار المصدر (من المخزن / من مورد بره) ودوس <b>«✓ اتجهزت»</b> أول ما تجهز — ولو مش موجودة ومش هتعرف تجيبها اختار <b>«مش متوفرة»</b>. «✅ تم التجهيز» بيشتغل لما كل القطع تتعلّم. <b>الصرف على الأمر بيفضل بالطريقة العادية.</b>'
     }[mode];
     if(hr) return `<div class="est-hint">${hr}</div>`;
-    const vr = { draft:'✍️ الطلب لسه مسودة عند اللي بيكتبه.', approved:'📦 الطلب عند المخزن بيجهّزه — هيوصلك إشعار أول ما يخلص.',
-      ready:'🟢 قطع الغيار جاهزة في المخزن — اصرفها على الأمر بالطريقة العادية.', done:'✅ الطلب خلص.',
-      cancelled:'🚫 الطلب اتلغى' + (w.cancelReason ? ' — السبب: ' + _joEsc(w.cancelReason) : '') + '.' }[w.status];
+    const pg = estProgText(w), na = estPrepNA(w);
+    const vr = { draft:'✍️ الطلب لسه مسودة عند اللي بيكتبه — مااتبعتش للمخزن.', approved:'📦 الطلب عند المخزن بيجهّزه' + (pg ? ' (' + pg + ')' : '') + ' — هيوصلك إشعار أول ما يخلص. <b>طلب الصرف مابيتلغيش</b> — لو حاجة اتغيرت اعمل طلب صرف جديد، واللي زيادة المخزن يرجّعه بمرتجع.',
+      ready:'🟢 الطلب اتجهز — ' + estPrepProg(w).ok + ' من ' + estPrepProg(w).n + ' جاهزة' + (na.length ? ' — <b>مش متوفرة: ' + _joEsc(na.map(p=>p.name).join('، ')) + '</b>' : '') + ' — اصرف الجاهز على الأمر بالطريقة العادية.',
+      done:'✅ الطلب خلص' + (pg ? ' (' + pg + ')' : '') + '.',
+      cancelled:'🚫 المسودة اتلغت' + (w.cancelReason ? ' — السبب: ' + _joEsc(w.cancelReason) : '') + '.' }[w.status];
     return vr ? `<div class="est-hint">${vr}</div>` : '';
   }
   const h = {
     write:'✍️ اكتب المصنعيات وقطع الغيار اللي العربية محتاجاها <b>بالكميات</b> — من غير أسعار القطع (المخزن هيسعّرها). سعر المصنعية تكتبه دلوقتي أو بعدين. لما تخلص دوس «📤 إرسال للتسعير».',
     price:'🏷️ اكتب <b>سعر البيع للوحدة</b> قدام كل قطعة (مش التكلفة) واختار المصدر. المصنعيات مش عليك. لما تخلص دوس «✅ تم التسعير».',
-    review:'📋 اطبع المقايسة للعميل واتناقش معاه. اللي العميل رفضه دوس عليه يبقى <b>✗ رفض</b> — والباقي يتحسب موافق. لو زوّد قطعة جديدة اكتبها وابعتها للتسعير. وبعدين «✅ تم اعتماد المقايسة».',
+    review:'📋 اطبع المقايسة للعميل واتناقش معاه. اللي العميل رفضه دوس عليه يبقى <b>✗ رفض</b> — والباقي يتحسب موافق. لو زوّد قطعة جديدة اكتبها وابعتها للتسعير. وبعدين «✅ تم اعتماد المقايسة» ⇐ القطع المعتمدة <b>بتتحوّل لطلب صرف قطع غيار</b> عند المخزن.' + (((w.parts || []).some(p=>p.prevPrice !== undefined && p.dec !== 'no')) ? '<br>⚠️ <b>فيه سعر اتغيّر بعد ما العميل شاف المقايسة</b> (متعلّم «كان …») — اطبعها تاني للعميل.' : ''),
     prepare:'📦 جهّز <b>القطع المعتمدة بس</b> (اللي العميل رفضها مش ظاهرة هنا). علّم «جاهزة» على كل قطعة — ولو قطعة مش موجودة اختار «مش متوفرة». لما تخلص دوس «✅ تم تجهيز المقايسة». <b>الصرف على الأمر بيفضل بالطريقة العادية.</b>'
   }[mode];
   if(h) return `<div class="est-hint">${h}</div>`;
@@ -5951,7 +6194,7 @@ function estModeHint(mode, w){
     priced:'📋 المقايسة اتسعرت ومستنية موافقة العميل عند الاستقبال.',
     approved:'📦 العميل وافق — المخزن بيجهّز القطع المعتمدة، وهيوصلك إشعار أول ما يخلص.',
     ready:'🟢 قطع الغيار جاهزة في المخزن — اصرفها على الأمر بالطريقة العادية.',
-    done:'✅ المقايسة خلصت.', rejected:'❌ العميل رفض المقايسة.', cancelled:'🚫 المقايسة اتلغت' + (w.cancelReason ? ' — السبب: ' + _joEsc(w.cancelReason) : '') + '.'
+    done:w.convertedNo ? '✅ المقايسة اتعتمدت <b>واتحوّلت لـ«📦 طلب صرف قطع غيار #' + _joEsc(w.convertedNo) + '»</b> عند المخزن — التجهيز والمتابعة من الطلب.' : '✅ المقايسة خلصت.', rejected:'❌ العميل رفض المقايسة.', cancelled:'🚫 المقايسة اتلغت' + (w.cancelReason ? ' — السبب: ' + _joEsc(w.cancelReason) : '') + '.'
   }[w.status];
   return v ? `<div class="est-hint">${v}</div>` : '';
 }
@@ -5965,10 +6208,11 @@ function estEdHTML(){
   const req = estIsReq(w);
   const noLabor = req || mode === 'price' || mode === 'prepare';   // المخزن مالوش دعوة بالمصنعيات · الطلب قطع غيار بس
   return `
-  <h3 style="margin-bottom:4px">${req ? '📦 طلب قطع غيار ' + (w.estNo ? '#' + _joEsc(w.estNo) : '<span class="muted">(جديد)</span>') + ' <span class="tag tag-ready">العميل موافق</span>'
+  <h3 style="margin-bottom:4px">${req ? '📦 طلب صرف قطع غيار ' + (w.estNo ? '#' + _joEsc(w.estNo) : '<span class="muted">(جديد)</span>') + (w.fromEstNo ? ' <span class="tag tag-ready">من مقايسة #' + _joEsc(w.fromEstNo) + '</span>' : ' <span class="tag tag-ready">العميل موافق</span>')
       : '💰 مقايسة إصلاح ' + (w.estNo ? '#' + _joEsc(w.estNo) : '<span class="muted">(جديدة)</span>')}
     ${!req && (w.round||1) > 1 ? `<span class="tag tag-working">إضافية ${w.round}</span>` : ''}
-    <span class="tag ${st.cls || ''}" style="margin-right:4px">${st.icon || ''} ${st.label || ''}</span></h3>
+    <span class="tag ${st.cls || ''}" style="margin-right:4px">${w.convertedNo ? '🔁 اتعتمدت ⇐ طلب صرف #' + _joEsc(w.convertedNo) : (req ? (st.icon || '') + ' ' + _joEsc(estStShort(w)) : (st.icon || '') + ' ' + (st.label || ''))}</span></h3>
+  <div id="estStale"></div>
   ${w.stageAt && w.estNo && EST_LIVE230.includes(w.status) ? `<div class="muted" style="font-size:12px;margin-bottom:4px">آخر خطوة: ${_joEsc(w.stageByName || '—')} الساعة ${estTime(w.stageAt)} · <b data-est-since="${escAttr(w.stageAt)}">${estAgo(w.stageAt)}</b></div>` : ''}
   <div class="est-grid">
     ${fld('أمر الشغل', '#' + (w.jobNo || ''))}${fld('اسم العميل', cust.name)}${fld('الموبايل', cust.phone)}
@@ -6020,7 +6264,7 @@ function estPartsBoxHTML(w, mode){
     head = `<div class="est-r est-rw est-th"><span>م</span><span>الصنف</span><span>الكمية</span><span>ملاحظة</span><span></span></div>`;
     body = rows.map((p, i)=>`<div class="est-r est-rw"><span>${i+1}</span>
       <input class="f" id="estP_n_${p.id}" value="${escAttr(p.name)}" placeholder="مثال: تيل طنابير">
-      <input class="f" id="estP_q_${p.id}" inputmode="decimal" value="${escAttr(p.qty)}" placeholder="الكمية">
+      <input class="f" id="estP_q_${p.id}" inputmode="decimal" value="${escAttr(p.qty)}" placeholder="الكمية" onfocus="this.select()">
       <input class="f" id="estP_t_${p.id}" value="${escAttr(p.note || '')}" placeholder="ملاحظة (اختياري)">
       <button class="btn btn-sm" onclick="estDelRow('p','${p.id}')" title="شيل السطر">🗑</button></div>`).join('');
     foot = `<div style="padding:6px 8px"><button class="btn btn-sm" style="white-space:nowrap" onclick="estAddRow('p')">➕ قطعة غيار</button></div>`;
@@ -6031,10 +6275,10 @@ function estPartsBoxHTML(w, mode){
       if(p.dec === 'no') return `<div class="est-r est-rpr est-no"><span>${i+1}</span>${nm}<span>${_joEsc(p.qty)}</span><span>العميل رفضها</span><span></span><span></span><span></span></div>`;
       const pend = !(+p.price > 0) && p.src !== 'na';
       return `<div class="est-r est-rpr${pend ? ' est-pend' : ''}"><span>${i+1}</span>${nm}<span>${_joEsc(p.qty)}</span>
-        <input class="f" id="estP_pr_${p.id}" inputmode="decimal" value="${p.price == null ? '' : escAttr(p.price)}" placeholder="سعر الوحدة">
-        <select class="f" id="estP_s_${p.id}">${EST_SRC230.map(([v, l])=>`<option value="${v}" ${(p.src || 'stock') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <input class="f" id="estP_pr_${p.id}" inputmode="decimal" value="${p.price == null ? '' : escAttr(p.price)}" placeholder="سعر الوحدة" oninput="estPriceLive()">
+        <select class="f" id="estP_s_${p.id}" onchange="estPriceLive()">${EST_SRC230.map(([v, l])=>`<option value="${v}" ${(p.src || 'stock') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <input class="f" id="estP_w_${p.id}" value="${escAttr(p.wnote || '')}" placeholder="مثال: توصل بكرة">
-        <span>${+p.price > 0 && p.src !== 'na' ? money(estLineTotal(p)) : '—'}</span></div>`;
+        <span id="estP_lt_${p.id}">${+p.price > 0 && p.src !== 'na' ? money(estLineTotal(p)) : '—'}</span></div>`;
     }).join('');
   } else if(mode === 'review'){
     const canEdit = can('est.write');
@@ -6045,10 +6289,11 @@ function estPartsBoxHTML(w, mode){
       const nameCell = (canEdit && unpriced && p.dec !== 'no')
         ? `<input class="f" id="estP_n_${p.id}" value="${escAttr(p.name)}" placeholder="اسم القطعة الجديدة">`
         : `<span><b>${_joEsc(p.name)}</b>${p.src && p.src !== 'na' ? ` <span class="muted" style="font-size:11px">· ${srcLbl(p.src)}</span>` : ''}${p.wnote ? `<div class="muted" style="font-size:11.5px">🏷️ ${_joEsc(p.wnote)}</div>` : ''}</span>`;
-      const qtyCell = canEdit && p.src !== 'na' ? `<input class="f" id="estP_q_${p.id}" inputmode="decimal" value="${escAttr(p.qty)}">` : `<span>${_joEsc(p.qty)}</span>`;
-      const priceCell = p.src === 'na' ? '<span class="est-dec-t no">مش متوفرة</span>' : (+p.price > 0 ? `<span>${money(+p.price)}</span>` : '<span class="est-pend-t">لسه ماتسعرتش</span>');
+      const qtyCell = canEdit && p.src !== 'na' ? `<input class="f" id="estP_q_${p.id}" inputmode="decimal" value="${escAttr(p.qty)}" onfocus="this.select()">` : `<span>${_joEsc(p.qty)}</span>`;
+      const was = (p.prevPrice !== undefined && p.dec !== 'no') ? `<span class="est-chg">⚠️ كان ${estFmtP(p.prevPrice)}</span>` : '';
+      const priceCell = p.src === 'na' ? `<span><span class="est-dec-t no">مش متوفرة</span>${was}</span>` : (+p.price > 0 ? `<span>${money(+p.price)}${was}</span>` : '<span class="est-pend-t">لسه ماتسعرتش</span>');
       const decCell = p.src === 'na' ? '<span class="est-dec-t no">✗</span>' : estDecBtn('p', p, true);
-      return `<div class="est-r est-rv${no}${unpriced && p.dec !== 'no' ? ' est-pend' : ''}"><span>${i+1}</span>${nameCell}${qtyCell}${priceCell}
+      return `<div class="est-r est-rv${no}${unpriced && p.dec !== 'no' ? ' est-pend' : ''}${was ? ' est-chg-row' : ''}"><span>${i+1}</span>${nameCell}${qtyCell}${priceCell}
         <span>${+p.price > 0 && p.src !== 'na' ? money(estLineTotal(p)) : '—'}</span>${decCell}
         ${canEdit && unpriced ? `<button class="btn btn-sm" onclick="estDelRow('p','${p.id}')" title="شيل السطر">🗑</button>` : '<span></span>'}</div>`;
     }).join('');
@@ -6056,17 +6301,27 @@ function estPartsBoxHTML(w, mode){
   } else if(mode === 'prepare'){
     /* م231: المخزن بيختار المصدر لكل قطعة (من المخزن / من مورد بره / مش متوفرة) ويكتب ملاحظة — للطريقين */
     const prep = estPrepRows(w), off = rows.filter(p=>p && String(p.name||'').trim() && p.dec === 'no');
-    head = `<div class="est-r est-rp est-th"><span>جاهزة</span><span>الصنف</span><span>الكمية</span><span>المصدر</span><span>ملاحظة المخزن</span></div>`;
+    head = `<div class="est-r est-rp est-th"><span>✓ اتجهزت</span><span>الصنف</span><span>الكمية</span><span>المصدر</span><span>ملاحظة المخزن</span></div>`;
     body = prep.map(p=>{
       const na = p.src === 'na';
       return `<div class="est-r est-rp${p.ready && !na ? ' est-ready' : ''}${na ? ' est-pend' : ''}">
-      <span><input type="checkbox" id="estP_rd_${p.id}" ${p.ready && !na ? 'checked' : ''} ${na ? 'disabled' : ''} onchange="estToggleReady('${p.id}')" title="جاهزة"></span>
+      <span><input type="checkbox" id="estP_rd_${p.id}" ${p.ready && !na ? 'checked' : ''} ${na ? 'disabled' : ''} onchange="estToggleReady('${p.id}')" title="اتجهزت"></span>
       <span><b>${_joEsc(p.name)}</b>${p.note ? `<div class="muted" style="font-size:11.5px">${_joEsc(p.note)}</div>` : ''}${p.ready && p.readyAt && !na ? `<div class="muted" style="font-size:11px">✓ ${_joEsc(p.readyBy || '')} ${estTime(p.readyAt)}</div>` : ''}</span>
       <span>${_joEsc(p.qty)}</span>
       <select class="f" id="estP_s_${p.id}" onchange="estPrepSrc('${p.id}')">${EST_SRC230.map(([v, l])=>`<option value="${v}" ${(p.src || 'stock') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
       <input class="f" id="estP_w_${p.id}" value="${escAttr(p.wnote || '')}" placeholder="${na ? 'مثال: هتتجاب بكرة' : 'ملاحظة (اختياري)'}"></div>`;
     }).join('');
     if(off.length) foot = `<div class="muted" style="padding:6px 10px;font-size:12px">مش مطلوبة: ${off.map(p=>_joEsc(p.name) + (p.src === 'na' ? ' (مش متوفرة)' : ' (العميل رفضها)')).join(' · ')}</div>`;
+  } else if(estIsReq(w)){
+    /* م237: طلب الصرف من غير أسعار ⇐ من غير أعمدة سعر فاضية */
+    head = `<div class="est-r est-rq est-th"><span>م</span><span>الصنف</span><span>الكمية</span><span>المصدر</span><span>الحالة</span></div>`;
+    body = rows.filter(p=>String(p.name||'').trim()).map((p, i)=>{
+      const na = p.src === 'na';
+      const state = w.status === 'draft' ? '' : (na ? '<span class="est-dec-t no">مش متوفرة</span>' : (p.ready ? '<span class="est-dec-t ok">🟢 اتجهزت</span>' : '<span class="est-pend-t">⏳ بيتجهز</span>'));
+      return `<div class="est-r est-rq${na ? ' est-pend' : (p.ready ? ' est-ready' : '')}"><span>${i+1}</span>
+        <span><b>${_joEsc(p.name)}</b>${p.note ? `<div class="muted" style="font-size:11.5px">${_joEsc(p.note)}</div>` : ''}${p.wnote ? `<div class="muted" style="font-size:11.5px">🏷️ ${_joEsc(p.wnote)}</div>` : ''}${p.ready && p.readyAt && !na ? `<div class="muted" style="font-size:11px">✓ ${_joEsc(p.readyBy || '')} ${estTime(p.readyAt)}</div>` : ''}</span>
+        <span>${_joEsc(p.qty)}</span><span>${na || w.status === 'draft' ? '' : _joEsc(srcLbl(p.src || 'stock'))}</span><span>${state}</span></div>`;
+    }).join('');
   } else {
     const priced = !['draft','pricing'].includes(w.status);
     const showDec = priced;
@@ -6084,7 +6339,7 @@ function estPartsBoxHTML(w, mode){
 function estTotalsHTML(w, mode){
   if(mode === 'prepare' || estIsReq(w)) return '';   // الطلب من غير أسعار
   const t = estTotals(w);
-  if(mode === 'price') return `<div class="est-tot"><div class="est-grand">إجمالي قطع الغيار<b>${money(t.parts)}</b></div></div>`;
+  if(mode === 'price') return `<div class="est-tot"><div class="est-grand">إجمالي قطع الغيار<b><span id="estPrTot">${money(t.parts)}</span></b></div></div>`;
   if(!t.all && ['draft','pricing'].includes(w.status)) return '';
   return `<div class="est-tot">
     <div>إجمالي المصنعيات<b>${money(t.labor)}</b></div>
@@ -6101,6 +6356,7 @@ function estNoteHTML(w, mode){
 function estActionsHTML(w, mode){
   const ed = _estEd, b = [], req = estIsReq(w);
   const canPrint = !req && (can('est.write') || can('est.approve') || can('jobs.print')) && ['priced','approved','ready','done'].includes(w.status) && !ed.isNew;
+  const canPrintReq = req && !ed.isNew && ['approved','ready','done'].includes(w.status) && (can('est.request') || can('est.write') || can('est.approve') || can('est.prepare') || can('jobs.print'));   /* م237 */
   if(mode === 'write' && req){   /* م231 */
     b.push(`<button class="btn" onclick="estSaveDraft()">💾 حفظ مسودة</button>`);
     b.push(`<button class="btn btn-accent" onclick="estSendRequest()">📦 إرسال للمخزن</button>`);
@@ -6125,14 +6381,20 @@ function estActionsHTML(w, mode){
   }
   if(mode === 'prepare'){
     b.push(`<button class="btn" onclick="estSavePrep()">💾 حفظ</button>`);
-    b.push(`<button class="btn btn-accent" onclick="estMarkReady()">${req ? '✅ تم الانتهاء' : '✅ تم تجهيز المقايسة'}</button>`);
+    b.push(`<button class="btn btn-accent" onclick="estMarkReady()">${req ? '✅ تم التجهيز' : '✅ تم تجهيز المقايسة'}</button>`);
   }
   if(canPrint){
     const lbl = w.status === 'priced' ? 'طباعة المقايسة للعميل' : 'طباعة النسخة المعتمدة (للإمضاء)';
     b.push(`<button class="btn" onclick="estPrint(false)">🖨 ${lbl}</button>`);
     b.push(`<button class="btn" onclick="estPrint(true)">⬇ تحميل</button>`);
   }
-  if(!ed.isNew && estCanCancel(w)) b.push(`<button class="btn btn-sm btn-danger" onclick="estCancel()">🚫 ${req ? 'إلغاء الطلب' : 'إلغاء المقايسة'}</button>`);
+  if(canPrintReq){
+    b.push(`<button class="btn" onclick="estPrint(false)">🖨 طباعة طلب الصرف</button>`);
+    b.push(`<button class="btn" onclick="estPrint(true)">⬇ تحميل</button>`);
+  }
+  if(!req && w.convertedTo && estById(w.convertedTo)) b.push(`<button class="btn btn-accent" onclick="openEstEditor('${w.convertedTo}')">📦 افتح طلب الصرف #${_joEsc(w.convertedNo || '')}</button>`);
+  if(req && w.fromEstId && estById(w.fromEstId)) b.push(`<button class="btn btn-sm" onclick="openEstEditor('${w.fromEstId}')">💰 المقايسة الأصلية #${_joEsc(w.fromEstNo || '')}</button>`);
+  if(!ed.isNew && estCanCancel(w)) b.push(`<button class="btn btn-sm btn-danger" onclick="estCancel()">${req ? '🗑 إلغاء المسودة' : '🚫 إلغاء المقايسة'}</button>`);
   return b.join('');
 }
 /* المدة اللي خدتها كل مرحلة — الرد على «أنا مبلغك من 3 ساعات» */
@@ -6147,7 +6409,7 @@ function estDurations(w){
     else if(v.type === 'pulled'){ if(pS != null){ sum.p += t - pS; pS = null; has.p = 1; } }
     else if(v.type === 'priced' || v.type === 'nopricing'){ if(pS != null){ sum.p += t - pS; pS = null; has.p = 1; } cS = t; }
     else if(v.type === 'approved' || v.type === 'rejected'){ if(cS != null){ sum.c += t - cS; cS = null; has.c = 1; } if(v.type === 'approved') rS = t; }
-    else if(v.type === 'reqsent') rS = t;   /* م231: الطلب بيبدأ عند المخزن علطول */
+    else if(v.type === 'reqsent' || v.type === 'fromest') rS = t;   /* م231: الطلب بيبدأ عند المخزن علطول · م237: أو من مقايسة اتعتمدت */
     else if(v.type === 'ready'){ if(rS != null){ sum.r += t - rS; rS = null; has.r = 1; } }
   });
   const out = [];
@@ -6162,7 +6424,7 @@ function estTimelineHTML(w){
   const durs = estDurations(w);
   return `<div class="est-tl"><div style="font-weight:800;margin-bottom:4px">🕒 الخط الزمني — مين عمل إيه وإمتى</div>
     ${durs.length ? `<div class="est-durs">${durs.map(d=>`<span>${d}</span>`).join('')}</div>` : ''}
-    ${evs.map(v=>`<div class="est-ev"><b>${estTime(v.at)}</b><div>${EST_EV230[v.type] || _joEsc(v.type)} — ${_joEsc(v.by || '')}${v.text ? ` <span class="muted">· ${_joEsc(v.text)}</span>` : ''}</div></div>`).join('')}
+    ${evs.map(v=>`<div class="est-ev"><b>${estTime(v.at)}</b><div>${(estIsReq(w) && v.type === 'printed') ? '🖨 اتطبع طلب الصرف' : (EST_EV230[v.type] || _joEsc(v.type))} — ${_joEsc(v.by || '')}${v.text ? ` <span class="muted">· ${_joEsc(v.text)}</span>` : ''}</div></div>`).join('')}
   </div>`;
 }
 
@@ -6249,7 +6511,7 @@ function estReq(act, statuses){
   if(!_estEd){ return false; }
   if(!estGuard()) return false;
   if(act && !can(act)){ toast('مالكش صلاحية «' + actionLabel(act) + '» — كلّم صاحب المركز', true); return false; }
-  if(statuses && !statuses.includes(_estEd.work.status)){ toast('المقايسة دي في مرحلة تانية دلوقتي — اقفلها وافتحها تاني', true); return false; }
+  if(statuses && !statuses.includes(_estEd.work.status)){ toast(estKindWord(_estEd.work) + ' في مرحلة تانية دلوقتي — اقفلها وافتحها تاني', true); return false; }
   return true;
 }
 /* بيكتب نسخة الشغل على السجل الحقيقي. حماية التعديل من جهازين: رقم مراجعة (rev) — لو السجل اتغيّر من جهاز
@@ -6275,9 +6537,9 @@ async function estPersist(opts){
     DB.repairEstimates.push(real);
   } else {
     real = estById(ed.id);
-    if(!real){ toast('المقايسة دي اتمسحت من جهاز تاني', true); closeModal(); return null; }
+    if(!real){ toast(estKindWord(ed.work) + ' اتمسح من جهاز تاني', true); closeModal(); return null; }
     if((real.rev || 0) !== ed.rev){
-      toast('⚠️ المقايسة اتعدلت من جهاز تاني دلوقتي — اتفتحتلك بآخر نسخة، راجعها وكمّل', true);
+      toast(estIsReq(real) ? '⚠️ الطلب ده اتعدل من جهاز تاني دلوقتي — اتفتحلك بآخر نسخة، راجعه وكمّل' : '⚠️ المقايسة اتعدلت من جهاز تاني دلوقتي — اتفتحتلك بآخر نسخة، راجعها وكمّل', true);
       openEstEditor(real.id);
       return null;
     }
@@ -6294,6 +6556,7 @@ async function estPersist(opts){
   estSeenSet(real.id, real.stageSeq || 0, me);
   /* نسخة الشغل بتتحدّث **قبل** الحفظ — عشان علامة «جاهزة» تانية وراها مايتفهمش إنها تعارض */
   ed.id = real.id; ed.isNew = false; ed.rev = real.rev;
+  ed.base = JSON.parse(JSON.stringify(real));   /* م237 */
   ed.work = estPad(JSON.parse(JSON.stringify(real)));
   await saveKey('repairEstimates');
   estInboxSoon();
@@ -6361,13 +6624,21 @@ async function estMarkPriced(){
   w.parts.forEach(p=>{ if(p.src === 'na') p.price = null; else if(!p.src) p.src = 'stock'; });
   const miss = estUnpriced(w);
   if(miss.length){
-    toast('فيه ' + miss.length + ' قطعة لسه من غير سعر (' + miss.slice(0, 3).map(p=>p.name).join('، ') + ') — اكتب السعر أو اختار «مش متوفرة»', true);
+    toast('فيه ' + miss.length + ' قطعة لسه من غير سعر (' + estNames(miss) + ') — اكتب السعر أو اختار «مش متوفرة»', true);
     return;
   }
   const t = estTotals(w), na = w.parts.filter(p=>p.src === 'na' && p.dec !== 'no').length;
+  /* م237: سعر قطعة اتغيّر عن آخر مرة اتسعرت (والعميل شافه) ⇐ «كان …» عند الاستقبال + في الرسالة */
+  const chg = [];
+  w.parts.forEach(p=>{
+    const cur = p.src === 'na' ? 'na' : (+p.price || 0);
+    if(p.dec !== 'no' && p.lastPriced !== undefined && p.lastPriced !== null && String(p.lastPriced) !== String(cur)){ p.prevPrice = p.lastPriced; chg.push([p.name, p.lastPriced, cur]); }
+    else delete p.prevPrice;
+    p.lastPriced = cur;
+  });
   const r = await estPersist({ status:'priced',
-    mutate:(real, now)=>{ if(!real.firstPricedAt) real.firstPricedAt = now; },
-    events:[{ type:'priced', text:'إجمالي قطع الغيار ' + money(t.parts) + (na ? ' · ' + na + ' مش متوفرة' : '') }] });
+    mutate:(real, now)=>{ if(!real.firstPricedAt) real.firstPricedAt = now; real.priceChg = chg.length ? { at:now, items:chg } : null; },
+    events:[{ type:'priced', text:'إجمالي قطع الغيار ' + money(t.parts) + (na ? ' · ' + na + ' مش متوفرة' : '') + (chg.length ? ' · ⚠️ اتغيّر سعر: ' + chg.map(x=>x[0] + ' ' + estFmtP(x[1]) + ' ← ' + estFmtP(x[2])).join('، ') : '') }] });
   if(!r) return;
   closeModal();
   toast('✅ اتسعرت — اتبعتت للاستقبال');
@@ -6400,7 +6671,7 @@ function estApprove(){
   const w = _estEd.work;
   const parts = w.parts.filter(p=>String(p.name || '').trim()), labor = w.labor.filter(l=>String(l.name || '').trim());
   const miss = estUnpriced(w);
-  if(miss.length){ toast('فيه ' + miss.length + ' قطعة لسه ماتسعرتش (' + miss.slice(0, 3).map(p=>p.name).join('، ') + ') — ابعتها للتسعير الأول أو علّم عليها ✗', true); return; }
+  if(miss.length){ toast('فيه ' + miss.length + ' قطعة لسه ماتسعرتش (' + estNames(miss) + ') — ابعتها للتسعير الأول أو علّم عليها ✗', true); return; }
   const noLab = labor.filter(l=>l.dec !== 'no' && l.price == null);
   if(noLab.length){ toast('اكتب سعر المصنعية «' + noLab[0].name + '» أو علّم عليها ✗', true); return; }
   const okP = parts.filter(estPartOk), okL = labor.filter(l=>l.dec !== 'no');
@@ -6408,7 +6679,7 @@ function estApprove(){
   const t = estTotals(w);
   estAskInline(`<b>✅ اعتماد المقايسة</b>
     <div style="margin:6px 0;line-height:1.9">العميل موافق على <b>${okP.length} من ${parts.length}</b> قطعة غيار و<b>${okL.length} من ${labor.length}</b> مصنعية — الإجمالي <b>${money(t.all)}</b>.<br>
-    ${okP.length ? 'القطع المعتمدة هتروح للمخزن يجهّزها، ويوصله إشعار.' : 'مفيش قطع غيار — المقايسة هتتقفل علطول.'}</div>
+    ${okP.length ? 'القطع المعتمدة (<b>' + okP.length + '</b>) <b>هتتحوّل لـ«📦 طلب صرف قطع غيار»</b> وتروح للمخزن يجهّزها علطول، ويوصله إشعار.' : 'مفيش قطع غيار — المقايسة هتتقفل علطول.'}</div>
     <input class="f" id="estApvNote" placeholder="ملاحظة الموافقة (اختياري) — مثال: مضى على الورقة · وافق في التليفون">
     <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="flex:1" onclick="estAskInline('')">رجوع</button>
       <button class="btn btn-accent" style="flex:1" onclick="estApproveDo()">✅ تأكيد الاعتماد</button></div>`);
@@ -6427,14 +6698,34 @@ async function estApproveDo(){
   const parts = w.parts.filter(p=>String(p.name || '').trim()), labor = w.labor.filter(l=>String(l.name || '').trim());
   const okP = parts.filter(estPartOk), okL = labor.filter(l=>l.dec !== 'no');
   const t = estTotals(w);
-  const r = await estPersist({ status: okP.length ? 'approved' : 'done',
-    mutate:(real, now)=>{ real.approvedAt = now; real.approvedBy = actorName(); real.approvedTotal = t.all; real.approveNote = note; },
+  /* م237: المقايسة المعتمدة بتتقفل وبتتحوّل لـ«طلب صرف قطع غيار» برقم جديد عند المخزن.
+     بنتأكد إنها مااتعدلتش من جهاز تاني **قبل** ما نحجز رقم الطلب (عشان مايضيعش رقم على الفاضي) */
+  const cur = estById(_estEd.id);
+  if(cur && (cur.rev || 0) !== _estEd.rev){ toast('⚠️ المقايسة اتعدلت من جهاز تاني دلوقتي — اتفتحتلك بآخر نسخة، راجعها وكمّل', true); openEstEditor(cur.id); return; }
+  const me = estMyId(), by = actorName();
+  const reqNo = okP.length ? await reserveNo('estNo', estList(), 'estNo') : null;
+  let rq = null;
+  const r = await estPersist({ status:'done',
+    mutate:(real, now)=>{
+      real.approvedAt = now; real.approvedBy = by; real.approvedTotal = t.all; real.approveNote = note;
+      if(!okP.length) return;
+      const okNow = (real.parts || []).filter(estPartOk);
+      rq = { id:uid('est'), estNo:reqNo, kind:'request', fromEstId:real.id, fromEstNo:real.estNo, jobId:real.jobId, jobNo:real.jobNo, carId:real.carId, customerId:real.customerId, round:1,
+        status:'approved', stageSeq:1, stageAt:now, stageById:me, stageByName:by, rev:1, createdAt:now, createdBy:by, createdById:me, approvedAt:now, approvedBy:by,
+        parts:okNow.map(p=>({ id:uid('ep'), name:p.name, qty:p.qty, note:p.note || '', src:p.src === 'outside' ? 'outside' : 'stock', wnote:p.wnote || '', dec:'ok', estPartId:p.id, addedAt:now, addedBy:by })),
+        labor:[], note:'', events:[
+          { id:uid('ev'), type:'created', at:now, by, byId:me, seq:0, text:'' },
+          { id:uid('ev'), type:'fromest', at:now, by, byId:me, seq:1, text:'مقايسة #' + real.estNo + ' — ' + okNow.length + ' قطعة: ' + okNow.slice(0, 6).map(p=>p.name + ' ×' + p.qty).join('، ') + (note ? ' · ' + note : '') } ] };
+      DB.repairEstimates.push(rq);
+      real.convertedTo = rq.id; real.convertedNo = reqNo;
+    },
     events:[{ type:'approved', text:'موافق على ' + okP.length + ' من ' + parts.length + ' قطعة و' + okL.length + ' من ' + labor.length + ' مصنعية — الإجمالي ' + money(t.all) + (note ? ' · ' + note : '') }]
-      .concat(okP.length ? [] : [{ type:'noprep' }]) });
+      .concat(okP.length ? [{ type:'convert', text:'طلب صرف قطع غيار #' + reqNo + ' (' + okP.length + ' قطعة)' }] : [{ type:'noprep' }]) });
   if(!r) return;
+  if(rq) estSeenSet(rq.id, rq.stageSeq, me);
   estEdRedraw();
-  toast(okP.length ? '✅ اتعتمدت — القطع المعتمدة اتبعتت للمخزن يجهّزها' : '✅ اتعتمدت (مصنعيات بس — مفيش قطع للتجهيز)');
-  logAction('✅ ' + estTitle(r) + ' — أمر #' + r.jobNo + ': اتعتمدت — ' + okP.length + ' قطعة و' + okL.length + ' مصنعية — ' + money(t.all)).catch(()=>{});
+  toast(rq ? '✅ اتعتمدت — واتحوّلت لـ«طلب صرف قطع غيار #' + rq.estNo + '» عند المخزن يجهّزه' : '✅ اتعتمدت (مصنعيات بس — مفيش قطع للتجهيز)');
+  logAction('✅ ' + estTitle(r) + ' — أمر #' + r.jobNo + ': اتعتمدت — ' + okP.length + ' قطعة و' + okL.length + ' مصنعية — ' + money(t.all) + (rq ? ' ⇐ طلب صرف قطع غيار #' + rq.estNo : '')).catch(()=>{});
 }
 function estRejectAll(){
   if(!estReq('est.approve', ['priced'])) return;
@@ -6459,37 +6750,45 @@ async function estRejectAllDo(){
   toast('❌ اتسجل إن العميل رفض المقايسة');
   logAction('❌ ' + estTitle(r) + ' — أمر #' + r.jobNo + ': العميل رفض المقايسة' + (note ? ' — ' + note : '')).catch(()=>{});
 }
+/* م237 (قرار سيف): مفيش «هتتعلّم جاهزة لوحدها» — كل قطعة لازم تتعلّم «✓ اتجهزت» أو «مش متوفرة» */
+function estPrepLeft(w){ return estPrepRows(w).filter(p=>p.src !== 'na' && !p.ready); }
 function estMarkReady(){
   if(!estReq('est.prepare', ['approved'])) return;
   estHarvest();   // المصدر والملاحظات اللي اتكتبت
   const w = _estEd.work, req = estIsReq(w);
-  const okP = w.parts.filter(estPartOk), left = okP.filter(p=>!p.ready), na = estPrepNA(w);
-  estAskInline(`<b>✅ ${req ? 'تم الانتهاء من الطلب' : 'تم تجهيز المقايسة'}</b>
-    <div style="margin:6px 0;line-height:1.9">${left.length ? 'فيه <b>' + left.length + '</b> قطعة لسه مش متعلّم عليها «جاهزة» (' + left.slice(0, 3).map(p=>_joEsc(p.name)).join('، ') + ') — هتتعلّم جاهزة دلوقتي.' : 'كل القطع (' + okP.length + ') جاهزة.'}
+  const left = estPrepLeft(w), na = estPrepNA(w), g = estPrepProg(w);
+  if(left.length){ toast('فيه ' + left.length + ' قطعة لسه ماتعلّمش عليها (' + estNames(left) + ') — علّم «✓ اتجهزت» أو اختار «مش متوفرة» الأول', true); return; }
+  estAskInline(`<b>✅ ${req ? 'تم تجهيز طلب الصرف' : 'تم تجهيز المقايسة'}</b>
+    <div style="margin:6px 0;line-height:1.9">اتجهز <b>${g.ok} من ${g.n}</b> قطعة.
     ${na.length ? '<br>⚠️ <b>' + na.length + ' مش متوفرة:</b> ' + na.map(p=>_joEsc(p.name)).join('، ') + ' — الاستقبال هيتبلغ بيها.' : ''}<br>
-    الاستقبال هيوصله إشعار إن القطع جاهزة. <b>الصرف على الأمر بيفضل بالطريقة العادية.</b></div>
+    الاستقبال هيوصله إشعار. <b>الصرف على الأمر بيفضل بالطريقة العادية.</b></div>
     <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="flex:1" onclick="estAskInline('')">رجوع</button>
       <button class="btn btn-accent" style="flex:1" onclick="estMarkReadyDo()">✅ تأكيد</button></div>`);
 }
 async function estMarkReadyDo(){
   if(!estReq('est.prepare', ['approved'])) return;
   estHarvest();
-  const n = _estEd.work.parts.filter(estPartOk).length, na = estPrepNA(_estEd.work);
+  const left = estPrepLeft(_estEd.work);
+  if(left.length){ estAskInline(''); toast('فيه ' + left.length + ' قطعة لسه ماتعلّمش عليها (' + estNames(left) + ') — علّم «✓ اتجهزت» أو اختار «مش متوفرة» الأول', true); return; }
+  const na = estPrepNA(_estEd.work), g = estPrepProg(_estEd.work);
   const r = await estPersist({ status:'ready', noDiff:true,
-    mutate:(real, now)=>{ real.parts.forEach(p=>{ if(estPartOk(p) && !p.ready){ p.ready = true; p.readyAt = now; p.readyBy = actorName(); } if(p.src === 'na') p.ready = false; }); },
-    events:[{ type:'ready', text:n + ' قطعة جاهزة' + (na.length ? ' · مش متوفرة: ' + na.map(p=>p.name).join('، ') : '') }] });
+    mutate:(real)=>{ real.parts.forEach(p=>{ if(p.src === 'na') p.ready = false; }); },
+    events:[{ type:'ready', text:'اتجهز ' + g.ok + ' من ' + g.n + (na.length ? ' · مش متوفرة: ' + na.map(p=>p.name).join('، ') : '') }] });
   if(!r) return;
   closeModal();
-  toast('🟢 اتبلغ الاستقبال إن القطع جاهزة' + (na.length ? ' (وإن ' + na.length + ' مش متوفرة)' : ''));
-  logAction('🟢 ' + estTitle(r) + ' — أمر #' + r.jobNo + ': المخزن جهّز ' + n + ' قطعة' + (na.length ? ' · مش متوفرة: ' + na.map(p=>p.name).join('، ') : '')).catch(()=>{});
+  toast('🟢 اتبلغ الاستقبال: اتجهز ' + g.ok + ' من ' + g.n + (na.length ? ' (و' + na.length + ' مش متوفرة)' : ''));
+  logAction('🟢 ' + estTitle(r) + ' — أمر #' + r.jobNo + ': المخزن جهّز ' + g.ok + ' من ' + g.n + ' قطعة' + (na.length ? ' · مش متوفرة: ' + na.map(p=>p.name).join('، ') : '')).catch(()=>{});
   refreshContent();
 }
-/* م231: المصدر اتغيّر — «مش متوفرة» بتشيل علامة «جاهزة» (بيتحفظ مع أول علامة/حفظ/انتهاء) */
-function estPrepSrc(id){
+/* م231: المصدر اتغيّر — «مش متوفرة» بتشيل علامة «جاهزة» · م239: بتتحفظ علطول زي علامة «اتجهزت» */
+async function estPrepSrc(id){
   if(!_estEd) return;
   estHarvest();
   const p = _estEd.work.parts.find(x=>x.id===id);
   if(p && p.src === 'na') p.ready = false;
+  if(_estEd.work.status === 'approved' && can('est.prepare') && !_estEd.isNew){
+    if(!(await estPersist({ noDiff:true }))) return;
+  }
   estEdRedraw();
 }
 async function estSavePrep(){
@@ -6513,18 +6812,19 @@ async function estToggleReady(id){
   } });
   if(r) estEdRedraw();
 }
-/* الإلغاء: المقايسة لحد ما تتعتمد · الطلب لحد ما المخزن يخلّص (اتبعت بالغلط) — م231 */
+/* الإلغاء: المقايسة لحد ما تتعتمد · م237 (قرار سيف): **طلب الصرف مابيتلغيش** بعد ما يتبعت —
+   أي تغيير بطلب صرف جديد أو مرتجع من المخزن. المسودة اللي لسه مااتبعتتش بس هي اللي تتلغي */
 function estCanCancel(w){
   if(!w) return false;
-  return estIsReq(w) ? (['draft','approved'].includes(w.status) && can('est.request')) : (EST_OPEN230.includes(w.status) && can('est.write'));
+  return estIsReq(w) ? (w.status === 'draft' && can('est.request')) : (EST_OPEN230.includes(w.status) && can('est.write'));
 }
 function estCancel(){
   if(!_estEd || !estGuard()) return;
   if(!estCanCancel(_estEd.work)){ toast('مينفعش تلغيها في المرحلة دي أو مالكش صلاحية', true); return; }
   estHarvest();
   const req = estIsReq(_estEd.work);
-  estAskInline(`<b>🚫 ${req ? 'إلغاء الطلب' : 'إلغاء المقايسة'}</b>
-    <div style="margin:6px 0">${req ? 'الطلب هيتقفل «اتلغى» ويختفي من عند المخزن، ويفضل متسجل بالسبب.' : 'المقايسة هتتقفل «اتلغت» وتفضل متسجلة بالسبب.'}</div>
+  estAskInline(`<b>${req ? '🗑 إلغاء المسودة' : '🚫 إلغاء المقايسة'}</b>
+    <div style="margin:6px 0">${req ? 'المسودة دي لسه مااتبعتتش للمخزن — هتتقفل «اتلغت» وتفضل متسجلة بالسبب.' : 'المقايسة هتتقفل «اتلغت» وتفضل متسجلة بالسبب.'}</div>
     <input class="f" id="estCancelReason" placeholder="سبب الإلغاء (إلزامي) — مثال: اتكتبت على أمر غلط">
     <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="flex:1" onclick="estAskInline('')">رجوع</button>
       <button class="btn btn-danger" style="flex:1" onclick="estCancelDo()">🚫 تأكيد الإلغاء</button></div>`);
@@ -6538,21 +6838,27 @@ async function estCancelDo(){
   const r = await estPersist({ status:'cancelled', noDiff:true, mutate:(real)=>{ real.cancelReason = reason; }, events:[{ type:'cancelled', text:reason }] });
   if(!r) return;
   closeModal();
-  toast(estIsReq(r) ? '🚫 الطلب اتلغى' : '🚫 المقايسة اتلغت');
+  toast(estIsReq(r) ? '🗑 المسودة اتلغت' : '🚫 المقايسة اتلغت');
   logAction('🚫 ' + estTitle(r) + ' — أمر #' + r.jobNo + ': اتلغت — ' + reason).catch(()=>{});
   refreshContent();
 }
 /* الطباعة: نفس ورقة «مقايسة إصلاح» بالظبط، بس مليانة بالبنود والأسعار — المرفوض مش بيتطبع */
 async function estPrint(download){
-  if(!_estEd || _estEd.isNew || estIsReq(_estEd.work)) return;
-  if(!(can('est.write') || can('est.approve') || can('jobs.print'))){ toast('مالكش صلاحية طباعة المقايسة', true); return; }
-  if(!['priced','approved','ready','done'].includes(_estEd.work.status)){ toast('المقايسة لسه ماتسعرتش', true); return; }
+  if(!_estEd || _estEd.isNew) return;
+  const req = estIsReq(_estEd.work);   /* م237: طباعة طلب الصرف — ورقة في إيد أمين المخزن */
+  if(req){
+    if(!(can('est.request') || can('est.write') || can('est.approve') || can('est.prepare') || can('jobs.print'))){ toast('مالكش صلاحية طباعة طلب الصرف', true); return; }
+    if(!['approved','ready','done'].includes(_estEd.work.status)){ toast('ابعت الطلب للمخزن الأول وبعدين اطبعه', true); return; }
+  } else {
+    if(!(can('est.write') || can('est.approve') || can('jobs.print'))){ toast('مالكش صلاحية طباعة المقايسة', true); return; }
+    if(!['priced','approved','ready','done'].includes(_estEd.work.status)){ toast('المقايسة لسه ماتسعرتش', true); return; }
+  }
   estHarvest();
   const r = await estPersist({ events:[{ type:'printed', text:download ? 'تحميل ملف' : 'طباعة' }] });
   if(!r) return;
   const job = DB.jobs.find(j=>j.id===r.jobId) || null;
-  const html = estimateHTML(job, r);
-  if(download) downloadHTML(html, 'مقايسة-' + r.estNo + '-امر-' + r.jobNo); else printHTML(html);
+  const html = req ? partsRequestHTML(job, r) : estimateHTML(job, r);
+  if(download) downloadHTML(html, (req ? 'طلب-صرف-' : 'مقايسة-') + r.estNo + '-امر-' + r.jobNo); else printHTML(html);
   estEdRedraw();
 }
 /* ============ م188: إقرار استلام سيارة ============
@@ -6923,6 +7229,76 @@ async function saveEditJobItem(jobId, itemId){
   }
   closeModal(); toast('تم حفظ التعديل'); openJobDetail(jobId); refreshContent();
 }
+/* ============ م236: حذف بند من أمر الشغل ⇐ حركته في «حركة المخزن» تفضل ظاهرة ومكتوب عليها «🚫 اتلغت» ============
+   طلب سيف: أي بند يتحذف من أمر الشغل (قطعة من أي مخزن · قطعة خارجية · أعمال خارجية · خامة دهان) — حركته
+   في سجل المخزن تفضل زي ما هي ومكتوب عليها «اتلغت من أمر الشغل #… — مين — يوم وتاريخ وساعة — السبب»، عشان
+   يعرف مين شال البند وإمتى. **علامة بس**: الحذف لسه مابيرجّعش أي رصيد (القطعة ترجع بمرتجع بس — قاعدة م110)،
+   والحركة بتفضل محسوبة في الرصيد وكارت الصنف زي ما هي. */
+function mvItemKey236(m){ return (m && m.type==='out' && m.partId) ? 'p|'+m.partId : ((m && (m.type==='ext_part' || m.type==='ext_work') && m.extName) ? m.type+'|'+m.extName : null); }
+function itItemKey236(it){ return (it && it.kind==='part' && it.partId) ? 'p|'+it.partId : ((it && (it.kind==='ext_part' || it.kind==='ext_work')) ? it.kind+'|'+it.name : null); }
+/* حركات البند: نفس ربط «اتصرفت إمتى» (م201) — البند لوحده على الأمر ⇐ كل حركاته (ومنها الصرفات المتجمعة م224)،
+   ولو فيه كذا بند لنفس القطعة (أوامر قديمة) ⇐ حركاته هو بس */
+function jobItemMoves(job, it){
+  const k = itItemKey236(it);
+  if(!job || !k) return [];
+  const all = (DB.stockMoves || []).filter(m=>m && m.jobId===job.id && mvItemKey236(m)===k).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const same = (job.items || []).filter(x=>itItemKey236(x)===k);
+  if(same.length <= 1) return all;
+  const mine = new Set(), anyIssue = new Set();
+  same.forEach(x=>(x.issues || []).forEach(y=>{ if(y && y.moveId){ anyIssue.add(y.moveId); if(x === it) mine.add(y.moveId); } }));
+  const res = all.filter(m=>mine.has(m.id));
+  const nth = all.filter(m=>!anyIssue.has(m.id))[same.indexOf(it)];
+  if(nth && !res.includes(nth)) res.push(nth);
+  return res;
+}
+function paintMovesOf(job, ic){
+  const c = (DB.stockMoves || []).filter(m=>m && m.type==='paint_out' && m.jobId===job.id && !m.voided);
+  const byId = c.find(m=>m.icId===ic.id);
+  if(byId) return [byId];
+  const same = c.filter(m=>!m.icId && m.extName===ic.name && +m.qty===+ic.qty && +m.unitCost===+ic.unitCost);
+  same.sort((a,b)=>Math.abs(new Date(a.date)-new Date(ic.date)) - Math.abs(new Date(b.date)-new Date(ic.date)));
+  return same.length ? [same[0]] : [];
+}
+function voidMovesForDeleted(moves, info){
+  const at = new Date().toISOString(), by = actorName();
+  let n = 0;
+  (moves || []).forEach(m=>{ if(!m || m.voided) return; m.voided = { at, by, reason:(info && info.reason) || '', jobNo:(info && info.jobNo) || '' }; n++; });
+  return n;
+}
+function mvVoidTagHTML(m){ return (m && m.voided) ? ' <span class="tag tag-cancel" title="البند ده اتشال من أمر الشغل">🚫 اتلغت</span>' : ''; }
+function mvVoidLineHTML(m){
+  if(!m || !m.voided) return '';
+  const v = m.voided, d = new Date(v.at);
+  return `<div class="mv-void">🚫 اتلغت من أمر الشغل${v.jobNo ? ' #' + _joEsc(v.jobNo) : ''} — <b>${_joEsc(v.by || '—')}</b> — ${AR_DAYS188[d.getDay()] || ''} ${fmtDate(v.at)} الساعة ${_noBidi(d.toLocaleTimeString(NUM_LOCALE, { hour:'2-digit', minute:'2-digit' }))}${v.reason ? ' — السبب: ' + _joEsc(v.reason) : ''}${m.type === 'out' ? ' · <span class="muted">الكمية مارجعتش للمخزن (المرتجع بس اللي بيرجّعها)</span>' : ''}</div>`;
+}
+/* م236: شيل خامة دهان اتسجلت غلط — نفس صلاحية «حذف بنود من أمر الشغل» وبسبب إلزامي */
+function deletePaintCost(jobId, icId){
+  if(!can('jobs.item_delete')){ toast('مالكش صلاحية حذف بنود أوامر الشغل', true); return; }
+  const jobPre = DB.jobs.find(j=>j.id===jobId);
+  if(!jobPre){ toast('أمر الشغل مش موجود', true); return; }
+  if(isJobClosed(jobPre)){ toast('الأمر ده اتفوتر أو اتلغى — مفيش تعديل على بنوده. لو محتاج تعدّل: «إعادة فتح» من شاشة الفواتير', true); return; }
+  const icPre = (jobPre.internalCosts || []).find(x=>x.id===icId);
+  if(!icPre){ toast('الخامة مش موجودة — اعمل تحديث للبيانات', true); return; }
+  const costTxt = can('rep.profit') ? ' — تكلفة ' + money(icPre.total) : '';
+  askConfirmReason('شيل الخامة دي من أمر الشغل #' + jobPre.jobNo + '؟<br><span class="muted" style="font-size:12px">🎨 ' + _joEsc(icPre.name) + ' — ' + icPre.qty + ' ' + _joEsc(icPre.unit || '') + costTxt
+    + '</span><br><span class="muted" style="font-size:12px">تكلفتها هتتشال من الأمر، وحركتها في «حركة المخزن» هتفضل ظاهرة ومكتوب عليها «اتلغت».</span>', async (reason)=>{
+    const job = DB.jobs.find(j=>j.id===jobId);
+    const ic = job && (job.internalCosts || []).find(x=>x.id===icId);
+    if(!ic){ toast('الخامة اتشالت من جهاز تاني', true); openJobDetail(jobId); return; }
+    const mvs = paintMovesOf(job, ic);
+    job.internalCosts = job.internalCosts.filter(x=>x.id!==icId);
+    const nv = voidMovesForDeleted(mvs, { jobNo:job.jobNo, reason });
+    await saveKey('jobs', DB.jobs);
+    if(nv) await saveKey('stockMoves', DB.stockMoves);
+    const what = 'خامة دهان: ' + ic.name + ' — ' + ic.qty + ' ' + (ic.unit || '') + ' — تكلفة ' + money(ic.total);
+    await logAction('🗑️ شيل خامة دهان من أمر الشغل #' + job.jobNo + ' — ' + what + ' — السبب: ' + reason + (nv ? ' — حركتها في المخزن اتعلّم عليها «اتلغت»' : ''));
+    notify('job_item_delete', 'شيل خامة دهان من أمر الشغل #' + job.jobNo + ' — ' + what,
+      { category:'jobs', refType:'job', refId:job.id, refNo:job.jobNo, amount:ic.total || 0, reason });
+    trackBulkDeletes('بند أمر شغل');
+    toast('اتشالت الخامة — وحركتها في المخزن متعلّم عليها «اتلغت»');
+    openJobDetail(jobId); refreshContent();
+  });
+}
 function deleteJobItem(jobId, itemId){
   if(!can('jobs.item_delete')){ toast('مالكش صلاحية حذف بنود أوامر الشغل', true); return; }
   const jobPre = DB.jobs.find(j=>j.id===jobId);
@@ -6951,14 +7327,18 @@ function deleteJobItem(jobId, itemId){
     +(wasIssued?`<br><span style="color:var(--danger);font-size:12px">⚠️ الكمية <b>مش هترجع</b> للمخزون — الحذف بيشيل البند من الأمر بس.<br>لو القطعة رجعت فعلاً، سجّلها بـ«↩ مرتجع عميل» عشان ترجع للمخزن بحركة موثقة.</span>`:''),
     async (reason)=>{
     const job = DB.jobs.find(j=>j.id===jobId);
+    const itNow236 = job.items.find(i=>i.id===itemId);
+    const mvs236 = itNow236 ? jobItemMoves(job, itNow236) : [];   /* م236: قبل ما البند يتشال (الربط بترتيب البنود) */
     job.items = job.items.filter(i=>i.id!==itemId);
+    const nv236 = voidMovesForDeleted(mvs236, { jobNo:job.jobNo, reason });
     await saveKey('jobs', DB.jobs);
+    if(nv236) await saveKey('stockMoves', DB.stockMoves);
     /* م110: القطعة المصروفة لسه **برّه المخزن** بعد الحذف — الإشعار بيقول
        كده صريح عشان الأدمن يتابع: يا إما ترجع بمرتجع، يا إما تتحاسب. */
     const outNote = wasIssued
       ? ' — ⚠️ الكمية ('+(itemPre.qty||0)+') لسه مصروفة من المخزن ومارجعتش — محتاجة متابعة (مرتجع أو محاسبة)'
       : '';
-    await logAction('🗑️ حذف بند من أمر الشغل #'+job.jobNo+' — '+desc.replace(/^ — /,'')+' — السبب: '+reason+outNote);
+    await logAction('🗑️ حذف بند من أمر الشغل #'+job.jobNo+' — '+desc.replace(/^ — /,'')+' — السبب: '+reason+outNote+(nv236 ? ' — حركته في المخزن اتعلّم عليها «اتلغت»' : ''));
     notify('job_item_delete', 'حذف بند من أمر الشغل #'+job.jobNo+' — '+desc.replace(/^ — /,'')+outNote,
       { category:'jobs', refType:'job', refId:job.id, refNo:job.jobNo,
         priority: wasIssued ? 'high' : undefined,
@@ -7476,59 +7856,321 @@ async function saveServiceRow(jobId){
 }
 
 /* ======================= APPOINTMENTS ======================= */
+/* ============ م240: 📅 الحجوزات — مين جاي النهارده والساعة كام وجاي ليه ============
+   طلب سيف: العملاء بيحجزوا على الواتساب (كامبين / الموقع) — يا صيانة دورية (60,000 · 100,000 …)
+   بمقايسة وافق عليها بالبنود والأسعار، يا عنده مشكلة عايز يحلها. كان بيتبعت على جروب واتساب.
+   دلوقتي بيتسجل هنا عشان الاستقبال يعرف مين جاي النهارده والساعة كام ويظبط تشغيل الورشة على الأوقات الفاضية.
+   • «✅ العميل وصل» ⇐ الحجز بيتشال من القايمة بس (قرار سيف) — أمر الشغل وطلب الصرف بيتعملوا بالإيد زي ما هما.
+   • «📱 تذكير واتساب» ⇐ الرسالة جاهزة بالميعاد وسبب الزيارة ولوكيشن المركز، والموظف يدوس إرسال.
+   • الشاشة بصلاحية «الحجوزات» — صاحب المركز يديها لأي حد. مفيش SQL (الجدول موجود من الأول). */
+const APPT_MAP_DEFAULT = 'https://maps.app.goo.gl/z3S4Fr6MT4NHH2pj7';
+function centerMapLink(){ const v = DB.settings && DB.settings.mapLink; return v == null ? APPT_MAP_DEFAULT : String(v).trim(); }
+let apptView = 'today';
+function apptSetView(v){ apptView = v; refreshContent(); }
+var _apEd = null;   // نسخة شغل الحجز المفتوح { id, lines, customerId, carId, dupWarned }
+function apptDayKey(d){ const x = d instanceof Date ? d : new Date(d); if(isNaN(x)) return '';   /* تاريخ بايظ (بيانات قديمة) ⇒ بيتحسب «فات» */
+  return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
+function apptAddDays(n){ const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + n); return apptDayKey(d); }
+function apptActive(a){ return !!a && a.status !== 'ملغي' && a.status !== 'وصل'; }   // «قادم»
+function apptOfDay(key){ return DB.appointments.filter(a=>apptActive(a) && apptDayKey(a.date) === key).sort((a, b)=>String(a.date).localeCompare(String(b.date))); }
+function apptTodayLeft(){ return (session && canScreen('appointments')) ? apptOfDay(apptDayKey(new Date())).length : 0; }
+function apptTime(a){ const d = new Date(a.date); return isNaN(d) ? '—' : _noBidi(d.toLocaleTimeString(NUM_LOCALE, { hour:'numeric', minute:'2-digit' })); }
+function apptWhenText(a){
+  const k = apptDayKey(a.date), d = new Date(a.date);
+  if(!k) return 'في الميعاد اللي اتفقنا عليه';
+  if(k === apptDayKey(new Date())) return 'النهارده الساعة ' + apptTime(a);
+  if(k === apptAddDays(1)) return 'بكرة (' + AR_DAYS188[d.getDay()] + ') الساعة ' + apptTime(a);
+  return 'يوم ' + AR_DAYS188[d.getDay()] + ' ' + _noBidi(d.toLocaleDateString(NUM_LOCALE, { day:'2-digit', month:'2-digit' })) + ' الساعة ' + apptTime(a);
+}
+function apptKmText(a){ return a.km ? 'صيانة ' + Number(a.km).toLocaleString(NUM_LOCALE) : ''; }
+function apptReasonText(a){ return [apptKmText(a), a.problem ? 'مشكلة: ' + a.problem : ''].filter(Boolean).join(' + ') || (a.note || '—'); }
+function apptLinesTotal(a){ return Math.round((a.lines || []).filter(l=>l && l.name).reduce((s, l)=>s + (+l.qty || 0) * (+l.price || 0), 0) * 100) / 100; }
+function apptCarText(car){ return [carLabel(car), car.plate].filter(Boolean).join(' — '); }
+
+/* ---------- العداد الأحمر: اللي جايين النهارده ولسه ماوصلوش ---------- */
+function apptNavItemHTML(){
+  const n = apptTodayLeft();
+  return `<button class="nav-item ${currentTab==='appointments' ? 'active' : ''}" onclick="goTab('appointments')">${ICONS.calendar}<span>📅 الحجوزات <b id="apptNavCnt" class="est-cnt"${n ? '' : ' style="display:none"'}>${n || ''}</b></span></button>`;
+}
+function apptPaintBadges(){
+  try{
+    const n = apptTodayLeft();
+    ['apptNavCnt', 'apptNavCntM'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el){ el.textContent = n ? String(n) : ''; if(el.style) el.style.display = n ? '' : 'none'; }
+    });
+  }catch(e){}
+}
+
+/* ---------- الشاشة ---------- */
 function renderAppointments(){
-  const list = [...DB.appointments].sort((a,b)=>new Date(a.date)-new Date(b.date));
-  const upcoming = list.filter(a=>a.status!=='ملغي' && new Date(a.date) >= new Date(new Date().setHours(0,0,0,0)));
-  const past = list.filter(a=>!upcoming.includes(a));
-  return `
-  <div class="section-head"><h3>المواعيد القادمة (${upcoming.length})</h3>
-    <button class="btn btn-accent" onclick="openNewAppointmentModal()">${ICONS.plus} حجز موعد جديد</button></div>
-  <div class="card">
-    <table><thead><tr><th>التاريخ والوقت</th><th>العميل</th><th>الموبايل</th><th>السيارة</th><th>ملاحظة</th><th></th></tr></thead>
-    <tbody>
-    ${upcoming.length? upcoming.map(a=>`
-      <tr><td>${fmtDateTime(a.date)}</td><td>${a.customerName}</td><td>${a.phone||'—'}</td><td>${a.carInfo||'—'}</td><td class="muted">${a.note||'—'}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="cancelAppointment('${a.id}')">إلغاء</button></td></tr>
-    `).join('') : `<tr><td colspan="6" class="empty">لا توجد مواعيد قادمة</td></tr>`}
-    </tbody></table>
-  </div>
-  ${past.length? `
-  <div class="section-head" style="margin-top:22px"><h3>مواعيد سابقة</h3></div>
-  <div class="card"><table><thead><tr><th>التاريخ والوقت</th><th>العميل</th><th>السيارة</th><th>الحالة</th></tr></thead>
-  <tbody>${past.slice(0,15).map(a=>`<tr><td>${fmtDateTime(a.date)}</td><td>${a.customerName}</td><td>${a.carInfo||'—'}</td><td>${a.status==='ملغي'?'<span class="tag tag-cancel">ملغي</span>':'<span class="tag tag-delivered">فات موعده</span>'}</td></tr>`).join('')}</tbody></table></div>
-  ` : ''}
-  `;
+  const today = apptDayKey(new Date()), tom = apptAddDays(1);
+  const act = DB.appointments.filter(apptActive);
+  const nT = act.filter(a=>apptDayKey(a.date) === today).length, nM = act.filter(a=>apptDayKey(a.date) === tom).length;
+  const nL = act.filter(a=>apptDayKey(a.date) > tom).length;
+  const tab = (v, l)=>`<button class="btn btn-sm${apptView === v ? ' btn-accent' : ''}" onclick="apptSetView('${v}')">${l}</button>`;
+  const body = apptView === 'past' ? apptPastHTML(today)
+    : apptView === 'later' ? apptLaterHTML(tom)
+    : apptDayHTML(apptView === 'tomorrow' ? tom : today, apptView !== 'tomorrow');
+  return `<div class="section-head"><h3>📅 الحجوزات</h3>
+      <button class="btn btn-accent" onclick="openNewAppointmentModal()">${ICONS.plus} حجز جديد</button></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${tab('today', 'النهارده (' + nT + ')')}${tab('tomorrow', 'بكرة (' + nM + ')')}${tab('later', 'الأيام الجاية (' + nL + ')')}${tab('past', '📁 اللي فات')}</div>
+    ${body}`;
 }
-function openNewAppointmentModal(){
-  openModal(`
-    <h3>حجز موعد جديد</h3>
-    <div class="form-row"><label class="f-label">اسم العميل</label><input class="f" id="apName"></div>
-    <div class="form-row"><label class="f-label">رقم الموبايل</label><input class="f" id="apPhone" inputmode="tel"></div>
-    <div class="form-row"><label class="f-label">السيارة (موديل / لوحة)</label><input class="f" id="apCar" placeholder="مثال: تويوتا كورولا - أ ب ج 123"></div>
-    <div class="form-row"><label class="f-label">تاريخ ووقت الموعد</label><input class="f" id="apDate" type="datetime-local"></div>
-    <div class="form-row"><label class="f-label">ملاحظة (اختياري)</label><input class="f" id="apNote"></div>
-    <button class="btn btn-accent" style="width:100%" onclick="saveNewAppointment()">حفظ الموعد</button>
-  `);
+function apptDayHTML(k, isToday){
+  const list = apptOfDay(k);
+  const arrived = isToday ? DB.appointments.filter(a=>a.status === 'وصل' && a.arrivedAt && apptDayKey(a.arrivedAt) === k).sort((a, b)=>String(b.arrivedAt).localeCompare(String(a.arrivedAt))) : [];
+  return (list.length ? list.map(apptCardHTML).join('') : `<div class="card empty">${isToday ? 'مفيش حد جاي النهارده' : 'مفيش حجوزات بكرة'}</div>`)
+    + (arrived.length ? `<div class="ap-day">✅ وصلوا النهارده (${arrived.length})</div>` + arrived.map(apptCardHTML).join('') : '');
 }
+function apptLaterHTML(tom){
+  const list = DB.appointments.filter(a=>apptActive(a) && apptDayKey(a.date) > tom).sort((a, b)=>String(a.date).localeCompare(String(b.date)));
+  if(!list.length) return '<div class="card empty">مفيش حجوزات بعد بكرة</div>';
+  return [...new Set(list.map(a=>apptDayKey(a.date)))].map(k=>{
+    const d = new Date(k + 'T12:00'), its = list.filter(a=>apptDayKey(a.date) === k);
+    return `<div class="ap-day">${AR_DAYS188[d.getDay()]} ${fmtDate(d)} — ${its.length} حجز</div>` + its.map(apptCardHTML).join('');
+  }).join('');
+}
+function apptPastHTML(today){
+  const list = DB.appointments.filter(a=>!apptActive(a) || apptDayKey(a.date) < today).sort((a, b)=>String(b.date).localeCompare(String(a.date)));
+  if(!list.length) return '<div class="card empty">لسه مفيش حجوزات فاتت</div>';
+  return pgSlice('apptPast', list).map(apptCardHTML).join('') + pgCtlHTML('apptPast', list.length);
+}
+function apptStateTag(a){
+  if(a.status === 'وصل') return `<span class="tag tag-delivered">✅ وصل ${a.arrivedAt ? fmtDateTime(a.arrivedAt) : ''}${a.arrivedBy ? ' — ' + escNote(a.arrivedBy) : ''}</span>`;
+  if(a.status === 'ملغي') return `<span class="tag tag-cancel">🚫 اتلغى${a.cancelReason ? ' — ' + escNote(a.cancelReason) : ''}</span>`;
+  const today = apptDayKey(new Date());
+  if(apptDayKey(a.date) < today) return '<span class="tag tag-cancel">❌ ماجاش</span>';
+  const late = Date.now() - new Date(a.date).getTime();
+  return (apptDayKey(a.date) === today && late > 15 * 60000) ? `<span class="tag tag-cancel">⏰ متأخر ${estDur(late)}</span>` : '';
+}
+function apptCardHTML(a){
+  const open = apptActive(a) && apptDayKey(a.date) >= apptDayKey(new Date());
+  const lines = (a.lines || []).filter(l=>l && String(l.name || '').trim());
+  const tot = apptLinesTotal(a);
+  return `<div class="card ap-card${open ? '' : ' ap-done'}">
+    <div class="ap-top"><div class="ap-time">${apptTime(a)}${(apptView === 'past' || apptView === 'later') && apptDayKey(a.date) ? `<div class="muted" style="font-size:11px;font-weight:600">${fmtDate(a.date)}</div>` : ''}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:800;font-size:15px">${escNote(a.customerName || '—')} ${apptStateTag(a)}</div>
+        <div class="muted" style="font-size:12.5px;margin-top:2px">📞 <a class="ap-tel" href="tel:${escAttr(a.phone || '')}">${escNote(a.phone || '—')}</a> · 🚗 ${escNote(a.carInfo || '—')}</div>
+      </div></div>
+    <div class="ap-why">${a.km ? `<span class="ap-chip">🛠 ${apptKmText(a)}</span>` : ''}${a.problem ? `<span class="ap-chip ap-prob">⚠️ ${escNote(a.problem)}</span>` : ''}</div>
+    ${lines.length ? `<details class="ap-est"><summary>📋 المقايسة اللي وافق عليها: ${lines.length} بند${tot ? ' — <b>' + money(tot) + '</b>' : ''}</summary>
+      <table><thead><tr><th>البند</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>
+      ${lines.map(l=>`<tr><td>${escNote(l.name)}</td><td>${escNote(l.qty)}</td><td>${+l.price ? money(l.price) : '—'}</td><td>${+l.price ? money((+l.qty || 0) * (+l.price || 0)) : '—'}</td></tr>`).join('')}
+      </tbody></table></details>` : ''}
+    ${a.note ? `<div class="muted" style="font-size:12.5px;margin-top:6px">📝 ${escNote(a.note)}</div>` : ''}
+    <div class="muted" style="font-size:11.5px;margin-top:6px">حجز: ${escNote(a.createdBy || '—')}${a.createdAt ? ' · ' + fmtDateTime(a.createdAt) : ''}${a.remindedAt ? ` · 📱 التذكير اتبعت ${fmtDateTime(a.remindedAt)}${a.remindedBy ? ' (' + escNote(a.remindedBy) + ')' : ''}` : ''}</div>
+    ${open ? `<div class="ap-act">
+      <button class="btn btn-sm btn-accent" onclick="apptArrived('${a.id}')">✅ العميل وصل</button>
+      <button class="btn btn-sm" onclick="apptWhatsApp('${a.id}')">📱 تذكير واتساب</button>
+      <button class="btn btn-sm" onclick="openNewAppointmentModal('${a.id}')">✏️ تعديل / تأجيل</button>
+      <button class="btn btn-sm btn-danger" onclick="cancelAppointment('${a.id}')">🚫 إلغاء</button></div>`
+    : (a.status === 'وصل' && a.arrivedAt && apptDayKey(a.arrivedAt) === apptDayKey(new Date())
+      ? `<div class="ap-act"><button class="btn btn-sm" onclick="apptUndoArrive('${a.id}')">↩ تراجع (اتدست بالغلط)</button></div>` : '')}
+  </div>`;
+}
+
+/* ---------- حجز جديد / تعديل ---------- */
+function apptBlankLine(){ return { id:uid('apl'), name:'', qty:1, price:null }; }
+function openNewAppointmentModal(id){
+  if(!canScreen('appointments')){ toast('مالكش صلاحية على شاشة الحجوزات', true); return; }
+  const a = id ? DB.appointments.find(x=>x.id === id) : null;
+  if(id && !apptActive(a)){ toast('الحجز ده اتشال أو اتلغى — اعمل تحديث للبيانات', true); refreshContent(); return; }
+  _apEd = { id:a ? a.id : null, lines:a ? JSON.parse(JSON.stringify(a.lines || [])) : [], customerId:a ? (a.customerId || null) : null, carId:a ? (a.carId || null) : null, dupWarned:'' };
+  while(_apEd.lines.length < 3) _apEd.lines.push(apptBlankLine());
+  const ad = a ? new Date(a.date) : null;   // بالتوقيت المحلي (الحجوزات القديمة كانت بتتسجل بأكتر من شكل)
+  const day = ad && !isNaN(ad) ? apptDayKey(ad) : apptDayKey(new Date()), time = ad && !isNaN(ad) ? String(ad.getHours()).padStart(2, '0') + ':' + String(ad.getMinutes()).padStart(2, '0') : '';
+  const kms = Array.from({ length:20 }, (_, i)=>(i + 1) * 10000);
+  openModal(`<h3>${a ? '✏️ تعديل / تأجيل حجز' : '📅 حجز جديد'}</h3>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">رقم الواتساب</label><input class="f" id="apPhone" inputmode="tel" value="${escAttr(a ? a.phone : '')}" placeholder="01012345678" oninput="apptPhoneLookup()"></div>
+      <div class="form-row"><label class="f-label">اسم العميل</label><input class="f" id="apName" value="${escAttr(a ? a.customerName : '')}"></div>
+    </div>
+    <div id="apMatch" class="muted" style="font-size:12.5px;margin:-4px 0 8px"></div>
+    <div class="form-row"><label class="f-label">العربية (الماركة · الموديل · السنة · اللوحة)</label><input class="f" id="apCar" value="${escAttr(a ? a.carInfo : '')}" placeholder="مثال: كيا سيراتو 2019 — أ ب ج 1234"></div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">يوم الحجز</label><input class="f" id="apDay" type="date" value="${day}" onchange="apptDayRedraw()"></div>
+      <div class="form-row"><label class="f-label">الساعة</label><input class="f" id="apTime" type="time" value="${time}"></div>
+    </div>
+    <div id="apDayList" class="ap-slots">${apptDayListHTML(day)}</div>
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">🛠 صيانة دورية — كام كيلو؟</label><input class="f" id="apKm" inputmode="numeric" list="apKmList" value="${a && a.km ? escAttr(a.km) : ''}" placeholder="مثال: 100000 (سيبها فاضية لو مش صيانة)">
+        <datalist id="apKmList">${kms.map(k=>`<option value="${k}">صيانة ${k.toLocaleString(NUM_LOCALE)}</option>`).join('')}</datalist></div>
+      <div class="form-row"><label class="f-label">⚠️ عنده مشكلة؟ اكتبها</label><textarea class="f" id="apProblem" rows="2" placeholder="مثال: صوت في العفشة الأمامية">${escNote(a ? a.problem || '' : '')}</textarea></div>
+    </div>
+    <div class="f-label" style="margin-top:4px">📋 بنود المقايسة اللي العميل وافق عليها (اختياري)</div>
+    <div id="apLinesBox">${apptLinesHTML()}</div>
+    <div class="form-row" style="margin-top:10px"><label class="f-label">ملاحظة (اختياري)</label><input class="f" id="apNote" value="${escAttr(a ? a.note || '' : '')}"></div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveNewAppointment()">${a ? '💾 حفظ التعديل' : '📅 حفظ الحجز'}</button>`, true);
+  if(a) apptPhoneLookup();
+}
+/* الرقم متسجل لعميل عندنا ⇐ الاسم والعربية بيتملوا لوحدهم (عملاء الكامبين غالباً جداد ⇐ بيتكتبوا عادي) */
+function apptFindCustomer(phone){
+  const q = normPhone(phone);
+  if(q.length < 10) return null;
+  return activeCustomers().find(c=>!c.archived && [c.phone, c.phone2].some(p=>{ const d = normPhone(p); return d.length >= 10 && d.slice(-10) === q.slice(-10); })) || null;
+}
+function apptPhoneLookup(){
+  if(!_apEd) return;
+  const box = document.getElementById('apMatch');
+  const c = apptFindCustomer((document.getElementById('apPhone') || {}).value || '');
+  _apEd.customerId = c ? c.id : null;
+  if(!c){ _apEd.carId = null; if(box) box.innerHTML = ''; return; }
+  const cars = DB.cars.filter(x=>x.customerId === c.id && !x.archived);
+  const nm = document.getElementById('apName');
+  if(nm && !String(nm.value || '').trim()) nm.value = c.name || '';
+  if(!cars.some(x=>x.id === _apEd.carId)) _apEd.carId = null;
+  if(cars.length === 1 && !_apEd.carId) apptPickCar(cars[0].id);
+  if(box) box.innerHTML = `✓ عميل متسجل عندنا: <b>${escNote(c.name || '')}</b>` + (cars.length > 1
+    ? ` — اختار العربية: <select class="f" id="apCarSel" style="display:inline-block;width:auto" onchange="apptPickCar(this.value)"><option value="">—</option>${cars.map(x=>`<option value="${x.id}" ${x.id === _apEd.carId ? 'selected' : ''}>${escNote(apptCarText(x))}</option>`).join('')}</select>` : '');
+}
+function apptPickCar(id){
+  if(!_apEd) return;
+  const car = DB.cars.find(x=>x.id === id);
+  _apEd.carId = car ? car.id : null;
+  const el = document.getElementById('apCar');
+  if(car && el) el.value = apptCarText(car);
+}
+function apptDayListHTML(k){
+  const list = apptOfDay(k).filter(a=>!_apEd || a.id !== _apEd.id);
+  if(!list.length) return `<div class="muted" style="font-size:12px">مفيش حجوزات تانية في اليوم ده — اليوم فاضي.</div>`;
+  return `<div class="muted" style="font-size:12px;margin-bottom:4px">حجوزات اليوم ده (${list.length}) — اختار وقت فاضي:</div>`
+    + list.map(a=>`<div class="ap-slot"><b>${apptTime(a)}</b> ${escNote(a.customerName || '')} — ${escNote(apptReasonText(a))}</div>`).join('');
+}
+function apptDayRedraw(){ const el = document.getElementById('apDayList'), d = document.getElementById('apDay'); if(el && d) el.innerHTML = apptDayListHTML(d.value); }
+function apptHarvestLines(){
+  if(!_apEd) return;
+  _apEd.lines.forEach(l=>{
+    const n = document.getElementById('apL_n_' + l.id), q = document.getElementById('apL_q_' + l.id), p = document.getElementById('apL_p_' + l.id);
+    if(n) l.name = String(n.value || '').trim();
+    if(q){ const v = estNum(q.value); l.qty = v == null ? 1 : v; }
+    if(p) l.price = estNum(p.value);
+  });
+}
+function apptLinesHTML(){
+  if(!_apEd) return '';
+  return `<div class="ap-line ap-line-h"><span>البند (قطعة أو مصنعية)</span><span>الكمية</span><span>السعر</span><span></span></div>
+    ${_apEd.lines.map(l=>`<div class="ap-line">
+      <input class="f" id="apL_n_${l.id}" value="${escAttr(l.name)}" placeholder="مثال: فلتر زيت">
+      <input class="f" id="apL_q_${l.id}" inputmode="decimal" value="${escAttr(l.qty)}" onfocus="this.select()" oninput="apptTotRedraw()">
+      <input class="f" id="apL_p_${l.id}" inputmode="decimal" value="${l.price == null ? '' : escAttr(l.price)}" oninput="apptTotRedraw()">
+      <button class="btn btn-sm" title="شيل السطر" onclick="apptDelLine('${l.id}')">✕</button></div>`).join('')}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><button class="btn btn-sm" onclick="apptAddLine()">➕ بند</button>
+      <span>الإجمالي: <b><span id="apTot">${money(apptLinesTotal(_apEd))}</span></b></span></div>`;
+}
+function apptLinesRedraw(){ const b = document.getElementById('apLinesBox'); if(b) b.innerHTML = apptLinesHTML(); }
+function apptAddLine(){ if(!_apEd) return; apptHarvestLines(); _apEd.lines.push(apptBlankLine()); apptLinesRedraw(); }
+function apptDelLine(id){
+  if(!_apEd) return;
+  apptHarvestLines();
+  _apEd.lines = _apEd.lines.filter(l=>l.id !== id);
+  if(!_apEd.lines.length) _apEd.lines.push(apptBlankLine());
+  apptLinesRedraw();
+}
+function apptTotRedraw(){ apptHarvestLines(); const t = document.getElementById('apTot'); if(t && _apEd) t.textContent = money(apptLinesTotal(_apEd)); }
 async function saveNewAppointment(){
-  if(!(canScreen('appointments'))){ toast('مالكش صلاحية على شاشة المواعيد', true); return; }   /* حارس م65 */
-  const customerName = document.getElementById('apName').value.trim();
-  const phone = document.getElementById('apPhone').value.trim();
-  const carInfo = document.getElementById('apCar').value.trim();
-  const date = document.getElementById('apDate').value;
-  const note = document.getElementById('apNote').value.trim();
-  if(!customerName || !date){ toast('اكتب اسم العميل وميعاد الحجز', true); return; }
-  DB.appointments.push({id:uid('ap'), customerName, phone, carInfo, date, note, status:'قادم'});
+  if(!(canScreen('appointments'))){ toast('مالكش صلاحية على شاشة الحجوزات', true); return; }   /* حارس م65 */
+  if(!_apEd) return;
+  apptHarvestLines();
+  const v = id=>String(((document.getElementById(id) || {}).value) || '').trim();
+  const phone = v('apPhone'), customerName = v('apName'), carInfo = v('apCar'), day = v('apDay'), time = v('apTime');
+  const km = estNum(v('apKm')), problem = v('apProblem'), note = v('apNote');
+  if(!customerName || !phone){ toast('اكتب اسم العميل ورقم الواتساب بتاعه', true); return; }
+  if(normPhone(phone).length < 10){ toast('رقم الواتساب ناقص — اكتبه كامل (مثال: 01012345678)', true); return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^\d{2}:\d{2}$/.test(time)){ toast('اختار يوم الحجز والساعة', true); return; }
+  if(!(km > 0) && !problem){ toast('اكتب العميل جاي ليه: صيانة كام كيلو أو المشكلة', true); return; }
+  const old = _apEd.id ? DB.appointments.find(x=>x.id === _apEd.id) : null;
+  if(_apEd.id && !apptActive(old)){ toast('الحجز ده اتشال أو اتلغى من جهاز تاني', true); _apEd = null; closeModal(); refreshContent(); return; }
+  if(day < apptDayKey(new Date()) && (!old || apptDayKey(old.date) !== day)){ toast('اليوم ده فات — اختار النهارده أو يوم جاي', true); return; }
+  /* نفس الرقم محجوز في نفس اليوم ⇐ تنبيه، ودوسة «حفظ» تانية = متأكد */
+  const date = day + 'T' + time;
+  const dup = apptOfDay(day).find(x=>x.id !== _apEd.id && normPhone(x.phone).slice(-10) === normPhone(phone).slice(-10));
+  if(dup && _apEd.dupWarned !== dup.id){
+    _apEd.dupWarned = dup.id;
+    toast('⚠️ الرقم ده محجوز في نفس اليوم الساعة ' + apptTime(dup) + ' — لو متأكد إنه حجز تاني دوس «حفظ» تاني', true);
+    return;
+  }
+  const lines = _apEd.lines.filter(l=>l.name).map(l=>({ id:l.id, name:l.name, qty:l.qty || 1, price:l.price == null ? null : l.price }));
+  const now = new Date().toISOString(), by = actorName();
+  const rec = old || { id:uid('ap'), createdAt:now, createdBy:by };
+  const moved = old && new Date(old.date).getTime() !== new Date(date).getTime() ? old.date : null;
+  Object.assign(rec, { customerName, phone, carInfo, customerId:_apEd.customerId || null, carId:_apEd.carId || null, date,
+    km:km > 0 ? km : null, problem, lines, note, status:'قادم', updatedAt:now, updatedBy:by });
+  if(moved){ rec.remindedAt = null; rec.remindedBy = null; }   // ميعاد جديد ⇐ تذكير جديد
+  if(!old) DB.appointments.push(rec);
   await saveKey('appointments', DB.appointments);
-  await logAction('حجز موعد جديد لـ '+customerName);
-  closeModal(); toast('تم حجز الموعد'); refreshContent();
+  await logAction((old ? '✏️ تعديل حجز — ' : '📅 حجز جديد — ') + customerName + ' (' + phone + ') — ' + fmtDateTime(date) + ' — ' + apptReasonText(rec)
+    + (lines.length ? ' — مقايسة ' + lines.length + ' بند' + (apptLinesTotal(rec) ? ' بـ ' + money(apptLinesTotal(rec)) : '') : '')
+    + (moved ? ' (اتأجل من ' + fmtDateTime(moved) + ')' : ''));
+  _apEd = null;
+  closeModal();
+  toast(old ? '✅ اتعدل الحجز — ' + apptWhenText(rec) : '✅ اتسجل الحجز — ' + apptWhenText(rec));
+  refreshContent();
 }
-async function cancelAppointment(id){
-  if(!(canScreen('appointments'))){ toast('مالكش صلاحية على شاشة المواعيد', true); return; }   /* حارس م65 */
-  const a = DB.appointments.find(x=>x.id===id);
-  a.status='ملغي';
+
+/* ---------- العميل وصل / تراجع / إلغاء ---------- */
+async function apptArrived(id){
+  if(!canScreen('appointments')){ toast('مالكش صلاحية على شاشة الحجوزات', true); return; }
+  const a = DB.appointments.find(x=>x.id === id);
+  if(!apptActive(a)){ toast('الحجز ده اتشال من جهاز تاني', true); refreshContent(); return; }
+  a.status = 'وصل'; a.arrivedAt = new Date().toISOString(); a.arrivedBy = actorName();
   await saveKey('appointments', DB.appointments);
-  toast('تم إلغاء الموعد'); refreshContent();
+  await logAction('✅ العميل وصل — ' + a.customerName + ' (' + (a.phone || '') + ') — حجز ' + fmtDateTime(a.date) + ' — ' + apptReasonText(a));
+  toast('✅ ' + a.customerName + ' وصل — اتشال من الحجوزات. افتحله أمر الشغل عادي');
+  refreshContent();
+}
+async function apptUndoArrive(id){
+  if(!canScreen('appointments')){ toast('مالكش صلاحية على شاشة الحجوزات', true); return; }
+  const a = DB.appointments.find(x=>x.id === id);
+  if(!a || a.status !== 'وصل') return;
+  a.status = 'قادم'; a.arrivedAt = null; a.arrivedBy = null;
+  await saveKey('appointments', DB.appointments);
+  await logAction('↩ تراجع عن «العميل وصل» — ' + a.customerName + ' — حجز ' + fmtDateTime(a.date));
+  toast('رجع للحجوزات'); refreshContent();
+}
+function cancelAppointment(id){
+  if(!(canScreen('appointments'))){ toast('مالكش صلاحية على شاشة الحجوزات', true); return; }   /* حارس م65 */
+  const a = DB.appointments.find(x=>x.id === id);
+  if(!apptActive(a)) return;
+  askConfirmReason(`إلغاء حجز <b>${escNote(a.customerName || '')}</b> — ${escNote(apptWhenText(a))}؟`, async (reason)=>{
+    const r = DB.appointments.find(x=>x.id === id);
+    if(!apptActive(r)) return;
+    r.status = 'ملغي'; r.cancelReason = reason; r.cancelledAt = new Date().toISOString(); r.cancelledBy = actorName();
+    await saveKey('appointments', DB.appointments);
+    await logAction('🚫 إلغاء حجز — ' + r.customerName + ' — ' + fmtDateTime(r.date) + ' — السبب: ' + reason);
+    toast('اتلغى الحجز'); refreshContent();
+  });
+}
+
+/* ---------- 📱 تذكير واتساب — الموظف بيدوس إرسال بنفسه ---------- */
+function apptWaPhone(p){ let d = String(p || '').replace(/\D/g, ''); if(d.startsWith('00')) d = d.slice(2); if(d.startsWith('0')) d = '2' + d; return d; }
+function apptWaMsg(a){
+  const hi = new Date().getHours() < 12 ? 'صباح الخير' : 'مساء الخير';
+  const center = (DB.settings && DB.settings.centerName) || 'Masters Auto Service';
+  const km = a.km ? Number(a.km).toLocaleString(NUM_LOCALE) : '';
+  const why = km && a.problem ? 'صيانة ' + km + ' + فحص وإصلاح (' + a.problem + ')' : (km ? 'صيانة ' + km : 'فحص وإصلاح (' + (a.problem || '') + ')');
+  const map = centerMapLink(), tel = (DB.settings && DB.settings.phone) || '';
+  return hi + ' يا ' + (a.customerName || '') + ' 🌟\n'
+    + 'بنفكّر حضرتك إن عندك ' + apptWhenText(a) + ' ميعاد ' + why + (a.carInfo ? ' لعربيتك ' + a.carInfo : '') + ' في ' + center + '.\n'
+    + (map ? '📍 لوكيشن المركز: ' + map + '\n' : '')
+    + (tel ? 'لو حابب تغيّر الميعاد كلّمنا على ' + tel + '.\n' : '')
+    + 'في انتظارك 🚗';
+}
+function apptWaLink(a){ return 'https://wa.me/' + apptWaPhone(a.phone) + '?text=' + encodeURIComponent(apptWaMsg(a)); }
+async function apptWhatsApp(id){
+  if(!canScreen('appointments')){ toast('مالكش صلاحية على شاشة الحجوزات', true); return; }
+  const a = DB.appointments.find(x=>x.id === id);
+  if(!apptActive(a)) return;
+  if(apptWaPhone(a.phone).length < 12){ toast('رقم الواتساب بتاع الحجز ناقص — عدّله الأول', true); return; }
+  /* لازم الفتح يحصل علطول مع الدوسة (قبل أي انتظار) وإلا المتصفح بيمنعه */
+  const el = document.createElement('a');
+  el.href = apptWaLink(a); el.target = '_blank'; el.rel = 'noopener';
+  document.body.appendChild(el); el.click(); el.remove();
+  a.remindedAt = new Date().toISOString(); a.remindedBy = actorName();
+  await saveKey('appointments', DB.appointments);
+  logAction('📱 تذكير واتساب بالحجز — ' + a.customerName + ' (' + a.phone + ') — ' + fmtDateTime(a.date)).catch(()=>{});
+  refreshContent();
 }
 
 /* ======================= INVENTORY ======================= */
@@ -9235,10 +9877,10 @@ function mvRowsHTML(){
       qtyTxt = dir>0 ? '+'+dir : (dir<0 ? '−'+Math.abs(dir) : m.qty);
       qtyColor = dir>0 ? 'color:#1a7f37' : (dir<0 ? 'color:var(--danger)' : '');
     }
-    return `<tr>
+    return `<tr${m.voided ? ' class="mv-voided"' : ''}>
       <td style="white-space:nowrap">${fmtDateTime(m.date)}</td>
-      <td>${nameCell}</td>
-      <td>${typeTagMap[m.type]||m.type}</td>
+      <td>${nameCell}${mvVoidLineHTML(m)}</td>
+      <td>${typeTagMap[m.type]||m.type}${mvVoidTagHTML(m)}</td>
       <td style="font-weight:700;${qtyColor}">${qtyTxt}</td>
       <td style="white-space:nowrap">${
         /* م195 (قرار سيف): الكمية الفعلية **لايف** للصنف في المخزن دلوقتي —
@@ -9335,7 +9977,8 @@ function openMoveDetails(moveId){
   if(supplier && canScreen('suppliers')) links.push(`<button class="btn btn-sm" onclick="openSupplierDetail('${supplier.id}')">🏭 حساب المورد</button>`);
   openModal(`
     <div class="flex-between" style="margin-bottom:6px"><h3 style="margin:0">تفاصيل الحركة</h3>
-      <span class="tag tag-inspect">${MOVE_TYPE_LABEL[m.type]||m.type}</span></div>
+      <span class="tag tag-inspect">${MOVE_TYPE_LABEL[m.type]||m.type}</span>${mvVoidTagHTML(m)}</div>
+    ${mvVoidLineHTML(m)}
 
     <!-- م86: الموظف المنفّذ أول حاجة تبان — عشان سيف مايخشش سجل العمليات كل مرة -->
     <div class="dsec">👤 المنفّذ</div>
@@ -10371,7 +11014,8 @@ async function saveCustomerReturn(){
   await logAction('مرتجع عميل: '+qty+' من '+p.name+' — أمر شغل #'+job.jobNo+' — رجعت لمخزن '+whName(partWhId(p))
     +' — السبب: '+reason206.name+(reason?' ('+reason+')':'')
     +(rtv206?' — ↩ مستنية ترجع للمورد «'+supName(rtv206.supplierId)+'» ('+rtv206.qty+')':''));
-  closeModal(); toast('تم المرتجع: '+qty+' رجعت لمخزن '+whName(partWhId(p))+' واتخصمت من أمر الشغل #'+job.jobNo
+  closeModal(); toast('تم المرتجع: '+qty+' رجعت لمخزن '+whName(partWhId(p))
+    +(remaining < qty ? ' واتخصمت من أمر الشغل #'+job.jobNo : ' — البند كان متشال من أمر الشغل #'+job.jobNo+' قبل كده')   /* م239 */
     +(rtv206?' — واتحطت في قائمة «مستنية ترجع للمورد»':'')); refreshContent();
 }
 function openWorkOrderReport(jobId){
@@ -10537,7 +11181,7 @@ function workOrderReportHTML(jobId, opts){
   <table style="margin-top:6px"><thead><tr><th>الوقت</th><th>النوع</th><th>البند</th><th>الكمية</th><th>بواسطة</th></tr></thead>
   <tbody>${jobMoves.length? jobMoves.map(m=>{
     const p = m.partId ? DB.inventory.find(x=>x.id===m.partId) : null;
-    return `<tr><td style="white-space:nowrap;font-size:12px">${fmtDateTime(m.date)}</td><td>${mvLabel(m)}</td><td>${p?p.name:(m.extName||'—')}</td><td>${m.qty}</td><td class="muted" style="font-size:11.5px">${m.actor||'—'}</td></tr>`;
+    return `<tr${m.voided ? ' class="mv-voided"' : ''}><td style="white-space:nowrap;font-size:12px">${fmtDateTime(m.date)}</td><td>${mvLabel(m)}${mvVoidTagHTML(m)}</td><td>${p?p.name:(m.extName||'—')}${mvVoidLineHTML(m)}</td><td>${m.qty}</td><td class="muted" style="font-size:11.5px">${m.actor||'—'}</td></tr>`;
   }).join('') : `<tr><td colspan="5" class="empty">لا توجد حركات</td></tr>`}</tbody></table>
   ${(job.externalNotes||'').trim()?`
   <div class="card" style="margin-top:12px;border-right:3px solid var(--accent)">
@@ -11085,7 +11729,7 @@ function openWipHistory(){
       <td class="muted" style="font-size:11.5px">${s.snapNo||'—'}</td>
       <td style="font-weight:700">${s.name}${s.notes?`<div class="muted" style="font-size:10.5px;font-weight:400">${s.notes}</div>`:''}</td>
       <td style="white-space:nowrap;font-size:12.5px">${fmtDate(s.date)}</td>
-      <td class="muted" style="white-space:nowrap;font-size:11.5px">${new Date(s.date).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}</td>
+      <td class="muted" style="white-space:nowrap;font-size:11.5px">${new Date(s.date).toLocaleTimeString(NUM_LOCALE,{hour:'2-digit',minute:'2-digit'})}</td>
       <td class="muted" style="font-size:11.5px">${s.by||'—'}</td>
       <td style="font-weight:700">${s.jobsCount}</td>
       <td style="font-weight:800">${money(s.totalCost)}</td>
@@ -11273,8 +11917,9 @@ async function savePaintOut(){
   const car = DB.cars.find(c=>c.id===job.carId);
   // تكلفة مباشرة على أمر الشغل — بدون تكويد، بدون خصم مخزون، ولا تظهر أبداً في فاتورة العميل
   job.internalCosts = job.internalCosts || [];
-  job.internalCosts.push({id:uid('ic'), kind:'paint', name, qty, unit, unitCost, total:qty*unitCost, note, date:new Date().toISOString(), by:actorName()});
-  pushStockMove({id:uid('mv'), partId:null, extName:name, type:'paint_out', qty, unit, unitCost, date:new Date().toISOString(), actor:actorName(),
+  const icId236 = uid('ic');   /* م236: الحركة مربوطة بالخامة — عشان لو اتشالت تتعلّم «اتلغت» بالظبط */
+  job.internalCosts.push({id:icId236, kind:'paint', name, qty, unit, unitCost, total:qty*unitCost, note, date:new Date().toISOString(), by:actorName()});
+  pushStockMove({id:uid('mv'), icId:icId236, partId:null, extName:name, type:'paint_out', qty, unit, unitCost, date:new Date().toISOString(), actor:actorName(),
     note:'صرف خامات دهان — أمر شغل #'+job.jobNo+(car?' — '+car.plate:'')+' — بواسطة: '+actorName()+(note?' — '+note:''),
     jobId:job.id, customerId:job.customerId});
   await Promise.all([saveKey('jobs', DB.jobs), saveKey('stockMoves', DB.stockMoves)]);
@@ -12451,8 +13096,8 @@ function itemLedgerRowsHTML(partId){
     moveTrackParts(m).forEach(x=>details.push(x));
     const price = m.unitCost!=null ? 'شراء: '+money(m.unitCost) : (m.unitPrice!=null ? 'بيع: '+money(m.unitPrice) : '—');
     const clickable = job ? `onclick="openWorkOrderReport('${job.id}')" style="cursor:pointer"` : '';
-    return `<tr ${clickable}><td>${fmtDateTime(m.date)}</td><td>${typeTagMap[m.type]||m.type}</td>
-      <td class="muted" style="max-width:220px">${details.join(' · ')||'—'}</td>
+    return `<tr ${clickable}${m.voided ? ' class="mv-voided"' : ''}><td>${fmtDateTime(m.date)}</td><td>${typeTagMap[m.type]||m.type}${mvVoidTagHTML(m)}</td>
+      <td class="muted" style="max-width:220px">${details.join(' · ')||'—'}${mvVoidLineHTML(m)}</td>
       <td>${(()=>{
         /* م155: التسوية بتتعرض برقم المستخدم (من/إلى) — مش برقم توفيق السجل الداخلي */
         if(m.type==='adjustment' && typeof m.qtyBefore==='number' && typeof m.qtyAfter==='number'){
@@ -14288,10 +14933,10 @@ function supInvTotalsHTML(rows){
   rows.forEach(p=>{ c[supInvStatusKey(p)]++; });
   return `
   <div class="grid g4">
-    <div class="stat-card"><div class="stat-value">${rows.length.toLocaleString('ar-EG')}</div><div class="stat-label">عدد الفواتير (حسب الفلتر)</div></div>
+    <div class="stat-card"><div class="stat-value">${rows.length.toLocaleString(NUM_LOCALE)}</div><div class="stat-label">عدد الفواتير (حسب الفلتر)</div></div>
     <div class="stat-card"><div class="stat-value">${money(sum)}</div><div class="stat-label">💰 إجمالي الفواتير</div></div>
-    <div class="stat-card"><div class="stat-value">${c.pending.toLocaleString('ar-EG')}</div><div class="stat-label">🟡 بانتظار المراجعة</div></div>
-    <div class="stat-card"><div class="stat-value">${(c.l2+c.closed).toLocaleString('ar-EG')}</div><div class="stat-label">🔵 معتمدة (${c.l2}) · 🟢 مغلقة مالياً (${c.closed})</div></div>
+    <div class="stat-card"><div class="stat-value">${c.pending.toLocaleString(NUM_LOCALE)}</div><div class="stat-label">🟡 بانتظار المراجعة</div></div>
+    <div class="stat-card"><div class="stat-value">${(c.l2+c.closed).toLocaleString(NUM_LOCALE)}</div><div class="stat-label">🔵 معتمدة (${c.l2}) · 🟢 مغلقة مالياً (${c.closed})</div></div>
   </div>`;
 }
 /* الفتح = نفس شاشات الفاتورة الموجودة بالظبط — اللي معاه صلاحية شغل بيفتح
@@ -18456,6 +19101,10 @@ const EXP_TXN_TYPES = {
   deposit_refund:   { label:'استرداد عربون',       icon:'↩️', locked:true,  operating:false },   // م127
   cust_refund:      { label:'رد فلوس للعميل',      icon:'💸', locked:true,  operating:false },   // م207
   internal_use:     { label:'استهلاك داخلي (من المخزون)', icon:'🏍', locked:true, operating:true },   // م155: غير نقدي
+  /* م238: المرتب = تكلفة تشغيلية. النقدي اللي خرج من الخزنة يوم الصرف + السلف اللي اتخصمت منه (غير نقدي —
+     فلوسها خرجت يوم السلفة كحركة غير تشغيلية) ⇒ الربحية بتشوف المرتب كامل مرة واحدة بس */
+  salary:           { label:'مرتبات',             icon:'💵', locked:true,  operating:true  },
+  salary_settle:    { label:'تسوية سلف من المرتب', icon:'💵', locked:true,  operating:true  },   // غير نقدي
 };
 function expTxnType(e){
   if(e.txnType && EXP_TXN_TYPES[e.txnType]) return e.txnType;
@@ -18522,7 +19171,7 @@ function advEmpName(e){
 }
 function advTimeTxt(e){
   if(!e.at) return '—';
-  try{ return new Date(e.at).toLocaleTimeString('ar-EG', { hour:'2-digit', minute:'2-digit' }); }
+  try{ return new Date(e.at).toLocaleTimeString(NUM_LOCALE, { hour:'2-digit', minute:'2-digit' }); }
   catch(x){ return '—'; }
 }
 function advRows(){
@@ -18584,7 +19233,7 @@ function advRepAreaHTML(){
     </tr>`).join('') : `<tr><td colspan="9" class="empty">مفيش سلف مطابقة للفلاتر</td></tr>`}
   </tbody></table></div>
   <div class="card" style="margin-top:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:13.5px">
-    <span><b>عدد السلف:</b> ${rows.length.toLocaleString('ar-EG')}</span>
+    <span><b>عدد السلف:</b> ${rows.length.toLocaleString(NUM_LOCALE)}</span>
     <span><b>${advTotalLabel()}:</b> <span style="font-weight:800;font-size:15px">${money(total)}</span></span>
   </div>
   <div class="muted" style="font-size:11.5px;margin-top:6px">الإجمالي دة هو <b>إجمالي السلف المسجلة (المصروفة)</b> حسب الفلاتر — مش الرصيد المتبقي. خصم سلف الموظفين المكودين من مرتباتهم مكانه شاشة الرواتب في الموارد البشرية زي ما هو.</div>`;
@@ -18634,7 +19283,7 @@ function expSummaryHTML(){
   const total = list.reduce((s,e)=>s+(e.amount||0),0);
   const opTotal = list.filter(isOperatingExpense).reduce((s,e)=>s+(e.amount||0),0);
   const showOp = !expFilters.type && Math.round(opTotal*100)!==Math.round(total*100);
-  return `<b>عدد العمليات:</b> ${list.length.toLocaleString('ar-EG')}
+  return `<b>عدد العمليات:</b> ${list.length.toLocaleString(NUM_LOCALE)}
     &nbsp;·&nbsp; <b>إجمالي المبلغ:</b> <span style="font-weight:800">${money(total)}</span>
     ${showOp?`&nbsp;·&nbsp; <span class="muted">منها مصروفات تشغيلية: ${money(opTotal)}</span>`:''}`;
 }
@@ -18651,7 +19300,7 @@ function expRowsHTML(){
   const list = all.slice(0, expShowLimit);
   const moreRow = all.length > list.length ? `<tr><td colspan="10" style="text-align:center;padding:10px">
     <button class="btn btn-sm btn-accent" onclick="expShowMore()">⬇ تحميل المزيد (${Math.min(100, all.length-list.length)} كمان)</button>
-    <button class="btn btn-sm" onclick="expShowLimit=Infinity;expShowMore()">عرض الكل (${all.length.toLocaleString('ar-EG')})</button></td></tr>` : '';
+    <button class="btn btn-sm" onclick="expShowLimit=Infinity;expShowMore()">عرض الكل (${all.length.toLocaleString(NUM_LOCALE)})</button></td></tr>` : '';
   if(list.length===0) return `<tr><td colspan="10" class="empty">لا توجد عمليات مطابقة</td></tr>`;
   return list.map(e=>{
     const def = expTxnDef(e);
@@ -21359,6 +22008,7 @@ async function attCloseSend(empId){
   const rg = attCloseRange();
   const rec = attCloseFor(empId, rg);
   if(rec && rec.status==='approved'){ toast('التقفيل ده معتمد — لازم المعتمد يعيد فتحه الأول', true); return; }
+  if(hrLockRange(e, rg)) return;   /* م238 */
   _attCloseSendCore([e], rg);
   await saveKey('attendance');
   await logAction('📤 تقفيل حضور ' + e.name + ' لشهر المرتب ' + attCycleOf(rg.to) + ' — اتبعت للاعتماد');
@@ -21367,7 +22017,7 @@ async function attCloseSend(empId){
 }
 function attCloseSendAll(){
   if(!can('hr.att_close')){ toast('مالكش صلاحية تقفيل الحضور', true); return; }
-  const rg = attCloseRange(), data = attCloseData(rg).filter(x=>!(x.rec && x.rec.status==='approved'));
+  const rg = attCloseRange(), data = attCloseData(rg).filter(x=>!(x.rec && x.rec.status==='approved') && !hrPaidOverlap(x.e, rg.from, rg.to));   /* م238: اللي اتصرفله مابيتقفلش تاني */
   if(!data.length){ toast('كل الموظفين اتعتمدوا خلاص', true); return; }
   const m = data.reduce((a,x)=>a + x.calc.missingN, 0), nu = data.filter(x=>x.calc.notup).length, fu = data[0].calc.futureN;
   askConfirm(`إرسال تقفيل حضور <b>${data.length}</b> موظف لشهر المرتب ${attCycleOf(rg.to)} للاعتماد؟
@@ -21395,7 +22045,9 @@ function _attCloseApproveCore(e, rg, final, edits, reason){
 async function attCloseApprove(empId){
   if(!can('hr.att_approve')){ toast('مالكش صلاحية اعتماد تقفيل الحضور', true); return; }
   const e = DB.employees.find(x=>x.id===empId); if(!e) return;
-  const rg = attCloseRange(), c = attCloseCalc(e, rg);
+  const rg = attCloseRange();
+  if(hrLockRange(e, rg)) return;   /* م238 */
+  const c = attCloseCalc(e, rg);
   const rd = (id, def) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : NaN; return isNaN(v) || v < 0 ? def : _r2_217(v); };
   const final = { absence:rd('acAbs', c.amounts.absence), missing:rd('acMiss', c.amounts.missing), late:rd('acLate', c.amounts.late), unpaid:rd('acUnpaid', c.amounts.unpaid) };
   const LBL = { absence:'الغياب', missing:'عدم البصمة', late:'التأخيرات', unpaid:'بدون راتب' };
@@ -21411,7 +22063,7 @@ async function attCloseApprove(empId){
 }
 function attCloseApproveAll(){
   if(!can('hr.att_approve')){ toast('مالكش صلاحية اعتماد تقفيل الحضور', true); return; }
-  const rg = attCloseRange(), list = attCloseData(rg).filter(x=>x.rec && x.rec.status==='pending');
+  const rg = attCloseRange(), list = attCloseData(rg).filter(x=>x.rec && x.rec.status==='pending' && !hrPaidOverlap(x.e, rg.from, rg.to));   /* م238 */
   if(!list.length){ toast('مفيش حد مستني الاعتماد', true); return; }
   const st = list.filter(x=>x.stale).length;
   askConfirm(`اعتماد تقفيل حضور <b>${list.length}</b> موظف لشهر المرتب ${attCycleOf(rg.to)} بالأرقام المحسوبة؟${st ? `<br>⚠️ ${st} منهم البيانات اتغيرت من وقت الإرسال — هيتعتمدوا بالأرقام الجديدة.` : ''}<br><span class="muted" style="font-size:12px">لو عايز تعدّل مبلغ لموظف، افتح «تفاصيل» بتاعه الأول.</span>`, async ()=>{
@@ -21426,6 +22078,7 @@ function attCloseReopen(empId){
   const e = DB.employees.find(x=>x.id===empId); if(!e) return;
   const rg = attCloseRange(), rec = attCloseFor(empId, rg);
   if(!rec || rec.status!=='approved') return;
+  if(hrLockRange(e, rg)) return;   /* م238 */
   askConfirm(`إعادة فتح تقفيل حضور <b>${escNote(e.name)}</b>؟<br>الخصم هيتشال من كشف راتبه لحد ما يتبعت ويتعتمد تاني.`, async ()=>{
     const now = new Date().toISOString();
     rec.status = 'reopened'; rec.reopenedBy = actorName(); rec.reopenedAt = now;
@@ -21467,18 +22120,19 @@ function payrollSheetRows(){
   const { from, to } = getPayrollPeriod();
   return DB.employees.filter(e=>e.status!=='مستقيل' && e.status!=='أرشيف')
     .filter(e=>!payrollFilter.emp || e.id===payrollFilter.emp).filter(e=>!payrollFilter.dept || e.dept===payrollFilter.dept)
-    .map(e=>({ e, p:payrollCalc(e, from, to) }));
+    .map(e=>({ e, p:payrollCalcView(e, from, to) }));   /* م238: الشهر اللي اتصرف = الأرقام وقت الصرف */
 }
 function payrollSheetTable(forXls){
   const { from, to } = getPayrollPeriod();
   const rows = payrollSheetRows();
   const fm = v => forXls ? _r2_217(v) : (v ? money(v) : '—');   /* الطباعة: «—» للصفر · Excel: أرقام */
-  const head = ['#', 'الموظف', 'الوظيفة', 'الأساسي', 'المكافآت', 'السلف', 'الجزاءات', 'خصم الحضور', 'التأمينات', 'صافي الراتب', 'الحضور'];
+  const head = ['#', 'الموظف', 'الوظيفة', 'الأساسي', 'المكافآت', 'السلف', 'الجزاءات', 'خصم الحضور', 'التأمينات', 'صافي الراتب', 'الحضور', 'مرحّل من الشهر اللي فات', 'الصرف'];
   const body = rows.map(({ e, p }, i)=>[i + 1, e.name, e.job || '—', fm(p.base), fm(p.bonuses), fm(p.advances), fm(p.penalties),
-    fm(p.absenceDeduct + p.missingDeduct + p.lateDeduct + p.unpaidDeduct), fm(p.fixed), forXls ? _r2_217(p.net) : money(p.net), p.attClosed ? 'معتمد' : 'لسه']);
+    fm(p.absenceDeduct + p.missingDeduct + p.lateDeduct + p.unpaidDeduct), fm(p.fixed), forXls ? _r2_217(p.net) : money(p.net), p.attClosed ? 'معتمد' : 'لسه',
+    fm(p.carryIn || 0), hrPayStateText(e, p)]);
   const T = rows.reduce((a, { p })=>({ base:a.base + p.base, bon:a.bon + p.bonuses, adv:a.adv + p.advances, pen:a.pen + p.penalties,
-    att:a.att + p.absenceDeduct + p.missingDeduct + p.lateDeduct + p.unpaidDeduct, fix:a.fix + p.fixed, net:a.net + p.net }), { base:0, bon:0, adv:0, pen:0, att:0, fix:0, net:0 });
-  body.push(['', 'الإجمالي (' + rows.length + ' موظف)', '', fm(T.base), fm(T.bon), fm(T.adv), fm(T.pen), fm(T.att), fm(T.fix), forXls ? _r2_217(T.net) : money(T.net), '']);
+    att:a.att + p.absenceDeduct + p.missingDeduct + p.lateDeduct + p.unpaidDeduct, fix:a.fix + p.fixed, net:a.net + p.net, car:a.car + (p.carryIn || 0) }), { base:0, bon:0, adv:0, pen:0, att:0, fix:0, net:0, car:0 });
+  body.push(['', 'الإجمالي (' + rows.length + ' موظف)', '', fm(T.base), fm(T.bon), fm(T.adv), fm(T.pen), fm(T.att), fm(T.fix), forXls ? _r2_217(T.net) : money(T.net), '', fm(T.car), '']);
   return { head, body, T, n:rows.length, open:rows.filter(r=>!r.p.attClosed).length, from, to };
 }
 function printPayrollSheet(){
@@ -21643,6 +22297,12 @@ function empMovesOf(e, inP, sal){
     /* م217: خصم الحضور المعتمد — والغياب اليدوي في شهر معتمد جوه التقفيل (مايتكررش) */
     ...DB.attendance.filter(r=>r.kind==='close' && r.status==='approved' && r.empId===e.id && inP(r.to)).flatMap(rec=>attCloseMoveLines(rec).map(l=>({
       date:rec.to, kind:'att', tag:l.tag, desc:l.desc + ' — شهر المرتب ' + rec.ym, amt:(sal || l.type==='late' || can('hr.att_approve')) ? -l.amount : null, by:rec.approvedBy }))),
+    /* م238: الصرف من الخزنة · والترحيل (اللي عليه اتنقل خصم على الشهر الجاي) */
+    ...hrPays(e).filter(r=>inP(r.at)).map(r=>({ date:r.at, kind:'salary', tag:r.paid > 0 ? '💵 اتصرف المرتب' : '🔒 الشهر اتقفل',
+      desc:'مرتب شهر ' + r.ym + (r.paid > 0 ? ' — من ' + (r.accountName || '') : ' — من غير صرف') + (r.carry > 0 ? ' — عليه ' + money(r.carry) + ' ⇐ اترحّلت خصم على مرتب شهر ' + r.carryTo : ''),
+      amt: (sal && r.paid > 0) ? -r.paid : null, by:r.by })),
+    ...hrPays(e).filter(r=>r.carry > 0 && r.carryTo && inP(attCycleRange(r.carryTo).from)).map(r=>({ date:attCycleRange(r.carryTo).from, kind:'carry', tag:'↪ خصم مرحّل',
+      desc:'كان عليه ' + money(r.carry) + ' من مرتب شهر ' + r.ym + ' — اتخصم من مرتب شهر ' + r.carryTo, amt: sal ? -r.carry : null, by:r.by })),
     ...(e.absences || []).filter(a=>inP(a.date) && !attApprovedCloseOn(e.id, String(a.date || '').slice(0, 10))).map(a=>({ date:a.date, kind:'absence', tag:'🚫 غياب', desc:(a.days || 1) + ' يوم ' + (a.noPermission ? 'بدون إذن' : 'بإذن') + (a.note ? ' — ' + a.note : ''),
       amt: sal ? -Math.round(dayVal * (a.days || 1) * 100) / 100 : null, by:a.recordedBy })),
   ].sort((a,b)=>String(b.date || '').localeCompare(String(a.date || '')));
@@ -21948,6 +22608,7 @@ async function saveAbsence(empId){
   const noPermission = (document.getElementById('abPerm')||{}).value !== 'yes';
   const note = (document.getElementById('abNote')||{}).value.trim();
   if(!date){ toast('اختر تاريخ الغياب', true); return; }
+  if(hrLockGuard(e, date)) return;   /* م238 */
   if(!e.absences) e.absences = [];
   e.absences.push({ id:uid('abs'), date, days, noPermission, note, recordedBy:actorName(), createdAt:new Date().toISOString() });
   await saveKey('employees');
@@ -22328,10 +22989,13 @@ function payrollCalc(emp, from, to){
   const bonuses   = (emp.bonuses||[]).filter(b=>inRange(b.date, from, to)).reduce((s,b)=>s+(b.amount||0),0);
   const socialIns = emp.socialIns||0, healthIns = emp.healthIns||0, otherDeduct = emp.otherDeduct||0;
   const fixed = socialIns+healthIns+otherDeduct;
-  const totalDeduct = Math.round((advances+absenceDeduct+penalties+fixed+missingDeduct+lateDeduct+unpaidDeduct)*100)/100;
+  /* م238: الشهر اللي فات صافيه طلع بالسالب ⇒ الفرق بيتخصم من الشهر ده لوحده */
+  const carries = hrCarryIn(emp, from, to);
+  const carryIn = Math.round(carries.reduce((s,r)=>s+(+r.carry||0),0)*100)/100;
+  const totalDeduct = Math.round((advances+absenceDeduct+penalties+fixed+missingDeduct+lateDeduct+unpaidDeduct+carryIn)*100)/100;
   return { base, bonuses, dayVal, wd, spanDays, advances, absDays, absenceDeduct, penalties,
            missingDeduct, lateDeduct, unpaidDeduct, attClosed: closes.length > 0, closes,
-           socialIns, healthIns, otherDeduct, fixed, totalDeduct,
+           socialIns, healthIns, otherDeduct, fixed, carryIn, carries, totalDeduct,
            net: Math.round((base + bonuses - totalDeduct)*100)/100 };
 }
 function openAdvanceModal(empId){
@@ -22366,6 +23030,7 @@ async function saveAdvance(empId){
   const accId = (document.getElementById('advAcc')||{}).value;
   if(!date){ toast('اختر تاريخ السلفة', true); return; }
   if(amount<=0){ toast('اكتب قيمة السلفة', true); return; }
+  if(hrLockGuard(e, date)) return;   /* م238 */
   /* م125 (قرار سيف): مصدر الدفع إلزامي — والسلفة بتتسجل في السجل المالي الموحد */
   const acc = accId ? DB.finAccounts.find(a=>a.id===accId) : null;
   if(!acc){ toast('اختار مصدر الدفع — السلفة لازم تتخصم من حساب', true); return; }
@@ -22462,6 +23127,7 @@ async function saveExpAdvance(){
     const empId = (document.getElementById('xadvEmp')||{}).value;
     const emp = DB.employees.find(x=>x.id===empId);
     if(!emp){ toast('اختار الموظف من القايمة', true); return; }
+    if(hrLockGuard(emp, date)) return;   /* م238 */
     /* م215: نفس تنبيه حد السلف لما السلفة تتسجل من المصروفات */
     const st = empAdvanceState(emp, date, amount);
     const go = async () => {
@@ -22528,6 +23194,7 @@ async function saveBonus(empId){
   if(!date){ toast('اختر التاريخ', true); return; }
   if(amount<=0){ toast('اكتب مبلغ المكافأة', true); return; }
   if(!type){ toast('اكتب نوع المكافأة (حافز · سهرة · مأمورية …)', true); return; }
+  if(hrLockGuard(e, date)) return;   /* م238 */
   if(!e.bonuses) e.bonuses = [];
   e.bonuses.push({ id:uid('bon'), date, amount, type, reason, note, recordedBy:actorName(), createdAt:new Date().toISOString() });
   await saveKey('employees');
@@ -22545,6 +23212,7 @@ async function savePenalty(empId){
   if(!date){ toast('اختر التاريخ', true); return; }
   if(amount<=0){ toast('اكتب قيمة الخصم', true); return; }
   if(!reason){ toast('اكتب سبب الجزاء', true); return; }
+  if(hrLockGuard(e, date)) return;   /* م238 */
   if(!e.penalties) e.penalties = [];
   e.penalties.push({ id:uid('pen'), date, amount, reason, note, recordedBy:actorName(), createdAt:new Date().toISOString() });
   await saveKey('employees');
@@ -22590,7 +23258,7 @@ function renderPayroll(){
     .filter(e=>e.status!=='مستقيل' && e.status!=='أرشيف')
     .filter(e=>!payrollFilter.emp || e.id===payrollFilter.emp)
     .filter(e=>!payrollFilter.dept || e.dept===payrollFilter.dept);
-  const rows = emps.map(e=>({ e, p: payrollCalc(e, from, to) }));
+  const rows = emps.map(e=>({ e, p: payrollCalcView(e, from, to) }));   /* م238 */
   const totBase = rows.reduce((s,r)=>s+r.p.base,0);
   const totBonus = rows.reduce((s,r)=>s+r.p.bonuses,0);
   const totDeduct = rows.reduce((s,r)=>s+r.p.totalDeduct,0);
@@ -22625,7 +23293,7 @@ function renderPayroll(){
     </div>`:''}
   </div>
   ${(()=>{ const open = rows.filter(r=>!r.p.attClosed).length;   /* م217 */
-    return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+    return `${hrPayBarHTML(rows, from, to)}<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
       <button class="btn btn-accent" onclick="printPayrollSheet()">🖨 طباعة كشف المرتبات</button>
       <button class="btn" onclick="exportPayrollSheet()">⬇ Excel</button>
       ${open ? `<span style="font-size:12.5px;color:var(--danger)">⏳ حضور ${open} موظف لسه ما اتعتمدش — خصمهم مش نهائي</span>
@@ -22638,7 +23306,7 @@ function renderPayroll(){
     ${stat(money(totNet),'صافي المستحق للموظفين')}
   </div>
   <div class="card">
-    <table><thead><tr><th>الموظف</th><th>القسم</th><th>الأساسي</th><th>مكافآت</th><th>سلف</th><th>جزاءات</th><th>الحضور</th><th>تأمينات</th><th>صافي الراتب</th><th></th></tr></thead>
+    <table><thead><tr><th>الموظف</th><th>القسم</th><th>الأساسي</th><th>مكافآت</th><th>سلف</th><th>جزاءات</th><th>الحضور</th><th>تأمينات</th><th>صافي الراتب</th><th>الصرف</th><th></th></tr></thead>
     <tbody>
     ${rows.length? rows.map(({e,p})=>`<tr>
       <td style="font-weight:700">${e.name}<div class="muted" style="font-size:10.5px">${e.job||''} · ${e.salaryType==='يومية'?'يومية':'شهري'}</div></td>
@@ -22650,17 +23318,265 @@ function renderPayroll(){
       <td style="white-space:nowrap">${(()=>{ const attD = p.absenceDeduct + p.missingDeduct + p.lateDeduct + p.unpaidDeduct;
         return (attD ? money(attD) : '—') + `<div style="font-size:10.5px">${p.attClosed ? '<span style="color:var(--success)">✅ معتمد</span>' : '<span class="muted">⏳ لسه</span>'}</div>`; })()}</td>
       <td>${p.fixed?money(p.fixed):'—'}</td>
-      <td style="font-weight:800;${p.net<0?'color:var(--danger)':''}">${money(p.net)}</td>
+      <td style="font-weight:800;${p.net<0?'color:var(--danger)':''}">${money(p.net)}${p.carryIn ? `<div style="font-size:10.5px;color:var(--danger);font-weight:600">منها ↪ ${money(p.carryIn)} مرحّل</div>` : ''}</td>
+      <td style="white-space:nowrap">${hrPayCellHTML(e, p)}</td>
       <td><button class="btn btn-sm btn-accent" onclick="openPayslip('${e.id}')">🧾 كشف</button></td>
-    </tr>`).join('') : `<tr><td colspan="10" class="empty">مفيش موظفين مطابقين للفلتر</td></tr>`}
+    </tr>`).join('') : `<tr><td colspan="11" class="empty">مفيش موظفين مطابقين للفلتر</td></tr>`}
     </tbody></table>
   </div>`;
+}
+/* ============ م238: صرف المرتبات من الخزنة · قفل الشهر بعد الصرف · ترحيل السالب ============
+   قرارات سيف (2026-10-20):
+   • اللي معاه «الرواتب» (hr.payroll) هو اللي بيصرف — مفيش صلاحية جديدة.
+   • من شاشة 💵 الرواتب على شهر مرتب كامل (26 ⇐ 25): بتعلّم على الموظفين وتختار الحساب ⇐ لكل موظف حركة خصم من
+     الحساب + مصروف «مرتبات» + سجل في ملفه بنسخة ثابتة من الحساب وقت الصرف. ينفع على دفعات (ناس من الخزنة وناس من البنك).
+   • الموظف اللي اتصرفله شهره **بيتقفل**: لا سلفة ولا مكافأة ولا جزاء ولا غياب ولا تقفيل/إعادة فتح حضور بتاريخ جوه الشهر ده.
+   • الصافي بالسالب (السلف أكتر من المرتب) ⇐ مابيتصرفلوش، والفرق **بيترحّل لوحده خصم على الشهر الجاي** بسببه مكتوب.
+     الصافي صفر ⇐ الشهر بيتقفل من غير صرف.
+   • غلطة؟ «↩ إلغاء الصرف» لصاحب المركز بس وبسبب: الفلوس بترجع للحساب (حركة عكسية) والشهر بيتفتح تاني.
+   • الحضور لسه ماتعتمدش / رصيد الحساب مش مكفّي ⇐ تنبيه وتأكيد، مش منع.
+   الربحية: النقدي اللي اتصرف «مرتبات» + السلف اللي اتخصمت (غير نقدي «تسوية سلف من المرتب») = تكلفة المرتب مرة واحدة بس. */
+function hrPays(e){ return ((e && e.salaryPays) || []).filter(r=>r && r.status !== 'cancelled'); }
+function hrPayFor(e, ym){ return hrPays(e).find(r=>r.ym === ym) || null; }
+function hrPaidOn(e, ds){ const d = String(ds || '').slice(0, 10); return hrPays(e).find(r=>d >= r.from && d <= r.to) || null; }
+function hrPaidOverlap(e, from, to){ return hrPays(e).find(r=>!(r.to < from || r.from > to)) || null; }
+/* م239: حجز صرف شهر الموظف من القاعدة (ذرّي) — true = الجهاز ده أول واحد · النت واقع ⇒ بنكمّل بالفحص المحلي.
+   الحجز اتاخد قبل كده ⇒ بنبص على صف الموظف في القاعدة: فيه صرف ⇒ اتصرف من جهاز تاني.
+   مفيش ⇒ يمكن جهاز تاني لسه بيحفظ — نستنى شوية ونبص تاني؛ لسه مفيش ⇒ حجز قديم من جهاز اتقفل في النص (مايعلّقش الموظف) */
+var HR_PAYLOCK_WAIT = 5000;
+async function hrPayLock(e, ym){
+  let v = NaN;
+  try{
+    if(!sb || typeof sb.rpc !== 'function') return true;
+    const k = 'salpay|' + e.id + '|' + ym + '|' + ((e.salaryPays || []).filter(r=>r && r.ym === ym && r.status === 'cancelled').length);
+    const { data, error } = await sb.rpc('next_no', { p_name:k, p_floor:0 });
+    if(error) return true;
+    v = parseInt(data, 10);
+  }catch(err){ return true; }
+  if(isNaN(v) || v === 1) return true;
+  try{
+    const paidOnServer = async ()=>{
+      const res = await sb.from(TABLE_MAP.employees).select('id,data').in('id', [e.id]);
+      if(res.error) throw res.error;
+      const row = (res.data || [])[0];
+      return !!(row && row.data && (row.data.salaryPays || []).some(r=>r && r.ym === ym && r.status !== 'cancelled'));
+    };
+    if(await paidOnServer()) return false;
+    toast('⏳ بنتأكد إن مرتب ' + e.name + ' مااتصرفش من جهاز تاني…');
+    await new Promise(r=>setTimeout(r, HR_PAYLOCK_WAIT));
+    return !(await paidOnServer());
+  }catch(err){ return false; }   /* اتحجز من جهاز تاني والنت وقع واحنا بنتأكد ⇒ مانصرفش (نجرب تاني بعد تحديث) */
+}
+function hrNextYm(ym){ const [y, m] = String(ym).split('-').map(Number); const d = new Date(y, m, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+/* الخصم المرحّل اللي بيقع في الفترة دي (أول يوم في الشهر اللي اترحّل عليه) */
+function hrCarryIn(e, from, to){ return hrPays(e).filter(r=>(+r.carry || 0) > 0 && r.carryTo && inRange(attCycleRange(r.carryTo).from, from, to)); }
+function hrLockMsg(e, r){ return 'مرتب ' + e.name + ' لشهر ' + r.ym + ' اتصرف خلاص (' + fmtDate(r.at) + ') والشهر ده اتقفل — سجّلها بتاريخ في الشهر الجاي (من ' + fmtDate(attCycleRange(hrNextYm(r.ym)).from) + ')'; }
+function hrLockGuard(e, ds){ const r = e ? hrPaidOn(e, ds) : null; if(r){ toast('🔒 ' + hrLockMsg(e, r), true); return true; } return false; }
+function hrLockRange(e, rg){ const r = e ? hrPaidOverlap(e, rg.from, rg.to) : null; if(r){ toast('🔒 مرتب ' + e.name + ' لشهر ' + r.ym + ' اتصرف خلاص — تقفيل الحضور بتاعه اتقفل معاه. لو فيه خصم اتنسى سجّله جزاء في الشهر الجاي', true); return true; } return false; }
+/* الشهر اللي اتصرف بيتعرض بالأرقام وقت الصرف (لو المرتب اتغيّر بعدين مايأثرش على اللي اتصرف) */
+function payrollCalcView(e, from, to){
+  const p = payrollCalc(e, from, to);
+  const r = hrPays(e).find(x=>x.from === from && x.to === to);
+  if(!r || !r.snap) return p;
+  return Object.assign({}, p, r.snap, { carries:p.carries, closes:p.closes, paidRec:r });
+}
+function hrPaySnap(p){
+  const k = ['base','bonuses','dayVal','wd','spanDays','advances','absDays','absenceDeduct','penalties','missingDeduct','lateDeduct','unpaidDeduct','attClosed','socialIns','healthIns','otherDeduct','fixed','carryIn','totalDeduct','net'];
+  const o = {}; k.forEach(x=>{ o[x] = p[x]; }); return o;
+}
+function hrPayStateText(e, p){
+  const r = p.paidRec || hrPays(e).find(x=>x.from === getPayrollPeriod().from && x.to === getPayrollPeriod().to);
+  if(!r) return 'لسه';
+  return r.paid > 0 ? 'اتصرف ' + fmtDate(r.at) + ' — ' + (r.accountName || '') : (r.carry > 0 ? 'اترحّل ' + _r2_217(r.carry) + ' على ' + r.carryTo : 'اتقفل (صافي صفر)');
+}
+function hrPayCellHTML(e, p){
+  const r = p.paidRec;
+  if(!r) return '<span class="muted" style="font-size:11.5px">لسه</span>';
+  const cancel = isOwnerSession() ? ` <button class="btn btn-sm" style="padding:1px 7px" onclick="cancelSalaryPay('${e.id}','${r.id}')" title="إلغاء الصرف">↩</button>` : '';
+  if(r.paid > 0) return `<span style="color:var(--success);font-weight:700;font-size:12px">✅ اتصرف</span><div class="muted" style="font-size:10.5px">${fmtDate(r.at)} · ${escNote(r.accountName || '')}</div>${cancel}`;
+  return `<span style="color:var(--danger);font-weight:700;font-size:12px">${r.carry > 0 ? '↪ اترحّل ' + money(r.carry) : '🔒 اتقفل'}</span>${r.carry > 0 ? `<div class="muted" style="font-size:10.5px">خصم على شهر ${r.carryTo}</div>` : ''}${cancel}`;
+}
+/* شريط الصرف فوق شاشة الرواتب */
+function hrPayBarHTML(rows, from, to){
+  if(!can('hr.payroll')) return '';
+  const ym = attCycleOf(to), cr = attCycleRange(ym);
+  if(cr.from !== from || cr.to !== to) return `<div class="card" style="padding:10px 12px;margin-bottom:12px;font-size:12.5px">💵 صرف المرتبات بيكون على شهر مرتب كامل — شهر ${ym}: ${periodLabel(cr.from, cr.to)}
+    <button class="btn btn-sm" onclick="setPayrollFrom('${cr.from}');setPayrollTo('${cr.to}')">رجّع الفترة للشهر الكامل</button></div>`;
+  const done = rows.filter(r=>r.p.paidRec), left = rows.filter(r=>!r.p.paidRec);
+  const paidTot = done.reduce((s, r)=>s + (+r.p.paidRec.paid || 0), 0);
+  return `<div class="card" style="padding:10px 12px;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <div style="flex:1;min-width:220px;font-size:13px"><b>💵 صرف مرتبات شهر ${ym}</b> — اتصرف لـ <b>${done.length}</b> من <b>${rows.length}</b>${paidTot ? ' (' + money(paidTot) + ')' : ''}
+      ${left.length && done.length ? `<div class="muted" style="font-size:11.5px">فاضل: ${escNote(left.slice(0, 6).map(r=>r.e.name).join('، '))}${left.length > 6 ? ' و' + (left.length - 6) + ' كمان' : ''}</div>` : ''}</div>
+    ${left.length ? `<button class="btn btn-accent" onclick="openSalaryPay()">💵 صرف مرتبات الشهر</button>` : '<span style="color:var(--success);font-weight:700;font-size:12.5px">✅ مرتبات الشهر اتصرفت كلها</span>'}
+    ${done.length ? `<button class="btn" onclick="printSalaryPaySheet()">🖨 كشف صرف المرتبات (للتوقيع)</button>` : ''}
+  </div>`;
+}
+var _salPay = null;   // { ym, from, to, sel:Set, acc } — var: الاختبار بيوصله
+function salPayRows(){
+  const { from, to } = _salPay;
+  return DB.employees.filter(e=>e.status !== 'مستقيل' && e.status !== 'أرشيف')
+    .filter(e=>!payrollFilter.emp || e.id === payrollFilter.emp).filter(e=>!payrollFilter.dept || e.dept === payrollFilter.dept)
+    .map(e=>({ e, p:payrollCalc(e, from, to), done:hrPayFor(e, _salPay.ym) }));
+}
+function openSalaryPay(){
+  if(!can('hr.payroll')){ toast('صرف المرتبات لصاحب صلاحية «الرواتب» بس', true); return; }
+  const { from, to } = getPayrollPeriod(), ym = attCycleOf(to), cr = attCycleRange(ym);
+  if(cr.from !== from || cr.to !== to){ toast('صرف المرتبات بيكون على شهر مرتب كامل (' + periodLabel(cr.from, cr.to) + ') — رجّع الفترة للشهر الكامل', true); return; }
+  _salPay = { ym, from, to, sel:new Set(), acc:'' };
+  salPayRows().forEach(r=>{ if(!r.done) _salPay.sel.add(r.e.id); });
+  openModal(`<div id="salPay">${salPayHTML()}</div>`, true);
+}
+function salPayRedraw(){ const el = document.getElementById('salPay'); if(el) el.innerHTML = salPayHTML(); }
+function salPaySetAcc(v){ if(_salPay){ _salPay.acc = v; _salPay.confirm = false; salPayRedraw(); } }
+function salPayToggle(id){ if(!_salPay) return; if(_salPay.sel.has(id)) _salPay.sel.delete(id); else _salPay.sel.add(id); _salPay.confirm = false; salPayRedraw(); }
+function salPayAll(on){ if(!_salPay) return; salPayRows().forEach(r=>{ if(!r.done){ if(on) _salPay.sel.add(r.e.id); else _salPay.sel.delete(r.e.id); } }); _salPay.confirm = false; salPayRedraw(); }
+function salPayTotals(){
+  const rows = salPayRows().filter(r=>!r.done && _salPay.sel.has(r.e.id));
+  const cash = _r2_217(rows.reduce((s, r)=>s + Math.max(0, r.p.net), 0));
+  return { rows, cash, pay:rows.filter(r=>r.p.net > 0).length, carry:rows.filter(r=>r.p.net < 0).length, zero:rows.filter(r=>r.p.net === 0).length };
+}
+function salPayHTML(){
+  const S = _salPay; if(!S) return '';
+  const rows = salPayRows(), T = salPayTotals();
+  const acc = S.acc ? DB.finAccounts.find(a=>a.id === S.acc) : null, bal = acc ? accBalance(acc.id) : null;
+  const notApproved = T.rows.filter(r=>!r.p.attClosed);
+  const state = r => r.done ? (r.done.paid > 0 ? `<span style="color:var(--success);font-weight:700">✅ اتصرف ${fmtDate(r.done.at)} — ${escNote(r.done.accountName || '')}</span>` : `<span class="muted">🔒 اتقفل${r.done.carry > 0 ? ' — اترحّل ' + money(r.done.carry) : ''}</span>`)
+    : !S.sel.has(r.e.id) ? '<span class="muted">— مش هيتصرف دلوقتي</span>'   /* م239: العلامة اتشالت */
+    : (r.p.net > 0 ? 'هيتصرف' : (r.p.net < 0 ? `<span style="color:var(--danger)">عليه ${money(-r.p.net)} ⇐ هيترحّل خصم على مرتب شهر ${hrNextYm(S.ym)}</span>` : '<span class="muted">صافي صفر ⇐ الشهر هيتقفل من غير صرف</span>'));
+  return `<h3>💵 صرف مرتبات شهر ${S.ym}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:8px">${periodLabel(S.from, S.to)} — علّم على اللي هيتصرفلهم دلوقتي واختار الحساب. ينفع تصرف على دفعات (ناس من الخزنة وناس من البنك).</div>
+    <div class="form-row"><label class="f-label">الحساب اللي هيتصرف منه</label>
+      <select class="f" id="salPayAcc" onchange="salPaySetAcc(this.value)"><option value="">— اختار الحساب —</option>${accountOptions(S.acc)}</select>${acc ? `<div class="muted" style="font-size:12px;margin-top:3px">رصيده دلوقتي: <b>${money(bal)}</b></div>` : ''}</div>
+    ${notApproved.length ? `<div class="est-hint" style="border-color:var(--danger)">⚠️ حضور ${notApproved.length} موظف من اللي متعلّم عليهم لسه ماتعتمدش — خصومات التأخير وعدم البصمة بتاعتهم مش محسوبة: ${escNote(notApproved.slice(0, 8).map(r=>r.e.name).join('، '))}${notApproved.length > 8 ? ' و' + (notApproved.length - 8) + ' كمان' : ''}</div>` : ''}
+    <div style="display:flex;gap:6px;margin:6px 0"><button class="btn btn-sm" onclick="salPayAll(true)">✓ علّم على الكل</button><button class="btn btn-sm" onclick="salPayAll(false)">✗ شيل الكل</button></div>
+    <div style="max-height:360px;overflow:auto"><table><thead><tr><th></th><th>الموظف</th><th>صافي المرتب</th><th>الحالة</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr${r.done ? ' style="opacity:.6"' : ''}><td>${r.done ? '' : `<input type="checkbox" id="salSel_${r.e.id}" ${S.sel.has(r.e.id) ? 'checked' : ''} onchange="salPayToggle('${r.e.id}')">`}</td>
+        <td style="font-weight:700">${escNote(r.e.name)}</td><td style="font-weight:800;${r.p.net < 0 ? 'color:var(--danger)' : ''}">${money(r.p.net)}${r.p.carryIn ? `<div style="font-size:10.5px;color:var(--danger)">منها ↪ ${money(r.p.carryIn)} مرحّل</div>` : ''}</td><td style="font-size:12px">${state(r)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="est-tot"><div>هيتصرف لـ<b>${T.pay} موظف</b></div><div class="est-grand">إجمالي اللي هيطلع من الحساب<b>${money(T.cash)}</b></div>
+      ${acc ? `<div style="${bal - T.cash < 0 ? 'border-color:var(--danger)' : ''}">رصيد ${escNote(acc.name)} بعد الصرف<b style="${bal - T.cash < 0 ? 'color:var(--danger)' : ''}">${money(bal - T.cash)}</b></div>` : ''}</div>
+    ${T.carry || T.zero ? `<div class="muted" style="font-size:12px;margin-top:6px">${T.carry ? T.carry + ' موظف صافيهم بالسالب ⇐ هيترحّل عليهم خصم على الشهر الجاي. ' : ''}${T.zero ? T.zero + ' صافيهم صفر ⇐ شهرهم هيتقفل.' : ''}</div>` : ''}
+    ${S.confirm ? salPayConfirmHTML(T, acc, bal) : `<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="flex:1" onclick="closeModal()">رجوع</button>
+      <button class="btn btn-accent" style="flex:2" onclick="salPayConfirm()">💵 صرف (${T.rows.length} موظف — ${money(T.cash)})</button></div>`}`;
+}
+function salPayConfirm(){
+  const S = _salPay; if(!S) return;
+  if(!can('hr.payroll')){ toast('صرف المرتبات لصاحب صلاحية «الرواتب» بس', true); return; }
+  const T = salPayTotals();
+  if(!T.rows.length){ toast('علّم على موظف واحد على الأقل', true); return; }
+  const acc = S.acc ? DB.finAccounts.find(a=>a.id === S.acc) : null;
+  if(T.cash > 0 && !acc){ toast('اختار الحساب اللي هيتصرف منه', true); return; }
+  S.confirm = true; salPayRedraw();   /* التأكيد جوه نفس النافذة — «رجوع» مابيضيّعش العلامات */
+}
+function salPayConfirmHTML(T, acc, bal){
+  const S = _salPay, notApproved = T.rows.filter(r=>!r.p.attClosed).length;
+  return `<div class="est-confirm"><b>تأكيد صرف مرتبات شهر ${S.ym}</b>
+    <div style="margin:6px 0;line-height:1.9">صرف لـ <b>${T.pay}</b> موظف — <b>${money(T.cash)}</b>${acc ? ' من <b>' + escNote(acc.name) + '</b>' : ''}.
+    ${T.carry ? '<br>↪ ' + T.carry + ' موظف هيترحّل عليهم خصم على الشهر الجاي.' : ''}${T.zero ? '<br>🔒 ' + T.zero + ' صافيهم صفر — شهرهم هيتقفل.' : ''}
+    ${notApproved ? '<br>⚠️ ' + notApproved + ' موظف حضورهم لسه ماتعتمدش — خصومات الحضور بتاعتهم مش هتتحسب.' : ''}
+    ${acc && bal - T.cash < 0 ? '<br>⚠️ <b>رصيد ' + escNote(acc.name) + ' مش مكفّي</b> — هيبقى ' + money(bal - T.cash) + '.' : ''}
+    <br><span class="muted">بعد الصرف شهرهم بيتقفل: مفيش سلفة ولا مكافأة ولا جزاء ولا غياب بتاريخ جوه الشهر ده.</span></div>
+    <div style="display:flex;gap:8px"><button class="btn" style="flex:1" onclick="_salPay.confirm=false;salPayRedraw()">رجوع</button>
+      <button class="btn btn-accent" style="flex:2" onclick="saveSalaryPay()">✅ تأكيد الصرف</button></div></div>`;
+}
+async function saveSalaryPay(){
+  const S = _salPay; if(!S) return;
+  if(!can('hr.payroll')){ toast('صرف المرتبات لصاحب صلاحية «الرواتب» بس', true); return; }
+  const acc = S.acc ? DB.finAccounts.find(a=>a.id === S.acc) : null;
+  const now = new Date().toISOString(), by = actorName(), nextYm = hrNextYm(S.ym);
+  let nPay = 0, nCarry = 0, cashTot = 0;
+  const lines = [];
+  /* نحسب الأول ونتأكد من الحساب قبل أي كتابة (مايتسجلش نص الصرف) — واللي اتصرفله من جهاز تاني بيتشال */
+  const pre0 = [...S.sel].map(id=>DB.employees.find(x=>x.id === id)).filter(e=>e && !hrPayFor(e, S.ym)).map(e=>({ e, p:payrollCalc(e, S.from, S.to) }));
+  if(pre0.some(x=>x.p.net > 0) && !acc){ toast('اختار الحساب اللي هيتصرف منه', true); return; }
+  /* م239 (مراجعة سيف — جهازين حسابات): قبل ما نكتب، كل موظف «بيتحجز» صرف شهره من القاعدة نفسها.
+     جهاز تاني دوس صرف لنفس الموظف في نفس اللحظة ⇒ القاعدة بتدّيله رقم 2 ⇒ مايتصرفش مرتين. */
+  const locks = await Promise.all(pre0.map(x=>hrPayLock(x.e, S.ym)));
+  const pre = pre0.filter((x, i)=>locks[i]), raced = pre0.filter((x, i)=>!locks[i]).map(x=>x.e.name);
+  for(const { e, p } of pre){
+    const cash = _r2_217(Math.max(0, p.net)), carry = _r2_217(Math.max(0, -p.net));
+    const rec = { id:uid('spay'), ym:S.ym, from:S.from, to:S.to, net:p.net, paid:cash, carry, carryTo:carry > 0 ? nextYm : null,
+      accountId:cash > 0 ? acc.id : null, accountName:cash > 0 ? acc.name : '', at:now, by, snap:hrPaySnap(p), status:'paid', expIds:[] };
+    if(cash > 0){
+      const fm = addFinMove(acc.id, 'out', cash, 'salary', 'مرتب شهر ' + S.ym + ' — ' + e.name, { salaryPayId:rec.id, employeeId:e.id });
+      rec.finMoveId = fm.id;
+      const ex = { id:uid('exp'), expNo:nextNo(DB.expenses, 'expNo'), txnType:'salary', category:'مرتبات', description:'مرتب شهر ' + S.ym + ' — ' + e.name,
+        amount:cash, date:now, payAccount:acc.name, accountId:acc.id, employeeId:e.id, payrollYm:S.ym, salaryPayId:rec.id, finMoveId:fm.id, at:now, recordedBy:by, system:true };
+      DB.expenses.push(ex); rec.expIds.push(ex.id);
+      nPay++; cashTot += cash;
+    } else nCarry++;
+    /* السلف (والمرحّل) اللي اتخصمت من المرتب = جزء من تكلفته — فلوسها خرجت قبل كده كحركة غير تشغيلية */
+    const settled = _r2_217(Math.max(0, (+p.advances || 0) + (+p.carryIn || 0) - carry));
+    if(settled > 0){
+      const ex2 = { id:uid('exp'), expNo:nextNo(DB.expenses, 'expNo'), txnType:'salary_settle', category:'مرتبات', description:'تسوية سلف من مرتب شهر ' + S.ym + ' — ' + e.name,
+        amount:settled, date:now, payAccount:'غير نقدي — سلف اتخصمت من المرتب', employeeId:e.id, payrollYm:S.ym, salaryPayId:rec.id, at:now, recordedBy:by, system:true };
+      DB.expenses.push(ex2); rec.expIds.push(ex2.id);
+    }
+    (e.salaryPays = e.salaryPays || []).push(rec);
+    lines.push(e.name + ' ' + (cash > 0 ? money(cash) : (carry > 0 ? 'عليه ' + money(carry) + ' ⇐ اترحّل' : 'صفر')));
+  }
+  if(raced.length) toast('⚠️ مرتب ' + raced.join('، ') + ' اتصرف من جهاز تاني في نفس اللحظة — مااتصرفش تاني', true);
+  if(!lines.length){ if(!raced.length) toast('مفيش حد اتصرفله — يمكن اتصرف من جهاز تاني', true); closeModal(); refreshContent(); return; }
+  await Promise.all([saveKey('employees'), saveKey('finMoves'), saveKey('expenses', DB.expenses)]);
+  cashTot = _r2_217(cashTot);
+  await logAction('💵 صرف مرتبات شهر ' + S.ym + ' — ' + nPay + ' موظف · ' + money(cashTot) + (acc && cashTot ? ' من ' + acc.name : '') + (nCarry ? ' · ' + nCarry + ' اترحّل/اتقفل' : '')
+    + auditDetails([['التفاصيل', lines.join(' · ')]]));
+  notify('salary_pay', '💵 صرف مرتبات شهر ' + S.ym + ' — ' + nPay + ' موظف · ' + money(cashTot) + (acc && cashTot ? ' من ' + acc.name : ''), { category:'hr', amount:cashTot });
+  closeModal();
+  toast('✅ اتصرف ' + nPay + ' مرتب (' + money(cashTot) + ')' + (nCarry ? ' · ' + nCarry + ' اترحّل/اتقفل' : '') + ' — شهرهم اتقفل');
+  _salPay = null;
+  refreshContent();
+}
+/* إلغاء الصرف — صاحب المركز بس وبسبب: الفلوس بترجع للحساب والشهر بيتفتح */
+function cancelSalaryPay(empId, payId){
+  if(!isOwnerSession()){ toast('إلغاء صرف المرتب لصاحب المركز بس', true); return; }
+  const e = DB.employees.find(x=>x.id === empId);
+  const r = e && (e.salaryPays || []).find(x=>x.id === payId && x.status !== 'cancelled');
+  if(!r) return;
+  if(r.carry > 0 && hrPayFor(e, r.carryTo)){ toast('مرتب شهر ' + r.carryTo + ' (اللي اتخصم منه المرحّل) اتصرف خلاص — الغي صرفه الأول', true); return; }
+  askConfirmReason(`إلغاء صرف مرتب <b>${escNote(e.name)}</b> لشهر <b>${r.ym}</b>؟<br>${r.paid > 0 ? 'الـ <b>' + money(r.paid) + '</b> هيرجعوا لحساب <b>' + escNote(r.accountName || '') + '</b> (حركة عكسية)، و' : ''}الشهر هيتفتح تاني.`, async (reason)=>{
+    const now = new Date().toISOString();
+    r.status = 'cancelled'; r.cancelledAt = now; r.cancelledBy = actorName(); r.cancelReason = reason;
+    if(r.paid > 0 && r.accountId) addFinMove(r.accountId, 'in', r.paid, 'salary', 'إلغاء صرف مرتب شهر ' + r.ym + ' — ' + e.name + ' — ' + reason, { salaryPayId:r.id, employeeId:e.id });
+    const ids = new Set(r.expIds || []);
+    DB.expenses = DB.expenses.filter(x=>!(ids.has(x.id) || x.salaryPayId === r.id));
+    await Promise.all([saveKey('employees'), saveKey('finMoves'), saveKey('expenses', DB.expenses)]);
+    await logAction('↩ إلغاء صرف مرتب ' + e.name + ' لشهر ' + r.ym + (r.paid > 0 ? ' — ' + money(r.paid) + ' رجعوا لـ' + (r.accountName || '') : '') + ' — ' + reason);
+    notify('salary_cancel', '↩ إلغاء صرف مرتب ' + e.name + ' لشهر ' + r.ym + (r.paid > 0 ? ' (' + money(r.paid) + ')' : ''), { category:'hr', amount:r.paid || 0, reason });
+    toast('اتلغى الصرف — الشهر اتفتح تاني'); refreshContent();
+  });
+}
+/* كشف صرف المرتبات — بتوقيع المستلم قدام كل موظف */
+function printSalaryPaySheet(){
+  if(!can('hr.payroll')){ toast('كشف المرتبات لصاحب صلاحية «الرواتب» بس', true); return; }
+  const { from, to } = getPayrollPeriod(), ym = attCycleOf(to);
+  const rows = DB.employees.map(e=>({ e, r:hrPayFor(e, ym) })).filter(x=>x.r).sort((a, b)=>cmpName(a.e, b.e));
+  if(!rows.length){ toast('مفيش مرتبات اتصرفت الشهر ده', true); return; }
+  const tot = rows.reduce((s, x)=>s + (+x.r.paid || 0), 0);
+  printHTML(`<style>${brandedInvoiceCSS()} .binv table td,.binv table th{font-size:12px;padding:7px} .sig{min-width:150px;border-bottom:1px dotted #333;height:22px}</style>
+  <div class="binv">
+    <div class="binv-head"><div><p class="binv-title">كشف صرف المرتبات</p>
+      <div style="font-size:13px;color:#555">${escNote((DB.settings && DB.settings.centerName) || '')} — شهر المرتب ${ym}: ${periodLabel(from, to)}</div></div>
+      <img src="${LOGO}" alt="logo"></div>
+    <table><thead><tr><th>#</th><th>الموظف</th><th>صافي المرتب</th><th>اتصرف من</th><th>تاريخ الصرف</th><th>ملاحظة</th><th>توقيع المستلم</th></tr></thead><tbody>
+      ${rows.map((x, i)=>`<tr><td>${i + 1}</td><td><b>${escNote(x.e.name)}</b><div style="font-size:10.5px;color:#666">${escNote(x.e.job || '')}</div></td>
+        <td style="font-weight:800">${x.r.paid > 0 ? money(x.r.paid) : '—'}</td><td>${escNote(x.r.accountName || '—')}</td><td>${fmtDate(x.r.at)}</td>
+        <td style="font-size:11px">${x.r.carry > 0 ? 'عليه ' + money(x.r.carry) + ' ⇐ اترحّلت على شهر ' + x.r.carryTo : (x.r.paid > 0 ? '' : 'صافي صفر')}</td><td><div class="sig"></div></td></tr>`).join('')}
+      <tr style="font-weight:900;background:#f3f3f3"><td></td><td>الإجمالي (${rows.length} موظف)</td><td>${money(tot)}</td><td colspan="4"></td></tr>
+    </tbody></table>
+    <div style="display:flex;justify-content:space-between;margin-top:40px;font-size:12.5px">
+      <div style="text-align:center">الحسابات<br><br>______________</div>
+      <div style="text-align:center">صاحب المركز<br><br>______________</div>
+    </div>
+    <div class="binv-foot">اتطبع بتاريخ ${fmtDate(new Date().toISOString())} بواسطة ${escNote(actorName())}</div>
+  </div>`);
+  logAction('🖨 طباعة كشف صرف المرتبات — شهر ' + ym);
 }
 /* ---- كشف الراتب (Payslip) — بفترة مرنة ---- */
 function payslipHTML(empId, from, to){
   const e = DB.employees.find(x=>x.id===empId);
   if(!e) return '';
-  const p = payrollCalc(e, from, to);
+  const p = payrollCalcView(e, from, to);   /* م238 */
   const s = DB.settings;
   const line = (lbl, val, minus)=>`<div><span>${lbl}</span><span style="${minus?'color:#E02525':''}">${minus?'− ':''}${money(val)}</span></div>`;
   const listOf = (arr, fn)=> (arr||[]).filter(x=>inRange(x.date, from, to)).map(fn).join(' · ') || 'لا يوجد';
@@ -22689,6 +23605,7 @@ function payslipHTML(empId, from, to){
         <tr><td>التأمينات الاجتماعية</td><td>استقطاع ثابت</td><td>− ${money(p.socialIns)}</td></tr>
         <tr><td>التأمين الصحي</td><td>استقطاع ثابت</td><td>− ${money(p.healthIns)}</td></tr>
         ${p.otherDeduct?`<tr><td>استقطاعات أخرى</td><td>استقطاع ثابت</td><td>− ${money(p.otherDeduct)}</td></tr>`:''}
+        ${(p.carries || []).map(r=>`<tr><td>خصم مرحّل من الشهر اللي فات</td><td>كان عليه ${money(r.carry)} من مرتب شهر ${r.ym} (الصافي طلع بالسالب)</td><td>− ${money(r.carry)}</td></tr>`).join('')}
       </tbody>
     </table>
     <div class="binv-totals">
@@ -22697,6 +23614,7 @@ function payslipHTML(empId, from, to){
       ${line('إجمالي الاستحقاق', p.base + p.bonuses)}
       ${line('إجمالي الخصومات', p.totalDeduct, true)}
       <div class="binv-grand"><span>صافي الراتب المستحق</span><span>${money(p.net)}</span></div>
+      ${p.paidRec ? `<div style="font-size:12px;margin-top:6px;color:#1E7A50">${p.paidRec.paid > 0 ? '✅ اتصرف ' + money(p.paidRec.paid) + ' من ' + escNote(p.paidRec.accountName || '') : '🔒 الشهر اتقفل من غير صرف'} — ${escNote(p.paidRec.by || '')} ${fmtDateTime(p.paidRec.at)}${p.paidRec.carry > 0 ? ' · عليه ' + money(p.paidRec.carry) + ' ⇐ اترحّلت خصم على مرتب شهر ' + p.paidRec.carryTo : ''}</div>` : ''}
     </div>
     <div style="display:flex;justify-content:space-between;margin-top:44px;font-size:12.5px">
       <div style="text-align:center">توقيع الموظف<br><br>______________</div>
@@ -23376,6 +24294,7 @@ function currentPosition(){
 const NOTIF_SEVERITY = {
   // 🔴 خطورة عالية
   job_cancel:'critical', job_delete:'critical', job_item_delete:'critical', job_item_edit:'high',
+  salary_pay:'high', salary_cancel:'critical',   /* م238 */
   invoice_cancel:'critical', invoice_edit:'high', invoice_paid_edit:'critical', invoice_zero:'critical',
   adjust:'high', adjustment:'high', scrap:'high', item_delete:'critical', item_cost_edit:'high',
   cost_after_invoice:'critical', sell_below_cost:'critical', supplier_settle:'high', supplier_adjust:'high',
@@ -26080,7 +26999,7 @@ function auditRowsHTML(){
   else if(list.length > shown.length)
     extraRow = `<tr><td colspan="4" style="text-align:center;padding:10px">
       <button class="btn btn-sm btn-accent" onclick="auditShowMore()">⬇ تحميل المزيد (${Math.min(100, list.length-shown.length)} كمان)</button>
-      <button class="btn btn-sm" onclick="auditShowLimit=Infinity;auditShowMore()">عرض الكل (${list.length.toLocaleString('ar-EG')})</button></td></tr>`;
+      <button class="btn btn-sm" onclick="auditShowLimit=Infinity;auditShowMore()">عرض الكل (${list.length.toLocaleString(NUM_LOCALE)})</button></td></tr>`;
   if(shown.length===0 && !extraRow) return `<tr><td colspan="4" class="empty">لا توجد عمليات مطابقة</td></tr>`;
   return shown.map(l=>`<tr>
     <td style="white-space:nowrap">${fmtDateTime(l.date)}</td>
@@ -26115,6 +27034,7 @@ function renderSettings(){
     <h3 style="margin-top:0">بيانات الفاتورة (العنوان والضمان)</h3>
     <div class="form-row"><label class="f-label">عنوان المركز</label><input class="f" id="setAddress" value="${DB.settings.address||''}"></div>
     <div class="form-row"><label class="f-label">رقم التواصل</label><input class="f" id="setPhone" value="${DB.settings.phone||''}"></div>
+    <div class="form-row"><label class="f-label">📍 لينك لوكيشن المركز (جوجل ماب) — بيتبعت في تذكير الحجوزات</label><input class="f" id="setMapLink" dir="ltr" value="${escAttr(centerMapLink())}" placeholder="https://maps.app.goo.gl/..."></div>
     <div class="form-row"><label class="f-label">شروط الضمان (كل سطر يظهر منفصل في الفاتورة)</label><textarea class="f" id="setWarranty" rows="4">${DB.settings.warrantyText||''}</textarea></div>
     <button class="btn btn-accent" onclick="saveInvoiceInfo()">حفظ</button>
   </div>
@@ -26537,13 +27457,14 @@ async function saveStaffPass(id){
 }
 async function saveInvoiceInfo(){
   if(!isOwnerSession()){ toast('صلاحية صاحب المركز فقط', true); return; }
-  const was = { address:DB.settings.address||'', phone:DB.settings.phone||'', warrantyText:DB.settings.warrantyText||'' };
+  const was = { address:DB.settings.address||'', phone:DB.settings.phone||'', warrantyText:DB.settings.warrantyText||'', mapLink:centerMapLink() };
   DB.settings.address = document.getElementById('setAddress').value.trim();
   DB.settings.phone = document.getElementById('setPhone').value.trim();
+  const ml240 = document.getElementById('setMapLink'); if(ml240) DB.settings.mapLink = String(ml240.value || '').trim();   /* م240 */
   DB.settings.warrantyText = document.getElementById('setWarranty').value;
   await saveKey('settings', DB.settings);
   await logAction('⚙️ تعديل بيانات الفاتورة'+auditDetails([
-    ['العنوان', was.address+' ← '+DB.settings.address], ['التليفون', was.phone+' ← '+DB.settings.phone],
+    ['العنوان', was.address+' ← '+DB.settings.address], ['التليفون', was.phone+' ← '+DB.settings.phone], ['لينك اللوكيشن', was.mapLink!==centerMapLink() ? 'اتغير' : 'زي ما هو'],
     ['نص الضمان', was.warrantyText!==(DB.settings.warrantyText||'') ? 'اتغير' : 'زي ما هو']]));   /* م179ب */
   toast('تم حفظ بيانات الفاتورة');
 }
@@ -26701,7 +27622,7 @@ function setBusy(on){
   const opNames = ['saveNewCustomer','saveNewCar','saveNewJob','saveServiceRow','saveEditJobItem','saveExtItem',
     'createInvoiceFromJob','savePayment','saveExpense','saveNewPart','saveEditItem','saveCostReval','saveEditCar','saveStockIn','saveStockOut',
     'savePaintOut','saveExtOutFromStock','saveNewSupplier','saveSupplierPayment','saveSupplierReturn','savePurchaseInvoice',
-    'saveCustomerReturn','saveStockAdjustment','saveScrap','saveTransfer','saveNewWarehouse','saveNewAppointment',
+    'saveCustomerReturn','saveStockAdjustment','saveScrap','saveTransfer','saveNewWarehouse','saveNewAppointment','apptArrived','apptUndoArrive',
     'saveCannedService','saveCountProgress','submitCountForApproval','confirmCancelJob','saveInvoiceInfo','saveTaxWa','savePins','saveCenterName','saveNewStaff','toggleStaff','saveStaffPass','savePerms','saveFinAccount','saveOpeningBalance','saveFinTransfer','saveExternalDeposit','saveCustodySettle','saveExpenseCat',
     'saveNewEmployee','saveEmployeeEdit','saveLeaveRequest','saveAbsence','saveAdvance','saveExpAdvance','savePenalty','savePermit',
     'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveWorkingDays',
@@ -26725,7 +27646,8 @@ function setBusy(on){
     'saveCustRefund','saveCustCreditKeep',   /* م207 */
     'estSaveDraft','estSendPricing','estPullBack','estSavePricing','estMarkPriced','estSaveReview','estResendPricing',
     'estApproveDo','estRejectAllDo','estMarkReadyDo','estCancelDo','estPrint',   /* م230 */
-    'estSendRequest','estSavePrep'];   /* م231 */
+    'estSendRequest','estSavePrep',   /* م231 */
+    'saveSalaryPay'];   /* م238 */
   opNames.forEach(name=>{
     const orig = window[name];
     if(typeof orig !== 'function') return;
@@ -26759,6 +27681,10 @@ function setBusy(on){
       window._lastOpSig = sig; window._lastOpAt = now;
       window._opBusy = true; window._opBusyAt = Date.now(); window._opHolder = name; setBusy(true);
       const t0 = performance.now();
+      /* م237 (مراجعة سيف): الضغطة اللي اترفضت برسالة (نسي خانة) ماكانتش بتحفظ حاجة — بس كانت بتتحسب «اتنفذت»،
+         فلو صلّح الخانة وداس تاني خلال 4 ثواني: «اتجاهلت المحاولة المكررة» ومفيش حاجة اتحفظت.
+         دلوقتي: لو العملية ماحفظتش أي حاجة، مابتتحسبش — الضغطة الجاية بتشتغل عادي. */
+      const sv0 = window._saveCalls || 0;
       try{
         /* م179: الدالة اللي بتفتح نافذة تأكيد بس (بترجع فوراً من غير promise) —
            القفل بيتفك على طول، والشغل الحقيقي بيتم في رد التأكيد */
@@ -26769,6 +27695,7 @@ function setBusy(on){
         window._perfLog.push({op:name, ms, at:new Date().toISOString()});
         if(window._perfLog.length > 100) window._perfLog = window._perfLog.slice(-100);
         window._opBusy = false; window._opBusyAt = 0; setBusy(false);
+        if((window._saveCalls || 0) === sv0 && window._lastOpSig === sig) window._lastOpSig = null;   /* م237 */
       }
     };
   });
