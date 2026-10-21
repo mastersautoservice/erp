@@ -858,7 +858,8 @@ const MERGE_SUBARRAYS = {
   invoices:   ['payments','items'],
   purchases:  ['items','payments','history'],
   customers:  ['attachments'],
-  employees:  ['salaryPays','advances','bonuses','penalties','absences'],   /* م239: الصرف والسلف والجزاءات من أجهزة مختلفة مايمسحوش بعض */
+  employees:  ['salaryPays','advances','bonuses','penalties','absences'],
+  suppliers:  ['recons'],   /* م241: مطابقات كشف المورد من جهازين مايمسحوش بعض */   /* م239: الصرف والسلف والجزاءات من أجهزة مختلفة مايمسحوش بعض */
 };
 window._mergeRescues = 0;
 window._mergeBlocked = 0;    /* م203: بنود اتمنعت من الرجوع بعد ما اتشالت من جهاز تاني */
@@ -1139,7 +1140,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v261';
+const APP_VERSION = 'v262';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -14189,6 +14190,204 @@ function supplierStatement(supplierId){
   rows.forEach(r=>{ run += r.amount; r.running = run; });
   return rows;
 }
+/* ============ م241: ⏳ أعمار ديون الموردين ============
+   كل فاتورة لسه عليها فلوس بتتحط في خانة حسب عمرها (من تاريخها): 0–30 · 31–60 · 61–90 · أكتر من 90 يوم.
+   الدفعات اللي على الحساب (مش على فاتورة معيّنة) والخصومات والمرتجعات اللي مش مربوطة بفاتورة
+   بتتخصم من أقدم فواتير الأول ⇒ مجموع الخانات = رصيد المورد في السيستم بالظبط. */
+function supAging(supplierId, asOf){
+  const sup = DB.suppliers.find(s=>s.id === supplierId);
+  const res = { total:0, b:[0, 0, 0, 0], oldestDays:null, items:[] };
+  if(!sup) return res;
+  const now = asOf ? new Date(asOf).getTime() : Date.now();
+  const bal = _r2_241(supplierBalance(supplierId).balance);
+  if(bal <= 0.005) return res;
+  const items = [];
+  const op = supOpeningSigned(sup);
+  if(op > 0.005) items.push({ date:sup.createdAt || '2026-07-20', amt:op, ref:'رصيد افتتاحي' });
+  DB.purchases.filter(p=>p.supplierId === supplierId && purCountsInDebt(p)).forEach(p=>{
+    const o = purchaseOutstanding(p);
+    if(o > 0.005) items.push({ date:p.date, amt:o, ref:'فاتورة #' + p.purchaseNo });
+  });
+  supLedger(sup).forEach(e=>{
+    if((e.kind === 'adjustment' && (+e.amount || 0) > 0) || e.kind === 'refund') items.push({ date:e.date, amt:+e.amount || 0, ref:e.kind === 'refund' ? 'استرداد' : 'تسوية' });
+  });
+  items.sort((a, b)=>new Date(a.date) - new Date(b.date));
+  let credit = items.reduce((s, x)=>s + x.amt, 0) - bal;
+  items.forEach(x=>{ if(credit > 0.005){ const take = Math.min(x.amt, credit); x.amt -= take; credit -= take; } });
+  const left = items.filter(x=>x.amt > 0.005);
+  const rest = _r2_241(bal - left.reduce((s, x)=>s + x.amt, 0));
+  if(rest > 0.005) left.push({ date:new Date(now).toISOString(), amt:rest, ref:'غير مربوط بفاتورة' });
+  left.forEach(x=>{
+    const days = Math.max(0, Math.floor((now - new Date(x.date).getTime()) / 86400000));
+    x.days = isNaN(days) ? 0 : days;
+    res.b[x.days <= 30 ? 0 : x.days <= 60 ? 1 : x.days <= 90 ? 2 : 3] += x.amt;
+    if(res.oldestDays == null || x.days > res.oldestDays) res.oldestDays = x.days;
+  });
+  res.b = res.b.map(_r2_241);
+  res.total = bal;
+  res.items = left;
+  return res;
+}
+const SUP_AGE_LBL = ['من يوم لـ30 يوم', 'من 31 لـ60 يوم', 'من 61 لـ90 يوم', 'أكتر من 90 يوم'];
+function supAgingRows(){
+  return activeSuppliers().map(s=>({ s, a:supAging(s.id) })).filter(x=>x.a.total > 0.005).sort((x, y)=>y.a.total - x.a.total);
+}
+function supLastRecon(sup){ const r = (sup && sup.recons) || []; return r.length ? r[r.length - 1] : null; }
+function supReconTag(r){
+  if(!r) return '<span class="muted">—</span>';
+  return Math.abs(r.diff) < 1 ? `<span style="color:var(--success)">✅ ${fmtDate(r.date)}</span>` : `<span style="color:var(--danger)">⚠️ ${fmtDate(r.date)} — فرق ${money(Math.abs(r.diff))}</span>`;
+}
+function openSupAgingReport(){
+  if(!canScreen('suppliers')){ toast('مالكش صلاحية على شاشة الموردين', true); return; }
+  const rows = supAgingRows(), tot = [0, 0, 0, 0];
+  rows.forEach(x=>x.a.b.forEach((v, i)=>{ tot[i] += v; }));
+  const all = rows.reduce((s, x)=>s + x.a.total, 0);
+  openModal(`<div class="flex-between" style="gap:8px;flex-wrap:wrap;margin-bottom:8px"><h3 style="margin:0">⏳ أعمار ديون الموردين</h3>
+      <div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="printSupAging()">🖨 طباعة</button><button class="btn btn-sm" onclick="exportSupAgingCSV()">⬇ Excel</button></div></div>
+    <div class="muted" style="font-size:12.5px;line-height:1.8;margin-bottom:10px">كل فاتورة لسه عليها فلوس في خانة حسب عمرها من تاريخها. الدفعات اللي على الحساب بتتخصم من أقدم فواتير الأول — والمجموع = رصيد المورد بالظبط.</div>
+    <div class="grid g4" style="margin-bottom:12px">${SUP_AGE_LBL.map((l, i)=>`<div class="card stat-card"><div class="num" style="${i === 3 && tot[3] > 0 ? 'color:var(--danger)' : ''}">${money(tot[i])}</div><div class="lbl">${l}</div></div>`).join('')}</div>
+    <div class="card" style="max-height:55vh;overflow:auto"><table><thead><tr><th>المورد</th><th>علينا</th>${SUP_AGE_LBL.map(l=>`<th>${l}</th>`).join('')}<th>أقدم مبلغ</th><th>آخر مطابقة</th></tr></thead><tbody>
+      ${rows.length ? rows.map(x=>`<tr><td><a href="#" onclick="event.preventDefault();openSupplierDetail('${x.s.id}')" style="font-weight:800;color:inherit">${escNote(x.s.name)}</a>${x.s.paymentTerms ? `<div class="muted" style="font-size:11px">شروط السداد: ${escNote(x.s.paymentTerms)}</div>` : ''}</td>
+        <td style="font-weight:800">${money(x.a.total)}</td>${x.a.b.map((v, i)=>`<td style="${i === 3 && v > 0 ? 'color:var(--danger);font-weight:800' : ''}">${v ? money(v) : '—'}</td>`).join('')}
+        <td>${x.a.oldestDays != null ? x.a.oldestDays + ' يوم' : '—'}</td><td style="font-size:12px">${supReconTag(supLastRecon(x.s))}</td></tr>`).join('')
+        + `<tr style="font-weight:900;background:var(--surface-2)"><td>الإجمالي (${rows.length} مورد)</td><td>${money(all)}</td>${tot.map(v=>`<td>${money(v)}</td>`).join('')}<td></td><td></td></tr>`
+        : '<tr><td colspan="8" class="empty">مفيش مديونيات على المركز للموردين 👏</td></tr>'}
+    </tbody></table></div>`, 'xwide');
+}
+function printSupAging(){
+  const rows = supAgingRows();
+  printHTML(`<div style="padding:10px"><h3 style="margin:0 0 4px">⏳ أعمار ديون الموردين</h3>
+    <div style="font-size:12px;color:#555;margin-bottom:10px">${escNote((DB.settings && DB.settings.centerName) || 'Masters Auto Service')} — ${fmtDateTime(new Date().toISOString())} · بواسطة ${escNote(actorName())}</div>
+    <table><thead><tr><th>المورد</th><th>علينا</th>${SUP_AGE_LBL.map(l=>`<th>${l}</th>`).join('')}<th>أقدم مبلغ</th><th>آخر مطابقة</th></tr></thead><tbody>
+    ${rows.map(x=>{ const r = supLastRecon(x.s); return `<tr><td>${escNote(x.s.name)}</td><td><b>${money(x.a.total)}</b></td>${x.a.b.map(v=>`<td>${v ? money(v) : '—'}</td>`).join('')}<td>${x.a.oldestDays != null ? x.a.oldestDays + ' يوم' : '—'}</td><td>${r ? fmtDate(r.date) + (Math.abs(r.diff) < 1 ? ' مطابق' : ' فرق ' + money(Math.abs(r.diff))) : '—'}</td></tr>`; }).join('')}
+    <tr style="font-weight:900"><td>الإجمالي</td><td>${money(rows.reduce((s, x)=>s + x.a.total, 0))}</td>${[0, 1, 2, 3].map(i=>`<td>${money(rows.reduce((s, x)=>s + x.a.b[i], 0))}</td>`).join('')}<td></td><td></td></tr>
+    </tbody></table></div>`);
+}
+function exportSupAgingCSV(){
+  const out = [['المورد', 'علينا', ...SUP_AGE_LBL, 'أقدم مبلغ (يوم)', 'آخر مطابقة', 'فرق آخر مطابقة']];
+  supAgingRows().forEach(x=>{ const r = supLastRecon(x.s); out.push([x.s.name, x.a.total, ...x.a.b, x.a.oldestDays == null ? '' : x.a.oldestDays, r ? fmtDate(r.date) : '', r ? r.diff : '']); });
+  out.push([], ['تاريخ التصدير', fmtDateTime(new Date().toISOString())], ['بواسطة', actorName()]);
+  const csv = '﻿' + out.map(r=>r.map(v=>'"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  downloadXLSXFromCSV('أعمار ديون الموردين', csv);
+}
+/* جوه ملف المورد: التقسيم + آخر مطابقة */
+function supAgingDetailHTML(sup){
+  const a = supAging(sup.id), r = supLastRecon(sup);
+  return `<div class="dsec">⏳ أعمار المديونية${a.oldestDays != null ? ' — أقدم مبلغ من ' + a.oldestDays + ' يوم' : ''}</div>
+    <div class="igrid" style="margin-bottom:10px">
+      ${SUP_AGE_LBL.map((l, i)=>`<div class="icell"><span class="ik">${l}</span><span class="iv" style="${i === 3 && a.b[3] > 0 ? 'color:var(--danger)' : ''}">${money(a.b[i])}</span></div>`).join('')}
+      <div class="icell"><span class="ik">🤝 آخر مطابقة مع كشف المورد</span><span class="iv" style="font-size:12px">${supReconTag(r)}</span></div>
+    </div>`;
+}
+
+/* ============ م241: 🤝 مطابقة كشف حساب المورد ============
+   المورد بيبعت كشف حسابه ⇐ نكتب تاريخه والرصيد اللي فيه ⇐ السيستم بيحسب رصيدنا في نفس اليوم
+   (من نفس كشف الحساب الموحّد) ويقول مطابق ولا فيه فرق، ويعرض حركاتنا آخر 30 يوم عشان الفرق يتلاقى.
+   كل مطابقة بتتسجل على المورد (sup.recons) بالتاريخ واسم الموظف. مابتغيّرش أي رصيد. */
+function supBalanceAt(supplierId, dateStr){
+  const end = new Date(dateStr + 'T23:59:59.999').getTime();
+  let run = 0;
+  supplierStatement(supplierId).forEach(r=>{ if(new Date(r.date).getTime() <= end) run = r.running; });
+  return _r2_241(run);
+}
+function supReconRead(){
+  const v = id=>String(((document.getElementById(id) || {}).value) || '').trim();
+  const amt = estNum(v('srAmt')), side = v('srSide') || 'credit';
+  return { date:v('srDate'), theirs:amt == null ? null : _r2_241(side === 'debit' ? -Math.abs(amt) : Math.abs(amt)), note:v('srNote') };
+}
+function supReconResultHTML(supplierId){
+  const f = supReconRead();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(f.date) || f.theirs == null) return `<div class="muted" style="font-size:12.5px">اكتب تاريخ الكشف والرصيد اللي فيه — والنتيجة هتظهر هنا.</div>`;
+  const ours = supBalanceAt(supplierId, f.date), diff = _r2_241(f.theirs - ours);
+  const side = n=>n >= 0 ? 'علينا له ' + money(n) : 'لينا عنده ' + money(-n);
+  const end = new Date(f.date + 'T23:59:59.999').getTime(), from = end - 30 * 86400000;
+  const recent = supplierStatement(supplierId).filter(r=>{ const t = new Date(r.date).getTime(); return t >= from && t <= end && r.amount; });
+  return `<div class="igrid" style="margin:6px 0">
+      <div class="icell"><span class="ik">رصيدنا في السيستم يوم ${fmtDate(f.date)}</span><span class="iv">${side(ours)}</span></div>
+      <div class="icell"><span class="ik">رصيد كشف المورد</span><span class="iv">${side(f.theirs)}</span></div>
+      <div class="icell" style="background:${Math.abs(diff) < 1 ? 'rgba(30,150,90,.08)' : 'rgba(220,50,50,.08)'}"><span class="ik">النتيجة</span>
+        <span class="iv" style="color:${Math.abs(diff) < 1 ? 'var(--success)' : 'var(--danger)'}">${Math.abs(diff) < 1 ? '✅ مطابق' : '⚠️ فرق ' + money(Math.abs(diff)) + (diff > 0 ? ' — المورد كاتب أكتر منّا' : ' — المورد كاتب أقل منّا')}</span></div>
+    </div>
+    ${Math.abs(diff) >= 1 ? `<div class="muted" style="font-size:12px;margin:6px 0 4px">دوّر على الفرق في حركاتنا آخر 30 يوم قبل الكشف (فاتورة ماتسجلتش عندنا أو عندهم · دفعة · مرتجع · خصم):</div>
+      <div class="card" style="max-height:200px;overflow:auto;padding:4px"><table class="tcompact"><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th>المبلغ</th></tr></thead><tbody>
+      ${recent.length ? recent.map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${escNote(r.type)}</td><td class="muted">${escNote(r.desc || '')}</td><td style="font-weight:700;color:${r.amount > 0 ? 'var(--danger)' : 'var(--accent)'}">${r.amount > 0 ? '+' : '−'} ${money(Math.abs(r.amount))}</td></tr>`).join('') : '<tr><td colspan="4" class="empty">مفيش حركات في آخر 30 يوم</td></tr>'}
+      </tbody></table></div>` : ''}`;
+}
+function supReconRedraw(supplierId){ const el = document.getElementById('srResult'); if(el) el.innerHTML = supReconResultHTML(supplierId); }
+function openSupReconModal(supplierId){
+  if(!canScreen('suppliers')){ toast('مالكش صلاحية على شاشة الموردين', true); return; }
+  const sup = DB.suppliers.find(s=>s.id === supplierId);
+  if(!sup) return;
+  const hist = (sup.recons || []).slice(-5).reverse();
+  openModal(`<h3>🤝 مطابقة مع كشف حساب المورد — ${escNote(sup.name)}</h3>
+    <div class="muted" style="font-size:12.5px;line-height:1.8;margin-bottom:8px">اكتب تاريخ كشف الحساب اللي المورد بعته والرصيد اللي مكتوب فيه — السيستم بيقارنه برصيدنا في نفس اليوم. المطابقة مابتغيّرش أي رصيد، بتتسجل بس.</div>
+    <div class="grid g3">
+      <div class="form-row"><label class="f-label">تاريخ كشف المورد</label><input class="f" id="srDate" type="date" value="${apptDayKey(new Date())}" onchange="supReconRedraw('${sup.id}')"></div>
+      <div class="form-row"><label class="f-label">الرصيد في كشفه</label><input class="f" id="srAmt" inputmode="decimal" placeholder="مثال: 45000" oninput="supReconRedraw('${sup.id}')"></div>
+      <div class="form-row"><label class="f-label">الرصيد ده</label><select class="f" id="srSide" onchange="supReconRedraw('${sup.id}')"><option value="credit">علينا للمورد</option><option value="debit">لينا عند المورد</option></select></div>
+    </div>
+    <div id="srResult">${supReconResultHTML(sup.id)}</div>
+    <div class="form-row" style="margin-top:8px"><label class="f-label">ملاحظة (اختياري) — مثال: الفرق فاتورة 1520 ماوصلتناش</label><input class="f" id="srNote"></div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveSupRecon('${sup.id}')">💾 حفظ المطابقة</button>
+    ${hist.length ? `<div class="dsec" style="margin-top:12px">المطابقات اللي فاتت</div><table class="tcompact"><thead><tr><th>تاريخ الكشف</th><th>كشفهم</th><th>عندنا</th><th>النتيجة</th><th>مين</th></tr></thead><tbody>
+      ${hist.map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${money(r.theirs)}</td><td>${money(r.ours)}</td><td>${Math.abs(r.diff) < 1 ? '✅ مطابق' : '⚠️ فرق ' + money(Math.abs(r.diff))}${r.note ? `<div class="muted" style="font-size:11px">${escNote(r.note)}</div>` : ''}</td><td class="muted" style="font-size:11.5px">${escNote(r.by || '')} · ${fmtDateTime(r.at)}</td></tr>`).join('')}</tbody></table>` : ''}`, true);
+}
+async function saveSupRecon(supplierId){
+  if(!canScreen('suppliers')){ toast('مالكش صلاحية على شاشة الموردين', true); return; }
+  const sup = DB.suppliers.find(s=>s.id === supplierId);
+  if(!sup) return;
+  const f = supReconRead();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(f.date)){ toast('اختار تاريخ كشف المورد', true); return; }
+  if(f.theirs == null){ toast('اكتب الرصيد اللي في كشف المورد', true); return; }
+  const ours = supBalanceAt(supplierId, f.date), diff = _r2_241(f.theirs - ours), ok = Math.abs(diff) < 1;
+  (sup.recons = sup.recons || []).push({ id:uid('rec'), date:f.date, theirs:f.theirs, ours, diff, note:f.note, at:new Date().toISOString(), by:actorName() });
+  await saveKey('suppliers', DB.suppliers);
+  await logAction('🤝 مطابقة كشف حساب المورد ' + sup.name + ' — بتاريخ ' + fmtDate(f.date) + ' — كشفهم ' + money(f.theirs) + ' · عندنا ' + money(ours) + ' — ' + (ok ? 'مطابق ✅' : 'فرق ' + money(Math.abs(diff))) + (f.note ? ' — ' + f.note : ''));
+  closeModal();
+  toast(ok ? '✅ المطابقة اتسجلت — الحساب مطابق' : '⚠️ المطابقة اتسجلت — فيه فرق ' + money(Math.abs(diff)), !ok);
+  openSupplierDetail(supplierId);
+}
+
+/* ============ م241: فاتورة الشراء — متسجلة قبل كده؟ · السعر قفز؟ (تنبيه وتأكيد — مش منع) ============
+   لقينا في قاعدة المركز 7 أزواج فواتير بنفس المورد ونفس الأصناف (ولنفس الأمر أو من غير أمر) ونفس الإجمالي في خلال 3 أيام (4 منهم في نفس اليوم).
+   وفي 499 شراء متكرر لنفس الصنف، 55 مرة السعر زاد 15% أو أكتر. الاتنين بيتنبّه عليهم قبل الحفظ،
+   ولو اتأكد الحفظ صاحب المركز بيوصله إشعار. */
+function purJumpPct(){ const v = parseFloat(DB.settings && DB.settings.priceJumpPct); return v > 0 ? v : 15; }
+function purLineJump(l, pct){
+  if(!l || !l.partId || !(+l.costPrice > 0)) return null;
+  const lp = lastPurchaseInfo(l.partId);
+  if(!lp || !lp.date || !(+lp.price > 0)) return null;   // أول مرة يتشرى ⇐ مفيش مقارنة
+  const up = (l.costPrice - lp.price) / lp.price * 100;
+  return up >= (pct || purJumpPct()) - 1e-9 ? { name:l.name, price:+l.costPrice, last:+lp.price, lastDate:lp.date, up:Math.round(up) } : null;
+}
+function purJumpTagHTML(l){
+  const j = purLineJump(l);
+  return j ? `<div style="color:var(--danger);font-size:11px;font-weight:700;white-space:nowrap">⚠️ آخر سعر ${money(j.last)} — زيادة ${j.up}%</div>` : '';
+}
+/* نفس القطعة لعربيتين مختلفتين في نفس اليوم = شغل عادي (بنشتري للعربية) ⇐ أمر الشغل جزء من البصمة */
+function purItemsSig(items){ return (items || []).map(i=>normSearch(i.name || '') + '×' + (+i.qty || 0) + '@' + (i.forJobId || '')).sort().join('|'); }
+function purSaveWarnings(d){
+  const out = { dup:[], jumps:[] };
+  const no = String(d.invoiceNo || '').trim().toLowerCase();
+  const total = _r2_241((d.lines || []).reduce((s, l)=>s + (+l.qty || 0) * (+l.costPrice || 0), 0));
+  const sig = purItemsSig(d.lines), t0 = d.date ? new Date(d.date).getTime() : Date.now();
+  DB.purchases.filter(p=>p.supplierId === d.supplierId).forEach(p=>{
+    if(no && String(p.supInvNo || '').trim().toLowerCase() === no) out.dup.push({ p, why:'نفس رقم فاتورة المورد «' + String(d.invoiceNo).trim() + '»' });
+    else if(total > 0 && Math.abs((+p.total || 0) - total) < 0.01 && Math.abs(new Date(p.date).getTime() - t0) <= 3 * 86400000 && purItemsSig(p.items) === sig)
+      out.dup.push({ p, why:'نفس الأصناف والكميات والإجمالي في خلال 3 أيام' + (sig.includes('@') && /@[^|]/.test(sig) ? ' (ولنفس أمر الشغل)' : '') });
+  });
+  const pct = purJumpPct();
+  (d.lines || []).forEach(l=>{ const j = purLineJump(l, pct); if(j) out.jumps.push(j); });
+  return out;
+}
+function purWarnHTML(w){
+  return `<b>⚠️ راجع قبل الحفظ</b>
+    ${w.dup.length ? `<div style="margin:8px 0 4px;font-weight:800;color:var(--danger)">📑 شكلها فاتورة اتسجلت قبل كده:</div>
+      ${w.dup.map(x=>`<div style="font-size:13px">• فاتورة شراء <b>#${x.p.purchaseNo}</b> بتاريخ ${fmtDate(x.p.date)} بمبلغ <b>${money(x.p.total)}</b> — ${escNote(x.why)}</div>`).join('')}` : ''}
+    ${w.jumps.length ? `<div style="margin:8px 0 4px;font-weight:800;color:var(--danger)">📈 أسعار زادت ${purJumpPct()}% أو أكتر عن آخر شراء:</div>
+      ${w.jumps.map(j=>`<div style="font-size:13px">• ${escNote(j.name)}: <b>${money(j.price)}</b> بدل ${money(j.last)} (${fmtDate(j.lastDate)}) — زيادة <b>${j.up}%</b></div>`).join('')}` : ''}
+    <div class="muted" style="font-size:12px;margin-top:8px">لو متأكد دوس تأكيد والفاتورة هتتحفظ — وصاحب المركز هيوصله إشعار.</div>`;
+}
 /* ============================================================
    م133 — تقارير المورد: طبقة قراءة فقط فوق البيانات الموجودة
    3 تقارير مستقلة (فواتير · كشف حساب · مرتجعات) بفلتر زمني موحّد
@@ -15007,6 +15206,7 @@ function renderSuppliers(){
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" onclick="openSupGlobalReport()">📊 تقارير الموردين</button>
       <button class="btn" onclick="openSupInvReport()">🧾 تقرير فواتير الموردين</button>
+      <button class="btn" onclick="openSupAgingReport()">⏳ أعمار الديون</button>
       <button class="btn" onclick="exportSuppliersFinCSV()">⬇ Export Excel</button>
       <button class="btn" onclick="openNewPurchaseInvoicePage()">🧾 فاتورة شراء جديدة</button>
       <button class="btn btn-accent" onclick="openNewSupplierModal()">${ICONS.plus} مورد جديد</button>
@@ -15144,6 +15344,7 @@ function supplierDetailHTML(supplierId){
     <h3 style="margin:0">كشف حساب المورد — ${sup.name}${sup.archived?' <span class="muted" style="font-size:12px">🗄️ مؤرشف</span>':''}</h3>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="openEditSupplierModal('${supplierId}')">✏️ تعديل</button>
+      <button class="btn btn-sm" onclick="openSupReconModal('${supplierId}')">🤝 مطابقة مع كشف المورد</button>
       ${b.liability>0 && can('sup.pay') ? `<button class="btn btn-sm btn-accent" onclick="openSupplierPaymentModal('${supplierId}')">💵 تسديد</button>`:''}
       ${b.creditBalance>0 && can('sup.refund') ? `<button class="btn btn-sm" onclick="openSupplierRefundModal('${supplierId}')">↩️ استرداد (${money(b.creditBalance)})</button>`:''}
       ${can('sup.return')?`<button class="btn btn-sm" onclick="openSupplierReturnModal('${supplierId}')">${ICONS.plus} مرتجع</button>`:''}
@@ -15181,6 +15382,7 @@ function supplierDetailHTML(supplierId){
     <div class="icell"><span class="ik">آخر سداد</span><span class="iv">${lastPayment?fmtDate(lastPayment.date):'—'}</span></div>
     <div class="icell"><span class="ik">متوسط فترة السداد</span><span class="iv">${avgDays!==null?avgDays+' يوم':'—'}</span></div>
   </div>
+  ${supAgingDetailHTML(sup)}
 
   <!-- بيانات المورد: خانات منفصلة واضحة بدل سطر متلزق -->
   <div class="dsec">🏭 بيانات المورد</div>
@@ -15236,7 +15438,7 @@ function supplierDetailHTML(supplierId){
       </div>
       <div id="pu_${p.id}" style="display:none;margin-top:6px;border-top:1px dashed var(--border);padding-top:6px">
         <table class="tcompact"><thead><tr><th>الصنف</th><th>الكمية</th><th>سعر الشراء</th><th>الإجمالي</th></tr></thead>
-        <tbody>${p.items.map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitCost)}</td><td>${money(it.qty*it.unitCost)}</td></tr>`).join('')}</tbody></table>
+        <tbody>${(p.items||[]).map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitCost)}</td><td>${money(it.qty*it.unitCost)}</td></tr>`).join('')}</tbody></table>
         ${(p.payments||[]).length?`<div class="muted" style="font-size:11px;margin-top:5px">الدفعات: ${p.payments.map(x=>money(x.amount)+' ('+fmtDate(x.date)+')').join(' · ')}</div>`:''}
         <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
           ${purStatus(p)==='pending' && !p.extKind && (can('pur.review')||can('pur.approve')||canEditPurchaseAny())?`<button class="btn btn-sm btn-accent" onclick="openPurReview('${p.id}')">🧾 مراجعة / اعتماد</button>`:''}
@@ -16075,7 +16277,7 @@ function renderNewPurchaseInvoice(){
       <tr><td>${nameCell}</td>
       <td class="muted">${l.category||'—'}</td><td class="muted">${l.unit||'—'}</td>
       <td>📦 ${whLbl}</td>
-      <td>${l.qty}</td><td>${money(l.costPrice)}</td><td>${money(l.qty*l.costPrice)}</td>
+      <td>${l.qty}</td><td>${money(l.costPrice)}${purJumpTagHTML(l)}</td><td>${money(l.qty*l.costPrice)}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="startEditPurchaseLine(${idx})">✏️ تعديل</button>
         <button class="btn btn-sm btn-danger" onclick="removePurchaseLine(${idx})">حذف</button></td></tr>`;
@@ -16925,6 +17127,15 @@ async function savePurchaseInvoice(){
   if(archivedLine){ toast('الصنف «'+archivedLine.name+'» مؤرشف — استرجعه من الأرشيف الأول أو شيله من الفاتورة', true); return; }
   const supplier = DB.suppliers.find(s=>s.id===purchaseDraft.supplierId);
   if(supplier && supplier.archived){ toast('المورد «'+supplier.name+'» مؤرشف — استرجعه من الأرشيف الأول', true); return; }
+  /* م241: متسجلة قبل كده؟ السعر قفز؟ ⇐ تنبيه وتأكيد (قرار سيف: مش منع) */
+  if(!purchaseDraft._warnOk){
+    const w241 = purSaveWarnings(purchaseDraft);
+    if(w241.dup.length || w241.jumps.length){
+      askConfirm(purWarnHTML(w241), ()=>{ if(!purchaseDraft) return; purchaseDraft._warnOk = true; purchaseDraft._warn241 = w241; return savePurchaseInvoice(); });
+      return;
+    }
+  }
+  const warn241 = purchaseDraft._warn241 || null;
   const purchaseId = uid('pur');
   const invoiceItems = [];
   const dupMergedOnSave = [];   // م84: أصناف اتضافت على بند موجود بدل ما تتعمل من جديد
@@ -17016,6 +17227,16 @@ async function savePurchaseInvoice(){
   }
   notify('purchase_create', 'فاتورة شراء جديدة #'+purchase.purchaseNo+' من '+supplier.name+' بقيمة '+money(total)+' — بانتظار فاتورة المورد',
     { category:'financial', refType:'purchase', refId:purchase.id, refNo:purchase.purchaseNo, amount:total });
+  if(warn241 && warn241.dup.length){
+    await logAction('⚠️ فاتورة شراء #'+purchase.purchaseNo+' اتحفظت رغم إنها شبه فاتورة قديمة'+auditDetails(warn241.dup.map(x=>['#'+x.p.purchaseNo, x.why])));
+    notify('purchase_dup', 'فاتورة شراء #'+purchase.purchaseNo+' من '+supplier.name+' ('+money(total)+') اتحفظت رغم إنها شبه '+warn241.dup.map(x=>'#'+x.p.purchaseNo).join('، ')+' — '+warn241.dup[0].why,
+      { category:'financial', refType:'purchase', refId:purchase.id, refNo:purchase.purchaseNo, amount:total });
+  }
+  if(warn241 && warn241.jumps.length){
+    await logAction('📈 أسعار شراء زادت في فاتورة #'+purchase.purchaseNo+auditDetails(warn241.jumps.map(j=>[j.name, money(j.last)+' ← '+money(j.price)+' (+'+j.up+'%)'])));
+    notify('purchase_price_jump', 'فاتورة شراء #'+purchase.purchaseNo+' من '+supplier.name+': '+warn241.jumps.map(j=>j.name+' '+money(j.last)+' ← '+money(j.price)+' (+'+j.up+'%)').join(' · '),
+      { category:'financial', refType:'purchase', refId:purchase.id, refNo:purchase.purchaseNo, amount:total });
+  }
   toast('تم حفظ الفاتورة وتحديث المخزون وحساب المورد');
   purchaseDraft = null;
   currentTab='suppliers'; render();
@@ -24318,7 +24539,7 @@ const NOTIF_SEVERITY = {
   car_delete:'critical', car_archive:'medium', car_restore:'low',
   // الملاحظة 63: فواتير الشراء
   purchase_edit:'medium', purchase_approved_edit:'high', purchase_closed_edit:'critical',
-  purchase_reopen:'high', purchase_approve:'low', purchase_create:'low',
+  purchase_reopen:'high', purchase_approve:'low', purchase_create:'low', purchase_dup:'high', purchase_price_jump:'medium',   /* م241 */
   supplier_refund:'high', supplier_pay_specific:'medium', supplier_pay:'low', supplier_return:'medium',   // الملاحظة 69/70
   // 🔵 معلومة
   custody_open:'low', job_reopen:'low', count_approve:'low', leave_decision:'low', early_leave_decision:'low',
@@ -25387,8 +25608,25 @@ function invAnalRows(){
     : (invAnalTab==='near' ? a.near
     : (invAnalTab==='zero' ? a.zero : a.slow));
 }
+function invAnalBarHTML(a){
+  const tabBtn = (k, label, n) => `<button class="btn btn-sm ${invAnalTab===k?'btn-accent':''}" onclick="setInvAnalTab('${k}')">${label} (${n})</button>`;
+  return `<div class="card" style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <span style="font-weight:700;font-size:12.5px">📦 المخزن:</span>
+    <select class="f" style="max-width:230px;margin:0" onchange="setInvAnalWh(this.value)">
+      <option value="" ${!invAnalWh?'selected':''}>جميع المخازن</option>
+      ${DB.warehouses.map(w=>`<option value="${w.id}" ${invAnalWh===w.id?'selected':''}>${w.name}</option>`).join('')}
+    </select>
+    <div style="flex:1"></div>
+    <button class="btn btn-sm ${invAnalTab==='month'?'btn-accent':''}" onclick="setInvAnalTab('month')">📅 ملخص الشهر</button>   <!-- م241 -->
+    ${tabBtn('slow','📉 رواكد', a.slow.length)}
+    ${tabBtn('fast','⚡ سريعة الحركة', a.fast.length)}
+    ${tabBtn('near','⚠️ أوشكت على النفاد', a.near.length)}
+    ${tabBtn('zero','⛔ الأصناف المتصفرة', a.zero.length)}
+  </div>`;
+}
 function renderInvAnalysis(){
   const a = invAnalysis(invAnalWh);
+  if(invAnalTab === 'month') return invAnalBarHTML(a) + invMonHTML();   /* م241 */
   const list = invAnalRows();
   const sum = invSummary(list);
   const tabBtn = (k, label, n) => `<button class="btn btn-sm ${invAnalTab===k?'btn-accent':''}" onclick="setInvAnalTab('${k}')">${label} (${n})</button>`;
@@ -25400,18 +25638,7 @@ function renderInvAnalysis(){
     📊 التحليل بيتم <b>لكل صنف في كل مخزن على حدة</b> — نفس الصنف ممكن يطلع راكد في مخزن وسريع الحركة في مخزن تاني.
     العتبات من <b>الإعدادات</b>: الركود <b>${a.days} يوم</b> بدون صرف · سرعة الحركة <b>${a.fastMin} مرات صرف</b> في آخر 90 يوم.
   </div>
-  <div class="card" style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-    <span style="font-weight:700;font-size:12.5px">📦 المخزن:</span>
-    <select class="f" style="max-width:230px;margin:0" onchange="setInvAnalWh(this.value)">
-      <option value="" ${!invAnalWh?'selected':''}>جميع المخازن</option>
-      ${DB.warehouses.map(w=>`<option value="${w.id}" ${invAnalWh===w.id?'selected':''}>${w.name}</option>`).join('')}
-    </select>
-    <div style="flex:1"></div>
-    ${tabBtn('slow','📉 رواكد', a.slow.length)}
-    ${tabBtn('fast','⚡ سريعة الحركة', a.fast.length)}
-    ${tabBtn('near','⚠️ أوشكت على النفاد', a.near.length)}
-    ${tabBtn('zero','⛔ الأصناف المتصفرة', a.zero.length)}
-  </div>
+  ${invAnalBarHTML(a)}
   <div class="grid g3" style="margin-bottom:16px">
     ${stat(String(sum.count),'عدد الأصناف')}
     ${stat(String(sum.qty),'إجمالي الكمية')}
@@ -25504,6 +25731,182 @@ function openPartAnalysis(partId){
       <button class="btn" style="flex:1" onclick="closeModal()">إغلاق</button>
     </div>
   `, true);
+}
+/* ============ م241: 📅 ملخص حركة المخزون — شهري (1 ⇐ آخر الشهر) أو فترة مخصوصة ============
+   طلب سيف: أول المدة + الوارد + مرتجعات العملاء − المنصرف − مرتجعات الموردين − الهالك ± التسويات = آخر المدة.
+   • الحساب من حركات المخزن نفسها، ومربوط بالرصيد الحالي (آخر المدة = الرصيد دلوقتي − حركات بعد الفترة)
+     ⇒ اتجرب على قاعدة المركز: 1,749 من 1,760 صنف حركاتهم بتوصل لرصيدهم بالظبط.
+   • الحركة بتتقيّم بتكلفتها المسجلة عليها · أول وآخر المدة بآخر سعر شراء قبلها (أو التكلفة الحالية)
+     ⇒ لو السعر اتغيّر جوه الفترة، الفرق بيظهر في سطر لوحده «فرق تغيّر الأسعار» عشان المعادلة تقفل.
+   • القطع الخارجية (اتشرت لأمر شغل على طول) مابتدخلش المخزن ⇒ سطر للعلم بس. */
+let invMonF = { mode:'month', ym:'', from:'', to:'', q:'' };
+function invMonYm(off){ const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + (off || 0)); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+function invMonSet(k, v){
+  if(k === 'this'){ invMonF.mode = 'month'; invMonF.ym = invMonYm(0); }
+  else if(k === 'prev'){ invMonF.mode = 'month'; invMonF.ym = invMonYm(-1); }
+  else if(k === 'ym'){ invMonF.mode = 'month'; invMonF.ym = v || invMonYm(0); }
+  else if(k === 'custom') invMonF.mode = 'custom';
+  else invMonF[k] = v;
+  refreshContent();
+}
+function invMonRange(){
+  const f = invMonF;
+  if(f.mode === 'custom' && f.from && f.to){
+    const a = new Date(f.from + 'T00:00:00'), b = new Date(f.to + 'T23:59:59.999');
+    if(!isNaN(a) && !isNaN(b) && a <= b) return { from:a, to:b, label:'من ' + fmtDate(a) + ' إلى ' + fmtDate(b) };
+  }
+  const ym = /^\d{4}-\d{2}$/.test(f.ym) ? f.ym : invMonYm(0);
+  const y = +ym.slice(0, 4), m = +ym.slice(5, 7);
+  return { from:new Date(y, m - 1, 1, 0, 0, 0, 0), to:new Date(y, m, 0, 23, 59, 59, 999), label:'شهر ' + String(m).padStart(2, '0') + '/' + y, ym };
+}
+const INV_MON_KINDS = ['in', 'cret', 'out', 'sret', 'loss', 'adj', 'trIn', 'trOut'];
+function invMonKind(t){
+  return t === 'in' ? 'in' : t === 'customer_return' ? 'cret' : t === 'out' ? 'out' : t === 'return' ? 'sret'
+    : (t === 'scrap' || t === 'internal_use') ? 'loss' : t === 'adjustment' ? 'adj' : t === 'transfer_in' ? 'trIn' : t === 'transfer_out' ? 'trOut' : null;
+}
+function _r2_241(n){ return Math.round((Number(n) || 0) * 100) / 100; }
+function _r3_241(n){ return Math.round((Number(n) || 0) * 1000) / 1000; }
+/* تكلفة الصنف في لحظة معيّنة: آخر سعر شراء قبلها — والفترة اللي لسه شغالة بالتكلفة الحالية */
+function invMonCostAt(p, t, insNewest){
+  if(t >= Date.now()) return +p.costPrice || 0;
+  const m = insNewest.find(x=>new Date(x.date).getTime() <= t && +x.unitCost > 0);
+  return m ? +m.unitCost : (+p.costPrice || 0);
+}
+function invMonCalc(rg, whId){
+  const f = rg.from.getTime(), t = rg.to.getTime();
+  const byPart = new Map();
+  DB.stockMoves.forEach(m=>{ if(m && m.partId){ let a = byPart.get(m.partId); if(!a) byPart.set(m.partId, a = []); a.push(m); } });
+  const zero = ()=>{ const o = {}; INV_MON_KINDS.forEach(k=>{ o[k] = 0; }); return o; };
+  const T = { q:zero(), v:zero(), openV:0, closeV:0 }, sup = new Map(), rows = [];
+  const supRow = id=>{ let s = sup.get(id); if(!s) sup.set(id, s = { id, inV:0, sretV:0, pur:new Set() }); return s; };
+  DB.inventory.forEach(p=>{
+    if(!p || (whId && partWhId(p) !== whId)) return;
+    const ms = byPart.get(p.id) || [];
+    const ins = ms.filter(m=>m.type === 'in' && m.unitCost != null).sort((a, b)=>String(b.date).localeCompare(String(a.date)));
+    const r = { p, q:zero(), v:zero() };
+    let after = 0, any = false;
+    ms.forEach(m=>{
+      const mt = new Date(m.date).getTime();
+      if(isNaN(mt)) return;
+      const d = moveDelta(m);
+      if(mt > t){ after += d; return; }
+      if(mt < f) return;
+      const k = invMonKind(m.type);
+      if(!k) return;
+      any = true;
+      const q = k === 'adj' ? d : Math.abs(d), cost = +m.unitCost > 0 ? +m.unitCost : invMonCostAt(p, mt, ins);   // تسوية الجرد من غير تكلفة ⇐ بتكلفة الصنف وقتها
+      r.q[k] += q; r.v[k] += q * cost;
+      if(m.supplierId && (k === 'in' || k === 'sret')){
+        const s = supRow(m.supplierId);
+        if(k === 'in'){ s.inV += q * cost; if(m.purchaseId) s.pur.add(m.purchaseId); } else s.sretV += q * cost;
+      }
+    });
+    const net = r.q.in + r.q.cret - r.q.out - r.q.sret - r.q.loss + r.q.adj + r.q.trIn - r.q.trOut;
+    r.closeQ = _r3_241((+p.qty || 0) - after);
+    r.openQ = _r3_241(r.closeQ - net);
+    if(!any && !r.openQ && !r.closeQ) return;
+    r.openV = r.openQ * invMonCostAt(p, f - 1, ins);
+    r.closeV = r.closeQ * invMonCostAt(p, t, ins);
+    INV_MON_KINDS.forEach(k=>{ r.q[k] = _r3_241(r.q[k]); T.v[k] += r.v[k]; });
+    T.openV += r.openV; T.closeV += r.closeV;
+    r.act = r.v.in + r.v.out + r.v.cret + r.v.sret + r.v.loss + Math.abs(r.v.adj);
+    rows.push(r);
+  });
+  INV_MON_KINDS.forEach(k=>{ T.v[k] = _r2_241(T.v[k]); });
+  T.openV = _r2_241(T.openV); T.closeV = _r2_241(T.closeV);
+  T.trV = _r2_241(T.v.trIn - T.v.trOut);
+  T.calcClose = _r2_241(T.openV + T.v.in + T.v.cret - T.v.out - T.v.sret - T.v.loss + T.v.adj + T.trV);
+  T.diff = _r2_241(T.closeV - T.calcClose);
+  rows.sort((a, b)=>(b.act - a.act) || cmpName(a.p, b.p));
+  const sups = [...sup.values()].map(s=>({ id:s.id, name:(DB.suppliers.find(x=>x.id === s.id) || {}).name || '—', inV:_r2_241(s.inV), sretV:_r2_241(s.sretV), n:s.pur.size }))
+    .sort((a, b)=>b.inV - a.inV);
+  const ext = whId ? null : DB.stockMoves.filter(m=>m && m.type === 'ext_part' && (()=>{ const mt = new Date(m.date).getTime(); return mt >= f && mt <= t; })());
+  return { rows, T, sups, ext:ext ? { n:ext.length, v:_r2_241(ext.reduce((s, m)=>s + (+m.qty || 0) * (+m.unitCost || 0), 0)) } : null };
+}
+function invMonRowsFiltered(c){
+  const q = normSearch(invMonF.q || '');
+  return q ? c.rows.filter(r=>normSearch([r.p.name, r.p.sku, r.p.brand].filter(Boolean).join(' ')).includes(q)) : c.rows;
+}
+function invMonQ(n){ return n ? _r3_241(n).toLocaleString(NUM_LOCALE) : '—'; }
+function invMonHTML(){
+  const rg = invMonRange(), c = invMonCalc(rg, invAnalWh), T = c.T, rows = invMonRowsFiltered(c);
+  const ym0 = invMonYm(0), ym1 = invMonYm(-1), custom = invMonF.mode === 'custom';
+  const card = (lbl, v, sign, tip)=>`<div class="card stat-card"${tip ? ` title="${escAttr(tip)}"` : ''}><div class="num">${sign || ''}${money(Math.abs(v))}</div><div class="lbl">${lbl}</div></div>`;
+  const pk = pgKey('invMon', [rg.from.getTime(), rg.to.getTime(), invAnalWh, invMonF.q]);
+  return `<div class="card" style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-weight:700;font-size:12.5px">📅 الفترة:</span>
+      <button class="btn btn-sm${!custom && rg.ym === ym0 ? ' btn-accent' : ''}" onclick="invMonSet('this')">الشهر ده</button>
+      <button class="btn btn-sm${!custom && rg.ym === ym1 ? ' btn-accent' : ''}" onclick="invMonSet('prev')">الشهر اللي فات</button>
+      <input class="f" type="month" style="max-width:170px;margin:0" value="${custom ? '' : rg.ym}" onchange="invMonSet('ym', this.value)">
+      <button class="btn btn-sm${custom ? ' btn-accent' : ''}" onclick="invMonSet('custom')">فترة مخصوصة</button>
+      ${custom ? `<input class="f" type="date" style="max-width:160px;margin:0" value="${invMonF.from}" onchange="invMonSet('from', this.value)"> ⇐
+        <input class="f" type="date" style="max-width:160px;margin:0" value="${invMonF.to}" onchange="invMonSet('to', this.value)">` : ''}
+      <div style="flex:1"></div>
+      <button class="btn btn-sm" onclick="invMonPrint()">🖨 طباعة</button>
+      <button class="btn btn-sm" onclick="invMonExportCSV()">⬇ Excel</button>
+    </div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">📊 <b>${rg.label}</b> — ${invAnalWh ? '📦 ' + escNote(whName(invAnalWh)) : 'كل المخازن'}${custom && !(invMonF.from && invMonF.to) ? ' · <span style="color:var(--danger)">اختار «من» و«إلى» — لحد ما تختارهم معروض الشهر</span>' : ''}</div>
+    <div class="grid g4" style="margin-bottom:6px">
+      ${card('أول المدة', T.openV)}
+      ${card('➕ الوارد (مشتريات)', T.v.in, '+ ')}
+      ${card('➕ مرتجعات العملاء', T.v.cret, '+ ')}
+      ${card('➖ المنصرف على أوامر الشغل', T.v.out, '− ')}
+      ${card('➖ مرتجعات للموردين', T.v.sret, '− ')}
+      ${card('➖ هالك واستهلاك داخلي', T.v.loss, '− ')}
+      ${card('± تسويات الجرد', T.v.adj, T.v.adj < 0 ? '− ' : '+ ')}
+      ${Math.abs(T.trV) >= 0.01 ? card('± تحويلات بين المخازن', T.trV, T.trV < 0 ? '− ' : '+ ') : ''}
+      ${Math.abs(T.diff) >= 1 ? card('± فرق تغيّر الأسعار', T.diff, T.diff < 0 ? '− ' : '+ ', 'سعر شراء صنف اتغيّر جوه الفترة — الفرق بين قيمته بالسعر القديم والجديد') : ''}
+      <div class="card stat-card" style="border:2px solid var(--accent)"><div class="num">${money(T.closeV)}</div><div class="lbl">= آخر المدة</div></div>
+    </div>
+    <div class="muted" style="font-size:11.5px;margin-bottom:14px">القيم بسعر التكلفة · كل حركة بتكلفتها المسجلة · أول وآخر المدة بآخر سعر شراء قبلها.</div>
+    ${c.ext && c.ext.n ? `<div class="est-hint">ℹ️ للعلم: <b>${c.ext.n}</b> قطعة خارجية اتشرت لأوامر شغل على طول بقيمة <b>${money(c.ext.v)}</b> — دي مابتدخلش المخزن فمش محسوبة فوق.</div>` : ''}
+    ${c.sups.length ? `<div class="section-head" style="margin-top:14px"><h3>🏭 الوارد حسب المورد (${c.sups.length})</h3></div>
+    <div class="card"><table><thead><tr><th>المورد</th><th>عدد الفواتير</th><th>قيمة الوارد</th><th>مرتجع له</th><th>الصافي</th></tr></thead><tbody>
+      ${c.sups.map(s=>`<tr><td style="font-weight:700">${escNote(s.name)}</td><td>${s.n}</td><td>${money(s.inV)}</td><td>${s.sretV ? money(s.sretV) : '—'}</td><td style="font-weight:800">${money(s.inV - s.sretV)}</td></tr>`).join('')}
+      <tr style="font-weight:900;background:var(--surface-2)"><td>الإجمالي</td><td>${c.sups.reduce((s, x)=>s + x.n, 0)}</td><td>${money(c.sups.reduce((s, x)=>s + x.inV, 0))}</td><td>${money(c.sups.reduce((s, x)=>s + x.sretV, 0))}</td><td>${money(c.sups.reduce((s, x)=>s + x.inV - x.sretV, 0))}</td></tr>
+    </tbody></table></div>` : ''}
+    <div class="section-head" style="margin-top:14px"><h3>📦 حركة الأصناف بالكمية (${rows.length})</h3>
+      <input class="f" style="max-width:260px;margin:0" placeholder="🔎 دوّر باسم الصنف أو الكود ⏎" value="${escAttr(invMonF.q || '')}" onchange="invMonSet('q', this.value)"></div>
+    <div class="card"><table><thead><tr><th>الصنف</th><th>المخزن</th><th>أول المدة</th><th>وارد</th><th>مرتجع عميل</th><th>منصرف</th><th>مرتجع مورد</th><th>هالك</th><th>تسوية</th><th>تحويل ±</th><th>آخر المدة</th><th>قيمة آخر المدة</th></tr></thead>
+    <tbody>${rows.length ? pgSlice(pk, rows).map(r=>`<tr>
+      <td><b>${escNote(r.p.name)}</b>${r.p.sku ? `<div class="muted" style="font-size:11px">${escNote(r.p.sku)}</div>` : ''}</td>
+      <td class="muted" style="font-size:12px">${escNote(whName(partWhId(r.p)))}</td>
+      <td>${invMonQ(r.openQ)}</td><td>${invMonQ(r.q.in)}</td><td>${invMonQ(r.q.cret)}</td><td>${invMonQ(r.q.out)}</td><td>${invMonQ(r.q.sret)}</td><td>${invMonQ(r.q.loss)}</td>
+      <td>${r.q.adj ? (r.q.adj > 0 ? '+' : '') + invMonQ(r.q.adj) : '—'}</td><td>${(r.q.trIn - r.q.trOut) ? ((r.q.trIn - r.q.trOut) > 0 ? '+' : '') + invMonQ(r.q.trIn - r.q.trOut) : '—'}</td>
+      <td style="font-weight:800">${invMonQ(r.closeQ)}</td><td>${money(r.closeV)}</td></tr>`).join('') + pgRowHTML(pk, rows.length, 12)
+      : `<tr><td colspan="12" class="empty">${invMonF.q ? 'مفيش صنف مطابق للبحث' : 'مفيش حركة ولا رصيد في الفترة دي'}</td></tr>`}</tbody></table></div>`;
+}
+function invMonTitle(rg){ return 'ملخص حركة المخزون — ' + rg.label + ' — ' + (invAnalWh ? whName(invAnalWh) : 'كل المخازن'); }
+function invMonPrint(){
+  const rg = invMonRange(), c = invMonCalc(rg, invAnalWh), T = c.T, rows = invMonRowsFiltered(c);
+  const ln = (l, v)=>`<tr><td>${l}</td><td style="font-weight:800">${money(v)}</td></tr>`;
+  printHTML(`<div style="padding:10px">
+    <h3 style="margin:0 0 4px">📅 ${escNote(invMonTitle(rg))}</h3>
+    <div style="font-size:12px;color:#555;margin-bottom:10px">${escNote((DB.settings && DB.settings.centerName) || 'Masters Auto Service')} — اتطبع ${fmtDateTime(new Date().toISOString())} · بواسطة ${escNote(actorName())}</div>
+    <table style="max-width:460px;margin-bottom:12px"><tbody>
+      ${ln('أول المدة', T.openV)}${ln('+ الوارد (مشتريات)', T.v.in)}${ln('+ مرتجعات العملاء', T.v.cret)}${ln('− المنصرف على أوامر الشغل', T.v.out)}
+      ${ln('− مرتجعات للموردين', T.v.sret)}${ln('− هالك واستهلاك داخلي', T.v.loss)}${ln('± تسويات الجرد', T.v.adj)}
+      ${Math.abs(T.trV) >= 0.01 ? ln('± تحويلات بين المخازن', T.trV) : ''}${Math.abs(T.diff) >= 1 ? ln('± فرق تغيّر الأسعار', T.diff) : ''}
+      <tr style="background:#f3f3f3"><td><b>= آخر المدة</b></td><td style="font-weight:900">${money(T.closeV)}</td></tr>
+    </tbody></table>
+    ${c.ext && c.ext.n ? `<div style="font-size:12px;margin-bottom:10px">للعلم: ${c.ext.n} قطعة خارجية اتشرت لأوامر شغل على طول بقيمة ${money(c.ext.v)} (مش داخلة في المخزن).</div>` : ''}
+    ${c.sups.length ? `<table style="margin-bottom:12px"><thead><tr><th>المورد</th><th>عدد الفواتير</th><th>قيمة الوارد</th><th>مرتجع له</th><th>الصافي</th></tr></thead><tbody>
+      ${c.sups.map(s=>`<tr><td>${escNote(s.name)}</td><td>${s.n}</td><td>${money(s.inV)}</td><td>${money(s.sretV)}</td><td>${money(s.inV - s.sretV)}</td></tr>`).join('')}</tbody></table>` : ''}
+    <table><thead><tr><th>الصنف</th><th>الكود</th><th>المخزن</th><th>أول المدة</th><th>وارد</th><th>مرتجع عميل</th><th>منصرف</th><th>مرتجع مورد</th><th>هالك</th><th>تسوية</th><th>تحويل</th><th>آخر المدة</th><th>القيمة</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr><td>${escNote(r.p.name)}</td><td>${escNote(r.p.sku || '')}</td><td>${escNote(whName(partWhId(r.p)))}</td><td>${invMonQ(r.openQ)}</td><td>${invMonQ(r.q.in)}</td><td>${invMonQ(r.q.cret)}</td><td>${invMonQ(r.q.out)}</td><td>${invMonQ(r.q.sret)}</td><td>${invMonQ(r.q.loss)}</td><td>${invMonQ(r.q.adj)}</td><td>${invMonQ(r.q.trIn - r.q.trOut)}</td><td>${invMonQ(r.closeQ)}</td><td>${money(r.closeV)}</td></tr>`).join('')}</tbody></table>
+  </div>`);
+}
+function invMonExportCSV(){
+  const rg = invMonRange(), c = invMonCalc(rg, invAnalWh), T = c.T, rows = invMonRowsFiltered(c);
+  const out = [['التقرير', invMonTitle(rg)], [],
+    ['أول المدة', T.openV], ['+ الوارد (مشتريات)', T.v.in], ['+ مرتجعات العملاء', T.v.cret], ['− المنصرف على أوامر الشغل', T.v.out],
+    ['− مرتجعات للموردين', T.v.sret], ['− هالك واستهلاك داخلي', T.v.loss], ['± تسويات الجرد', T.v.adj], ['± تحويلات بين المخازن', T.trV], ['± فرق تغيّر الأسعار', T.diff], ['= آخر المدة', T.closeV], [],
+    ['الصنف', 'الكود', 'المخزن', 'أول المدة', 'وارد', 'مرتجع عميل', 'منصرف', 'مرتجع مورد', 'هالك', 'تسوية', 'تحويل', 'آخر المدة', 'قيمة آخر المدة']];
+  rows.forEach(r=>out.push([r.p.name, r.p.sku || '', whName(partWhId(r.p)), r.openQ, r.q.in, r.q.cret, r.q.out, r.q.sret, r.q.loss, r.q.adj, _r3_241(r.q.trIn - r.q.trOut), r.closeQ, _r2_241(r.closeV)]));
+  if(c.sups.length){ out.push([], ['المورد', 'عدد الفواتير', 'قيمة الوارد', 'مرتجع له', 'الصافي']); c.sups.forEach(s=>out.push([s.name, s.n, s.inV, s.sretV, _r2_241(s.inV - s.sretV)])); }
+  out.push([], ['تاريخ التصدير', fmtDateTime(new Date().toISOString())], ['بواسطة', actorName()]);
+  const csv = '﻿' + out.map(r=>r.map(v=>'"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  downloadXLSXFromCSV(invMonTitle(rg).replace(/[\\/:*?"<>|]/g, '-'), csv);
 }
 function invAnalTitle(){
   return (invAnalTab==='fast' ? 'الأصناف سريعة الحركة'
@@ -27054,6 +27457,7 @@ function renderSettings(){
     <div class="grid g3">
       <div class="form-row"><label class="f-label">حد السلف العالية (% من الراتب)</label><input class="f" id="setHighAdv" type="number" min="0" max="100" value="${DB.settings.highAdvancePct||50}"></div>
       <div class="form-row"><label class="f-label">حد الغياب العالي (أيام/دورة)</label><input class="f" id="setHighAbs" type="number" min="1" value="${DB.settings.highAbsenceDays||3}"></div>
+      <div class="form-row"><label class="f-label">📈 تنبيه زيادة سعر الشراء (%) عن آخر شراء</label><input class="f" id="setPriceJump" type="number" min="1" max="500" value="${purJumpPct()}"></div>   <!-- م241 -->
     </div>
     <!-- ⚠️ م121: قسم «نوع كل شاشة» اتشال بأمر سيف — النوع بقى **ثابت في
          تصميم السيستم** ومفيش أي إعداد ولا صلاحية تغيّره، حتى للأدمن. -->
@@ -27490,6 +27894,7 @@ async function saveNotifThresholds(){
   DB.settings.highAbsenceDays = parseFloat((document.getElementById('setHighAbs')||{}).value)||3;
   DB.settings.stagnantDays = parseFloat((document.getElementById('setStagnant')||{}).value)||90;
   DB.settings.fastMoveMin = parseFloat((document.getElementById('setFastMoves')||{}).value)||5;   // م114
+  DB.settings.priceJumpPct = Math.max(parseFloat((document.getElementById('setPriceJump')||{}).value)||15, 1);   /* م241 */
   /* م121: حذف الأرشيف التلقائي — 0 = مفيش حذف (الافتراضي) */
   DB.settings.notifArchiveDays = Math.max(parseFloat((document.getElementById('setArchiveDays')||{}).value)||0, 0);
   /* م124: مدة الاحتفاظ بسجل العمليات — 0 = للأبد (الافتراضي) */
