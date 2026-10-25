@@ -273,6 +273,17 @@ tr:hover td{background:var(--surface-2);}
 .est-cnt{display:inline-block;background:var(--accent-2);color:#fff;border-radius:10px;padding:0 7px;font-size:11px;line-height:18px;margin-right:4px;font-weight:800}
 /* م240: الحجوزات */
 .ap-card{padding:12px 14px;margin-bottom:10px}
+/* م242: التعليقات الفنية */
+.tc-box{margin-bottom:10px;border-right:3px solid var(--accent-2)}
+.tc-it{border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-top:8px}
+.tc-phs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.tc-ph{width:96px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:zoom-in;background:var(--surface-2)}
+.tc-ph-w{position:relative}
+.tc-ph-x{position:absolute;top:-6px;left:-6px;width:24px;height:24px;border-radius:50%;border:0;background:var(--danger);color:#fff;font-size:13px;cursor:pointer;line-height:24px;padding:0}
+.tc-view{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:700;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px;cursor:zoom-out}
+.tc-view img{max-width:100%;max-height:86vh;border-radius:10px}
+.tc-view-x{color:#fff;margin-top:10px;font-weight:800}
+@media (max-width:600px){ .tc-ph{width:84px;height:64px} }
 .ap-done{opacity:.78}
 .ap-top{display:flex;gap:12px;align-items:flex-start}
 .ap-time{font-size:19px;font-weight:900;color:var(--accent);min-width:78px;text-align:center;line-height:1.3}
@@ -853,7 +864,7 @@ async function _persistKey(key){
 /* ============ م100: دمج ثلاثي يمنع مسح بنود جهاز تاني ============
    الجداول اللي جواها مصفوفات بنود مهمة — أي بند فيها بيتحسب فلوس. */
 const MERGE_SUBARRAYS = {
-  jobs:       ['items','internalCosts'],
+  jobs:       ['items','internalCosts','techComments'],   /* م242: التعليقات الفنية من التابلت والاستقبال في نفس الوقت */
   repairEstimates: ['parts','labor','events'],   /* م230: «وصلت/اتفتحت» من جهاز تاني مايتمسحش بحفظة */
   invoices:   ['payments','items'],
   purchases:  ['items','payments','history'],
@@ -1140,7 +1151,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v262';
+const APP_VERSION = 'v263';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1201,6 +1212,12 @@ const ACTION_GROUPS = [
     ['est.price','تسعير قطع غيار المقايسة (المخزن)'],
     ['est.prepare','تجهيز طلبات صرف قطع الغيار (المخزن)'],
     ['est.request','طلب صرف قطع غيار (من غير تسعير — العميل موافق)'],   /* م231 */
+  ]],
+  /* م242: التعليقات الفنية على العربية (بدل ملاحظات الورشة الداخلية) */
+  ['التعليقات الفنية على العربية', [
+    ['tc.view','يشوف التعليقات الفنية وصورها جوه أمر الشغل'],
+    ['tc.write','يكتب تعليق فني ويصوّر (مهندس الورشة)'],
+    ['tc.send','يبعت التعليقات الفنية للعميل واتساب ويطبعها (الاستقبال)'],
   ]],
   ['العملاء', [
     ['customers.create','إضافة عميل وسيارة'],
@@ -1334,6 +1351,9 @@ const PERM_INFO = {
   'est.approve':'تسجيل رد العميل على المقايسة المتسعرة: علامة ✗ على البنود اللي رفضها و«✅ تم اعتماد المقايسة» (الباقي يتحسب موافق)، أو «العميل رفضها كلها». المقايسة المعتمدة بتتحوّل لوحدها لـ«📦 طلب صرف قطع غيار» عند المخزن يجهّزه.',
   'est.price':'المخزن: كتابة <b>سعر البيع</b> لكل قطعة في المقايسة (من المخزن · من بره · مش متوفرة) و«✅ تم التسعير». مالوش دعوة بالمصنعيات. بتظهّر شاشة «📋 المقايسات» ورسايل «مقايسة محتاجة تسعير».',
   'est.prepare':'المخزن: تجهيز <b>طلبات صرف قطع الغيار</b> (اللي جاية من مقايسة اعتمدها العميل، أو من الاستقبال علطول): لكل قطعة «✓ اتجهزت» أو «مش متوفرة» (من المخزن / من مورد بره)، و«✅ تم التجهيز» — الاستقبال بيوصله إشعار «اتجهز 3 من 5». <b>علامة بس</b> — الصرف على الأمر بيفضل بالطريقة العادية وبصلاحياته.',
+  'tc.view':'يشوف «🔧 التعليقات الفنية» (الكلام والصور) اللي الورشة كتبتها جوه أمر الشغل.',
+  'tc.write':'يكتب تعليق فني على العربية ويصوّره من التابلت أو الموبايل (شغل زيادة لقيته الورشة والعميل مايعرفش عنه). بيعدّل ويحذف تعليقاته هو بس — وصاحب المركز أي تعليق.',
+  'tc.send':'يبعت التعليقات الفنية للعميل واتساب (برقم أمر الشغل ولينكات الصور) ويطبع ورقة التعليقات لو العميل موجود. بيتنبّه بأي تعليق جديد.',
   'est.request':'«📦 طلب صرف قطع غيار»: العميل موافق من الأول ⇐ تكتب القطع بالكميات على أمر الشغل وتبعتها للمخزن <b>يجهّزها علطول من غير تسعير ولا موافقة</b>. الطلب ده معتمد بالنيابة عن العميل. مابيلمسش المخزون — الصرف بيفضل بالطريقة العادية.',
   'customers.create':'إضافة عملاء جدد وسياراتهم. <b>مابتديش</b> حق تعديل بيانات عميل موجود — دي صلاحية منفصلة.',
   'customers.edit':'تعديل بيانات عميل موجود: الاسم · نوع العميل (فرد/شركة) · الموبايل · التليفون الإضافي · الرقم القومي · الإيميل. كل تعديل بيتسجّل بقبل/بعد وبسبب في سجل العمليات والإشعارات.',
@@ -1437,10 +1457,10 @@ function allTemplates(){
 const ROLE_TEMPLATES = {
   reception_engineer: { label:'مهندس استقبال', dept:'reception',
     screens:['dashboard','customers','jobs','appointments','hr'],
-    actions:['jobs.create','jobs.edit','jobs.status','jobs.item_delete','jobs.print','customers.create','est.write','est.approve','est.request'] },
+    actions:['jobs.create','jobs.edit','jobs.status','jobs.item_delete','jobs.print','customers.create','est.write','est.approve','est.request','tc.view','tc.write','tc.send'] },
   reception_supervisor: { label:'مشرف استقبال', dept:'reception',
     screens:['dashboard','customers','jobs','appointments','hr'],
-    actions:['jobs.create','jobs.edit','jobs.status','jobs.item_delete','jobs.print','jobs.cancel','customers.create','customers.archive','est.write','est.approve','est.request'] },
+    actions:['jobs.create','jobs.edit','jobs.status','jobs.item_delete','jobs.print','jobs.cancel','customers.create','customers.archive','est.write','est.approve','est.request','tc.view','tc.write','tc.send'] },
   warehouse_keeper: { label:'أمين مخزن', dept:'warehouse',
     screens:['dashboard','inventory','stockmoves','tools','suppliers'],
     actions:['inv.issue','inv.receive','sup.return','inv.return','inv.item_create','tools.issue','est.price','est.prepare'] },
@@ -1449,10 +1469,10 @@ const ROLE_TEMPLATES = {
     actions:['inv.issue','inv.receive','sup.return','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.adjust','inv.scrap','inv.internal_use','inv.count_approve','tools.issue','tools.manage','jobs.print','inv.job_pin','est.price','est.prepare'] },
   workshop_manager: { label:'مدير ورشة', dept:'warehouse',
     screens:['dashboard','jobs','inventory','stockmoves','tools'],
-    actions:['jobs.edit','jobs.status','jobs.item_delete','jobs.print','inv.issue','tools.issue','inv.job_pin','est.write','est.request'] },   /* م230: مهندس الصيانة بيكتب المقايسة · م231: وبيطلب قطع غيار */
+    actions:['jobs.edit','jobs.status','jobs.item_delete','jobs.print','inv.issue','tools.issue','inv.job_pin','est.write','est.request','tc.view','tc.write'] },   /* م242: مهندس الورشة بيكتب التعليقات الفنية · م230: مهندس الصيانة بيكتب المقايسة · م231: وبيطلب قطع غيار */
   junior_accountant: { label:'محاسب', dept:'accounts',
     screens:['dashboard','jobs','invoices','receivables'],
-    actions:['bill.create','bill.collect','bill.print','jobs.print'] },
+    actions:['bill.create','bill.collect','bill.print','jobs.print','tc.view'] },
   senior_accountant: { label:'محاسب أول', dept:'accounts',
     screens:['dashboard','jobs','openjobs','invoices','receivables','finance','expenses','suppliers','services','reports','hr','tools'],
     actions:['bill.create','bill.collect','bill.discount','bill.cancel','bill.print','jobs.print','fin.expenses','exp.advance','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.emp_view','hr.advance','hr.reward','hr.penalties'] },   /* م215: المحاسب الأول مايشوفش المرتبات */
@@ -1467,7 +1487,7 @@ const ROLE_TEMPLATES = {
    القسم يشوف كل شاشاته وينفّذ عملياته العادية، والإجراءات الحساسة (تسوية/اعتماد جرد/
    إدارة العدد/الجزاءات/حذف نهائي/إدارة المستخدمين) تفضل لصاحب المركز فقط. */
 const DEPT_DEFAULT_ACTIONS = {
-  reception: ['jobs.create','jobs.edit','jobs.status','jobs.item_delete','jobs.print','jobs.cancel','customers.create','customers.archive','est.write','est.approve','est.request'],
+  reception: ['jobs.create','jobs.edit','jobs.status','jobs.item_delete','jobs.print','jobs.cancel','customers.create','customers.archive','est.write','est.approve','est.request','tc.view','tc.write','tc.send'],
   warehouse: ['inv.issue','inv.receive','sup.return','inv.return','inv.item_create','inv.item_edit','inv.transfer','inv.scrap','inv.internal_use','tools.issue','jobs.print','inv.job_pin','est.price','est.prepare'],
   accounts: ['bill.create','bill.collect','bill.discount','bill.cancel','bill.print','jobs.print','fin.expenses','exp.advance','fin.manage','sup.pay','fin.custody_create','fin.custody_settle','rep.profit','rep.financial','hr.emp_view','hr.advance','hr.reward'],   /* م215: الحسابات بتصرف سلف ومكافآت من غير ما تشوف المرتبات */
   hr: ['hr.employees','hr.approve','hr.payroll','hr.penalties','hr.emp_view','hr.advance','hr.reward','hr.attendance','hr.att_edit','hr.att_close'],
@@ -1482,6 +1502,13 @@ function isOwnerSession(){ return !!session && session.role==='owner'; }
    والمخزن (الصرف) ⇐ تسعير وتجهيز. أول ما صاحب المركز يحفظ صلاحيات الحساب من المحرر (estV=1)
    اللي في المحرر هو اللي بيمشي بالظبط. */
 function estImplied(st, set){
+  /* م242: الحسابات القديمة بتاخد صلاحيات التعليقات الفنية من شغلها لحد ما صاحب المركز يحفظ صلاحياتها (tcV=1):
+     أي صلاحية أوامر شغل ⇐ يشوف · تعديل/إنشاء الأمر ⇐ يكتب · إنشاء الأمر (الاستقبال) ⇐ يبعت للعميل */
+  if(st && st.tcV !== 1){
+    if([...set].some(a=>/^jobs\./.test(a))) set.add('tc.view');
+    if(set.has('jobs.edit') || set.has('jobs.create')) set.add('tc.write');
+    if(set.has('jobs.create')) set.add('tc.send');
+  }
   if(!st || st.estV === 1) return set;
   if(set.has('jobs.edit') || set.has('jobs.create')){ set.add('est.write'); set.add('est.approve'); set.add('est.request'); }
   if(set.has('inv.issue')){ set.add('est.price'); set.add('est.prepare'); }
@@ -2918,7 +2945,7 @@ function mBottomNavHTML(tabs){
   const list = picked.map(t=>[t, M_TAB_ICON234[t] || '📄', M_NAV_LBL234[t] || mTabLabel(t)]);
   const canScan = tabs.includes('inventory');
   const estN = estBadgeCount();
-  const btn = ([t, ic, lbl]) => `<button class="${currentTab === t ? 'active' : ''}" onclick="goTab('${t}')"><span class="m-nav-i">${ic}</span>${lbl}${t === 'estimates' ? `<b id="estNavCntM" class="est-cnt m-nav-b"${estN ? '' : ' style="display:none"'}>${estN || ''}</b>` : ''}${t === 'appointments' ? (()=>{ const n = apptTodayLeft(); return `<b id="apptNavCntM" class="est-cnt m-nav-b"${n ? '' : ' style="display:none"'}>${n || ''}</b>`; })() : ''}</button>`;
+  const btn = ([t, ic, lbl]) => `<button class="${currentTab === t ? 'active' : ''}" onclick="goTab('${t}')"><span class="m-nav-i">${ic}</span>${lbl}${t === 'estimates' ? `<b id="estNavCntM" class="est-cnt m-nav-b"${estN ? '' : ' style="display:none"'}>${estN || ''}</b>` : ''}${t === 'appointments' ? (()=>{ const n = apptTodayLeft(); return `<b id="apptNavCntM" class="est-cnt m-nav-b"${n ? '' : ' style="display:none"'}>${n || ''}</b>`; })() : ''}${t === 'jobs' ? (()=>{ const n = tcBadgeCount(); return `<b id="tcNavCntM" class="est-cnt m-nav-b"${n ? '' : ' style="display:none"'}>${n || ''}</b>`; })() : ''}</button>`;
   const half = Math.ceil(list.length / 2);
   return `<nav class="m-bottomnav">
     ${list.slice(0, half).map(btn).join('')}
@@ -3192,7 +3219,7 @@ function shellHTML(){
     notifications: navItem('notifications', '🔔 مركز الإشعارات'+((()=>{ const n=pendingNotifCount(); return n?' ('+n+')':''; })()), ICONS.clock),
     customers: navItem('customers','العملاء والسيارات',ICONS.users),
     custservice: navItem('custservice','🎧 خدمة العملاء'+((()=>{ const n=csUnhappyCustomers().length; return n?' ('+n+')':''; })()),ICONS.users),
-    jobs: navItem('jobs','أوامر الشغل',ICONS.wrench),
+    jobs: (()=>{ const n = tcBadgeCount(); return `<button class="nav-item ${currentTab==='jobs'?'active':''}" onclick="goTab('jobs')">${ICONS.wrench}<span>أوامر الشغل <b id="tcNavCnt" class="est-cnt" title="تعليقات فنية لسه مااتبعتتش للعميل"${n ? '' : ' style="display:none"'}>${n || ''}</b></span></button>`; })(),   /* م242 */
     estimates: estNavItemHTML(),   /* م230 */
     openjobs: navItem('openjobs','الأوامر المفتوحة',ICONS.chart),
     appointments: apptNavItemHTML(),   /* م240 */
@@ -4373,6 +4400,7 @@ function ticketCard(job){
             ? ' · استغرقت: '+durationText(job.receivedAt, job.deliveredAt)
             : (job.status!=='ملغاة' ? ' · بالمركز منذ: '+durationText(job.receivedAt) : '')}
         </div>
+        ${tcTicketChipHTML(job)}
       </div>
       <span class="tag ${STATUS_TAGCLASS[job.status]}">${job.status}</span>
     </div>
@@ -4812,7 +4840,8 @@ function jobDetailHTML(jobId){
     ${pc ? `<div class="flex-between" style="margin-top:8px"><span class="muted" style="font-size:12.5px">إجمالي تكلفة الخامات</span><span style="font-weight:800;color:var(--accent)">${money(job.internalCosts.reduce((s,ic)=>s+ic.total,0))}</span></div>` : ''}
   </div>`; })() : ''}
 
-  ${jobInternalNotesHTML(job)}
+  ${tcSectionHTML(job)}
+  ${jobOldNotesHTML(job)}
 
   ${jobExternalNotesHTML(job)}
 
@@ -4974,6 +5003,344 @@ function softDeleteInternalNote(jobId, noteId){
     await logAction('🗑️ حذف ملاحظة داخلية (آمن) على أمر الشغل #'+job.jobNo+' — كانت: "'+String(n.text).slice(0,50)+'"');
     closeModal(); openJobDetail(jobId);
   });
+}
+/* ============ م242: 🔧 التعليقات الفنية على العربية (بدل «ملاحظات الورشة الداخلية») ============
+   طلب سيف: مهندس الورشة بيرفع العربية ويلاقي شغل زيادة العميل مايعرفش عنه (مساعد ضارب زيت · تيل خلصان ·
+   طنابير محتاجة خراطة) ⇐ بيكتب تعليق فني من التابلت أو الموبايل أو الكمبيوتر ويصوّره ⇐ التعليق بيظهر لكل
+   الأقسام اللي معاها الصلاحية ⇐ الاستقبال بيتنبّه ⇐ يبعت التعليقات للعميل واتساب (برقم أمر الشغل وبلينكات الصور)
+   أو يطبعها لو العميل موجود. الموافقة والمقايسة/طلب الصرف بعدها بيتعملوا بالإيد (قرار سيف).
+   • الصور في «مخزن الملفات» بتاع Supabase (bucket: job-photos) — مش جوه القاعدة: القاعدة بتشيل لينك صغير بس.
+     كل صورة بتتصغّر قبل الرفع (1280 بكسل · JPEG ≈ 150–250 كيلو) واسمها عشوائي طويل (قرار سيف: لينك بيفتح علطول).
+   • الصلاحيات: tc.view (يشوف) · tc.write (يكتب ويصوّر) · tc.send (يبعت للعميل ويطبع).
+     اللي كتب التعليق بيعدّله ويحذفه — وصاحب المركز يعدّل ويحذف أي تعليق. الحذف آمن (بيتسجل ومابيتمسحش). */
+const TC_BUCKET = 'job-photos';
+const TC_MAX_PHOTOS = 6;
+var _tcEd = null;   // { jobId, id, text, photos:[{ url, path } | { blob, preview }] }
+function canTcView(){ return can('tc.view'); }
+function canTcWrite(){ return can('tc.write'); }
+function canTcSend(){ return can('tc.send'); }
+function tcLive(job){ return ((job && job.techComments) || []).filter(c=>c && !c.deleted); }
+function tcUnsent(job){ return tcLive(job).filter(c=>!c.sentAt); }
+function tcCanEdit(c){ return !!c && (isOwnerSession() || (canTcWrite() && c.by === noteAuthorKey())); }
+function tcRand(){
+  try{ const a = new Uint8Array(12); crypto.getRandomValues(a); return [...a].map(x=>x.toString(16).padStart(2, '0')).join(''); }
+  catch(e){ return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + Date.now().toString(36); }
+}
+/* الصورة بتتصغّر على الجهاز قبل الرفع — صورة التابلت 3–4 ميجا بتبقى ≈ 200 كيلو */
+function tcCompress(file){
+  return new Promise((resolve, reject)=>{
+    if(!file || (file.type && !/^image\//.test(file.type))) return reject(new Error('not image'));
+    const src = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const k = Math.min(1, 1280 / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+        const w = Math.max(1, Math.round((img.naturalWidth || 1) * k)), h = Math.max(1, Math.round((img.naturalHeight || 1) * k));
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        cv.toBlob(b=>{ URL.revokeObjectURL(src); if(!b) return reject(new Error('blob')); resolve({ blob:b, preview:URL.createObjectURL(b) }); }, 'image/jpeg', 0.72);
+      }catch(e){ URL.revokeObjectURL(src); reject(e); }
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(src); reject(new Error('decode')); };
+    img.src = src;
+  });
+}
+function tcUploadErrText(err){
+  const m = String((err && (err.message || err.error)) || err || '');
+  if(/bucket|not found|row-level security|policy|unauthori|403|404/i.test(m))
+    return isOwnerSession() ? 'مكان الصور لسه ماتعملش في Supabase — نفّذ ملف db/تحديث-م242-صور-التعليقات-الفنية.sql مرة واحدة (SQL Editor ← Run)' : 'مكان الصور لسه ماتجهزش على السيرفر — كلّم صاحب المركز';
+  if(/fetch|network|timeout|aborted|offline/i.test(m)) return 'النت فاصل — الصورة مارفعتش، جرّب تاني';
+  return 'الصورة مارفعتش (' + m.slice(0, 80) + ') — جرّب تاني';
+}
+async function tcUpload(jobId, cid, blob){
+  if(!sb || !sb.storage || typeof sb.storage.from !== 'function') throw new Error('bucket not found');
+  const path = jobId + '/' + cid + '_' + tcRand() + '.jpg';
+  const { error } = await sb.storage.from(TC_BUCKET).upload(path, blob, { contentType:'image/jpeg', cacheControl:'31536000', upsert:false });
+  if(error) throw error;
+  const r = sb.storage.from(TC_BUCKET).getPublicUrl(path);
+  const url = r && r.data && r.data.publicUrl;
+  if(!url) throw new Error('no url');
+  return { path, url };
+}
+
+/* ---------- جوه أمر الشغل ---------- */
+function tcSectionHTML(job){
+  if(!canTcView()) return '';
+  const list = tcLive(job).slice().sort((a, b)=>String(a.at).localeCompare(String(b.at)));
+  const open = job.status !== 'ملغاة' && !isJobClosed(job), unsent = tcUnsent(job).length;
+  return `<div class="card tc-box">
+    <div class="flex-between" style="gap:8px;flex-wrap:wrap">
+      <label class="f-label" style="margin:0;color:var(--accent-2)">🔧 التعليقات الفنية على العربية (${list.length})${unsent && list.length ? ` <span class="est-cnt">${unsent} لسه مااتبعتش للعميل</span>` : ''}</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${open && canTcWrite() ? `<button class="btn btn-sm btn-accent" onclick="openTcModal('${job.id}')">➕ تعليق فني</button>` : ''}
+        ${list.length && canTcSend() ? `<button class="btn btn-sm" onclick="tcSendWhatsApp('${job.id}')">📱 ابعت للعميل واتساب</button><button class="btn btn-sm" onclick="tcPrint('${job.id}')">🖨 طباعة</button>` : ''}
+      </div>
+    </div>
+    <div class="muted" style="font-size:11.5px;margin:4px 0 6px">الشغل الزيادة اللي الورشة لقيته في العربية والعميل لسه مايعرفش عنه — بالكلام والصور.</div>
+    ${list.length ? list.map((c, i)=>tcItemHTML(job, c, i)).join('') : `<div class="muted" style="font-size:12.5px">مفيش تعليقات فنية لسه${open && canTcWrite() ? ' — لو لقيت حاجة في العربية دوس «➕ تعليق فني» واكتبها وصوّرها' : ''}</div>`}
+  </div>`;
+}
+function tcItemHTML(job, c, i){
+  return `<div class="tc-it">
+    <div class="flex-between" style="gap:6px;flex-wrap:wrap">
+      <span style="font-weight:800;font-size:12.5px">${i + 1}) ${escNote(c.byName || '—')} <span class="muted" style="font-weight:400">· ${escNote(c.dept || '')} · ${fmtDateTime(c.at)}${c.editedAt ? ' · ✎ اتعدّل' : ''}</span></span>
+      <span style="font-size:11.5px">${c.sentAt ? `<span style="color:var(--success)">📱 اتبعت للعميل ${fmtDateTime(c.sentAt)}</span>` : '<span class="muted">⏳ لسه مااتبعتش للعميل</span>'}</span>
+    </div>
+    ${c.text ? `<div style="font-size:13.5px;white-space:pre-wrap;margin-top:4px">${escNote(c.text)}</div>` : ''}
+    ${(c.photos || []).length ? `<div class="tc-phs">${c.photos.map(p=>`<img class="tc-ph" src="${escAttr(p.url)}" loading="lazy" alt="صورة" onclick="event.stopPropagation();tcViewPhoto('${escAttr(p.url)}')">`).join('')}</div>` : ''}
+    ${tcCanEdit(c) ? `<div style="display:flex;gap:6px;margin-top:6px"><button class="btn btn-sm" onclick="openTcModal('${job.id}','${c.id}')">✏️ تعديل</button><button class="btn btn-sm btn-danger" onclick="tcDelete('${job.id}','${c.id}')">🗑 حذف</button></div>` : ''}
+  </div>`;
+}
+/* الصورة بحجمها — طبقة فوق النافذة (مابتقفلش أمر الشغل) */
+function tcViewPhoto(url){
+  let el = document.getElementById('tcPhotoView');
+  if(el) el.remove();
+  el = document.createElement('div'); el.id = 'tcPhotoView'; el.className = 'tc-view';
+  el.onclick = ()=>el.remove();
+  el.innerHTML = `<img src="${escAttr(url)}" alt="صورة"><div class="tc-view-x">✕ اقفل</div>`;
+  document.body.appendChild(el);
+}
+/* ملاحظات الورشة الداخلية القديمة (قبل م242) — بتفضل ظاهرة للقراية بس عشان مايضيعش حاجة */
+function jobOldNotesHTML(job){
+  const notes = liveInternalNotes(job);
+  if(!notes.length) return '';
+  return `<details class="card" style="margin-bottom:10px;padding:8px 12px"><summary class="muted" style="cursor:pointer;font-size:12.5px">📝 ملاحظات الورشة القديمة (${notes.length}) — للقراية بس</summary>
+    ${notes.map(n=>`<div style="font-size:12.5px;margin-top:6px"><b>${escNote(n.byName || '—')}</b> <span class="muted">· ${escNote(n.dept || '—')} · ${fmtDateTime(n.date)}</span><div style="white-space:pre-wrap">${escNote(n.text)}</div></div>`).join('')}
+  </details>`;
+}
+/* علامة على كارت أمر الشغل في القايمة */
+function tcTicketChipHTML(job){
+  if(!canTcView()) return '';
+  const n = tcLive(job).length;
+  if(!n) return '';
+  const u = tcUnsent(job).length;
+  return `<div class="ticket-car" style="margin-top:3px;font-weight:800;color:${u ? 'var(--danger)' : 'var(--accent)'}">🔧 ${n} تعليق فني${u ? ' — ' + u + ' لسه مااتبعتش للعميل' : ' — اتبعت للعميل'}</div>`;
+}
+
+/* ---------- كتابة / تعديل التعليق ---------- */
+function openTcModal(jobId, cid){
+  if(!canTcWrite() && !isOwnerSession()){ toast('مالكش صلاحية «كتابة تعليق فني» — كلّم صاحب المركز', true); return; }
+  const job = DB.jobs.find(j=>j.id === jobId);
+  if(!job) return;
+  const c = cid ? (job.techComments || []).find(x=>x.id === cid && !x.deleted) : null;
+  if(cid && !tcCanEdit(c)){ toast('التعليق ده بيعدّله اللي كتبه أو صاحب المركز بس', true); return; }
+  if(!c && (job.status === 'ملغاة' || isJobClosed(job))){ toast('أمر الشغل ده اتقفل — مينفعش تعليق فني جديد عليه', true); return; }
+  const car = DB.cars.find(x=>x.id === job.carId) || {};
+  _tcEd = { jobId, id:c ? c.id : null, photos:c ? (c.photos || []).map(p=>Object.assign({}, p)) : [] };
+  openModal(`<h3>${c ? '✏️ تعديل تعليق فني' : '🔧 تعليق فني جديد'} — أمر شغل #${escNote(job.jobNo)}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:8px">🚗 ${escNote(carLabel(car) || '')} — ${escNote(car.plate || '')}</div>
+    <div class="form-row"><label class="f-label">التعليق</label><textarea class="f" id="tcText" rows="3" placeholder="مثال: المساعد الأمامي اليمين ضارب زيت ومحتاج يتغيّر">${escNote(c ? c.text || '' : '')}</textarea></div>
+    <div class="f-label">📷 الصور (لحد ${TC_MAX_PHOTOS})</div>
+    <div id="tcPhotos">${tcPhotosHTML()}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px">
+      <label class="btn" style="cursor:pointer">📷 صوّر<input type="file" accept="image/*" capture="environment" style="display:none" onchange="tcPickFiles(this)"></label>
+      <label class="btn" style="cursor:pointer">🖼 من المعرض<input type="file" accept="image/*" multiple style="display:none" onchange="tcPickFiles(this)"></label>
+    </div>
+    <button class="btn btn-accent" id="tcSaveBtn" style="width:100%" onclick="saveTechComment()">${c ? '💾 حفظ التعديل' : '💾 حفظ التعليق'}</button>`, true);
+}
+function tcPhotosHTML(){
+  if(!_tcEd || !_tcEd.photos.length) return '<div class="muted" style="font-size:12px">مفيش صور — صوّر المشكلة عشان العميل يشوفها بعينه</div>';
+  return `<div class="tc-phs">${_tcEd.photos.map((p, i)=>`<div class="tc-ph-w"><img class="tc-ph" src="${escAttr(p.preview || p.url)}" alt="صورة"><button class="tc-ph-x" title="شيل الصورة" onclick="tcRemovePhoto(${i})">✕</button></div>`).join('')}</div>`;
+}
+function tcPhotosRedraw(){ const el = document.getElementById('tcPhotos'); if(el) el.innerHTML = tcPhotosHTML(); }
+async function tcPickFiles(input){
+  if(!_tcEd) return;
+  const files = [...((input && input.files) || [])];
+  if(input) input.value = '';
+  for(const f of files){
+    if(_tcEd.photos.length >= TC_MAX_PHOTOS){ toast('أقصى حاجة ' + TC_MAX_PHOTOS + ' صور للتعليق الواحد — اعمل تعليق تاني للباقي', true); break; }
+    try{ _tcEd.photos.push(await tcCompress(f)); tcPhotosRedraw(); }
+    catch(e){ toast('الصورة دي مااتقرتش — جرّب صورة تانية', true); }
+  }
+}
+function tcRemovePhoto(i){ if(_tcEd){ _tcEd.photos.splice(i, 1); tcPhotosRedraw(); } }
+async function saveTechComment(){
+  if(!_tcEd) return;
+  if(!canTcWrite() && !isOwnerSession()){ toast('مالكش صلاحية «كتابة تعليق فني»', true); return; }
+  const ed = _tcEd;
+  const job = DB.jobs.find(j=>j.id === ed.jobId);
+  if(!job){ toast('أمر الشغل ده مش موجود — اعمل تحديث للبيانات', true); return; }
+  const text = String(((document.getElementById('tcText') || {}).value) || '').trim();
+  if(!text && !ed.photos.length){ toast('اكتب التعليق أو صوّر المشكلة الأول', true); return; }
+  const old = ed.id ? (job.techComments || []).find(x=>x.id === ed.id && !x.deleted) : null;
+  if(ed.id && !tcCanEdit(old)){ toast('التعليق ده اتحذف أو مالكش صلاحية تعدّله', true); return; }
+  const cid = ed.id || uid('tc');
+  /* الصور الجديدة بتترفع الأول — لو صورة مارفعتش، التعليق مابيتحفظش (عشان مايتبعتش للعميل ناقص) */
+  const photos = [], fresh = ed.photos.filter(p=>p.blob);
+  const btn = document.getElementById('tcSaveBtn');
+  try{
+    let k = 0;
+    for(const p of ed.photos){
+      if(!p.blob){ photos.push({ url:p.url, path:p.path }); continue; }
+      k++;
+      if(btn){ btn.disabled = true; btn.textContent = '⏳ بيرفع الصورة ' + k + ' من ' + fresh.length + '…'; }
+      photos.push(await tcUpload(job.id, cid, p.blob));
+    }
+  }catch(err){
+    if(btn){ btn.disabled = false; btn.textContent = old ? '💾 حفظ التعديل' : '💾 حفظ التعليق'; }
+    toast(tcUploadErrText(err), true);
+    return;
+  }
+  const now = new Date().toISOString();
+  const j2 = DB.jobs.find(j=>j.id === ed.jobId) || job;   // بعد الرفع — نسخة الذاكرة الحالية
+  j2.techComments = j2.techComments || [];
+  if(old){
+    const c = j2.techComments.find(x=>x.id === ed.id) || old;
+    Object.assign(c, { text, photos, editedAt:now, editedBy:actorName() });
+  } else {
+    j2.techComments.push({ id:cid, text, photos, by:noteAuthorKey(), byName:(session.staffName || ROLE_LABEL[session.role] || '—'), dept:ROLE_LABEL[session.role] || session.role, at:now });
+  }
+  await saveKey('jobs', DB.jobs);
+  await logAction((old ? '✏️ تعديل تعليق فني' : '🔧 تعليق فني جديد') + ' على أمر الشغل #' + j2.jobNo + ': ' + text.slice(0, 80) + (photos.length ? ' (' + photos.length + ' صورة)' : ''));
+  _tcEd = null;
+  closeModal();
+  toast(old ? '✅ اتعدّل التعليق' : '✅ اتحفظ التعليق الفني — الاستقبال اتبلّغ');
+  tcPaintBadges();
+  openJobDetail(j2.id);
+}
+function tcDelete(jobId, cid){
+  if(!canTcWrite() && !isOwnerSession()){ toast('مالكش صلاحية «كتابة تعليق فني»', true); return; }
+  const job = DB.jobs.find(j=>j.id === jobId);
+  const c = job && (job.techComments || []).find(x=>x.id === cid && !x.deleted);
+  if(!tcCanEdit(c)){ toast('التعليق ده بيحذفه اللي كتبه أو صاحب المركز بس', true); return; }
+  askConfirm('حذف التعليق الفني ده؟<br><span class="muted" style="font-size:12px">«' + escNote(String(c.text || '').slice(0, 80)) + '» — هيتشال من أمر الشغل وبيفضل متسجل في سجل العمليات.</span>', async ()=>{
+    const j = DB.jobs.find(x=>x.id === jobId);
+    const r = j && (j.techComments || []).find(x=>x.id === cid && !x.deleted);
+    if(!tcCanEdit(r)) return;
+    r.deleted = true; r.deletedAt = new Date().toISOString(); r.deletedBy = actorName();
+    await saveKey('jobs', DB.jobs);
+    await logAction('🗑 حذف تعليق فني من أمر الشغل #' + j.jobNo + ' — كان: «' + String(r.text || '').slice(0, 80) + '»' + ((r.photos || []).length ? ' (' + r.photos.length + ' صورة)' : ''));
+    toast('اتحذف التعليق'); tcPaintBadges(); openJobDetail(jobId);
+  });
+}
+
+/* ---------- 📱 للعميل واتساب (برقم أمر الشغل) ---------- */
+function tcWaMsg(job){
+  const car = DB.cars.find(x=>x.id === job.carId) || {}, cust = DB.customers.find(x=>x.id === job.customerId) || {};
+  const center = (DB.settings && DB.settings.centerName) || 'Masters Auto Service', tel = (DB.settings && DB.settings.phone) || '';
+  const list = tcLive(job).slice().sort((a, b)=>String(a.at).localeCompare(String(b.at)));
+  return (new Date().getHours() < 12 ? 'صباح الخير' : 'مساء الخير') + ' يا ' + (cust.name || '') + ' 🌟\n'
+    + 'مع حضرتك ' + center + ' بخصوص عربيتك ' + [carLabel(car), car.plate].filter(Boolean).join(' — ') + ' — أمر شغل رقم #' + job.jobNo + '.\n'
+    + 'مهندس الورشة لاحظ الحاجات دي في العربية:\n\n'
+    + list.map((c, i)=>(i + 1) + ') ' + (c.text || 'صورة') + (c.photos || []).map(p=>'\n📷 ' + p.url).join('')).join('\n\n')
+    + '\n\nياريت تردّ علينا بالبنود اللي حضرتك موافق عليها عشان نبدأ فيها' + (tel ? '، ولو عندك أي سؤال كلّمنا على ' + tel : '') + '.\nشكراً لحضرتك 🚗';
+}
+async function tcSendWhatsApp(jobId){
+  if(!canTcSend()){ toast('مالكش صلاحية «إرسال التعليقات الفنية للعميل»', true); return; }
+  const job = DB.jobs.find(j=>j.id === jobId);
+  if(!job || !tcLive(job).length) return;
+  const cust = DB.customers.find(x=>x.id === job.customerId) || {};
+  let ph = String(cust.phone || '').replace(/\D/g, '');
+  if(ph.startsWith('00')) ph = ph.slice(2);
+  if(ph.startsWith('0')) ph = '2' + ph;
+  if(ph.length < 11){ toast('العميل مالوش رقم موبايل صحيح — سجّله في بيانات العميل الأول', true); return; }
+  /* الفتح لازم يحصل مع الدوسة نفسها قبل أي انتظار وإلا المتصفح بيمنعه */
+  const a = document.createElement('a');
+  a.href = 'https://wa.me/' + ph + '?text=' + encodeURIComponent(tcWaMsg(job)); a.target = '_blank'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+  const now = new Date().toISOString(), by = actorName();
+  tcLive(job).forEach(c=>{ if(!c.sentAt){ c.sentAt = now; c.sentBy = by; } });
+  await saveKey('jobs', DB.jobs);
+  logAction('📱 إرسال التعليقات الفنية للعميل واتساب — أمر الشغل #' + job.jobNo + ' (' + tcLive(job).length + ' تعليق) — ' + (cust.name || '')).catch(()=>{});
+  tcPaintBadges();
+  openJobDetail(jobId);
+}
+
+/* ---------- 🖨 ورقة التعليقات الفنية (لو العميل موجود) ---------- */
+function tcPrintHTML(job){
+  const car = DB.cars.find(x=>x.id === job.carId) || {}, cust = DB.customers.find(x=>x.id === job.customerId) || {};
+  const list = tcLive(job).slice().sort((a, b)=>String(a.at).localeCompare(String(b.at)));
+  return `<style>${brandedInvoiceCSS()} .tcp td,.tcp th{font-size:12.5px;padding:7px;vertical-align:top} .tcp img{width:130px;height:98px;object-fit:cover;border-radius:6px;margin:2px;border:1px solid #ccc} .tcp .bx{white-space:nowrap;font-size:13px;line-height:2.2}</style>
+  <div class="binv">
+    <div class="binv-head"><div><p class="binv-title">التعليقات الفنية على العربية</p>
+      <div style="font-size:13px;color:#555">${escNote((DB.settings && DB.settings.centerName) || '')} — أمر شغل #${escNote(job.jobNo)} — ${fmtDate(new Date().toISOString())}</div></div>
+      <img src="${LOGO}" alt="logo"></div>
+    <table class="binv-info"><tr><td class="k">العميل</td><td class="v">${escNote(cust.name || '—')}</td><td class="k">الموبايل</td><td class="v">${escNote(cust.phone || '—')}</td></tr>
+      <tr><td class="k">العربية</td><td class="v">${escNote(carLabel(car) || '—')}</td><td class="k">اللوحة</td><td class="v">${escNote(car.plate || '—')}${job.odometer ? ' · العداد ' + escNote(job.odometer) + ' كم' : ''}</td></tr></table>
+    <p style="font-size:13px;margin:10px 0">الحاجات دي لاحظها مهندس الورشة في العربية — علّم قدام كل بند بموافقتك:</p>
+    <table class="tcp"><thead><tr><th style="width:4%">#</th><th>التعليق</th><th style="width:34%">الصور</th><th style="width:16%">رأي العميل</th></tr></thead><tbody>
+      ${list.map((c, i)=>`<tr><td>${i + 1}</td><td style="white-space:pre-wrap">${escNote(c.text || '—')}<div style="font-size:10.5px;color:#777;margin-top:4px">${escNote(c.byName || '')} · ${fmtDateTime(c.at)}</div></td>
+        <td>${(c.photos || []).map(p=>`<img src="${escAttr(p.url)}" alt="">`).join('') || '—'}</td><td class="bx">☐ موافق<br>☐ مش موافق</td></tr>`).join('')}
+    </tbody></table>
+    <div style="display:flex;justify-content:space-between;margin-top:36px;font-size:13px">
+      <div>توقيع العميل: ..............................</div><div>التاريخ: ..../..../........</div><div>الاستقبال: ..............................</div>
+    </div>
+  </div>`;
+}
+function tcPrint(jobId){
+  if(!canTcSend()){ toast('مالكش صلاحية «طباعة التعليقات الفنية»', true); return; }
+  const job = DB.jobs.find(j=>j.id === jobId);
+  if(!job || !tcLive(job).length) return;
+  /* الصور لازم تحمّل الأول وإلا بتطلع فاضية في الورقة */
+  let area = document.getElementById('printArea');
+  if(!area){ area = document.createElement('div'); area.id = 'printArea'; document.body.appendChild(area); }
+  area.innerHTML = tcPrintHTML(job) + printStampHTML();
+  const imgs = (typeof area.querySelectorAll === 'function') ? [...area.querySelectorAll('img')] : [];
+  let done = false;
+  const go = ()=>{ if(done) return; done = true; try{ window.print(); }catch(e){ toast('الطباعة المباشرة متقفلة هنا', true); } };
+  let left = imgs.filter(im=>!im.complete).length;
+  if(!left) setTimeout(go, 150);
+  else { imgs.forEach(im=>{ if(!im.complete){ im.onload = im.onerror = ()=>{ if(--left <= 0) setTimeout(go, 100); }; } }); setTimeout(go, 8000); }
+  logAction('🖨 طباعة التعليقات الفنية — أمر الشغل #' + job.jobNo).catch(()=>{});
+}
+
+/* ---------- 🔔 الاستقبال بيتنبّه بالتعليق الجديد (زي تنبيهات المقايسة) ---------- */
+function tcSeenKey(){ return 'tcSeen242:' + estMyId(); }
+function tcSeenGet(){ try{ const v = JSON.parse(localStorage.getItem(tcSeenKey()) || 'null'); return v && typeof v === 'object' ? v : null; }catch(e){ return null; } }
+function tcSeenSave(m){ try{ localStorage.setItem(tcSeenKey(), JSON.stringify(m)); }catch(e){} }
+function tcPending(){
+  /* اللي محتاج يتبعت للعميل: تعليقات على أوامر لسه مفتوحة ومااتبعتتش */
+  const out = [];
+  DB.jobs.forEach(j=>{ if(j.techComments && j.techComments.length && j.status !== 'ملغاة' && !isJobClosed(j)) tcUnsent(j).forEach(c=>out.push({ job:j, c })); });   // الأوامر اللي عليها تعليقات بس (أسرع)
+  return out;
+}
+function tcBadgeCount(){ return (session && canTcSend() && !isOwnerSession()) ? tcPending().length : 0; }
+function tcPaintBadges(){
+  try{
+    const n = tcBadgeCount();
+    ['tcNavCnt', 'tcNavCntM'].forEach(id=>{ const el = document.getElementById(id); if(el){ el.textContent = n ? String(n) : ''; if(el.style) el.style.display = n ? '' : 'none'; } });
+  }catch(e){}
+}
+function tcInboxCheck(){
+  try{
+    tcPaintBadges();
+    if(!session || !loaded || !canTcSend() || isOwnerSession()) return;
+    const me = noteAuthorKey(), pend = tcPending();
+    let seen = tcSeenGet();
+    if(!seen){ seen = {}; pend.forEach(x=>{ seen[x.c.id] = 1; }); tcSeenSave(seen); return; }   // أول مرة على الجهاز ⇐ القديم مايطلعش كتنبيه
+    const fresh = pend.filter(x=>!seen[x.c.id] && x.c.by !== me);
+    if(!fresh.length) return;
+    const keep = {};
+    pend.forEach(x=>{ keep[x.c.id] = 1; });
+    tcSeenSave(keep);
+    tcShowAlert(fresh);
+  }catch(err){ console.error('tcInbox', err); }
+}
+function tcShowAlert(fresh){
+  let el = document.getElementById('tcAlert');
+  if(!el){ el = document.createElement('div'); el.id = 'tcAlert'; el.className = 'est-alert'; document.body.appendChild(el); }
+  const jobs = [...new Map(fresh.map(x=>[x.job.id, x.job])).values()];
+  el.innerHTML = `<div class="est-alert-card">
+    <div class="est-alert-h">🔔 🔧 ${fresh.length > 1 ? fresh.length + ' تعليقات فنية جديدة من الورشة' : 'تعليق فني جديد من الورشة'}</div>
+    ${jobs.slice(0, 5).map(j=>{
+      const car = DB.cars.find(x=>x.id === j.carId) || {}, its = fresh.filter(x=>x.job.id === j.id);
+      return `<div class="est-alert-it">أمر شغل <b>#${escNote(j.jobNo)}</b> — ${escNote(carLabel(car) || '')} — <b>${escNote(car.plate || '')}</b>
+        ${its.slice(0, 3).map(x=>`<div style="margin-top:4px">• ${escNote(String(x.c.text || 'صورة').slice(0, 90))}${(x.c.photos || []).length ? ' 📷' + x.c.photos.length : ''} <span class="muted">— ${escNote(x.c.byName || '')}</span></div>`).join('')}
+        <div style="margin-top:6px"><button class="btn btn-sm btn-accent" onclick="tcAlertOpen('${j.id}')">افتح أمر الشغل</button></div></div>`;
+    }).join('')}
+    <div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="flex:1" onclick="tcAlertClose()">بعدين</button></div>
+    <div class="muted" style="font-size:11px;margin-top:8px">العداد الأحمر جنب «أوامر الشغل» بيفضل لحد ما التعليقات تتبعت للعميل</div>
+  </div>`;
+  estChime();
+}
+function tcAlertClose(){ const el = document.getElementById('tcAlert'); if(el) el.remove(); }
+function tcAlertOpen(jobId){
+  tcAlertClose();
+  if(document.getElementById('modalOverlay')){
+    if(document.getElementById('tcText') || document.getElementById('estEd')){ toast('عندك نافذة مفتوحة — احفظها أو اقفلها الأول، والتعليق مستنيك في أمر الشغل', true); return; }
+    closeModal();
+  }
+  openJobDetail(jobId);
 }
 /* الملاحظة 40: الموظف المسؤول عن أمر الشغل — بحث ذكي في كل موظفي المركز (مش الفنيين بس) */
 function jdRespFilter(jobId, val){
@@ -5831,6 +6198,7 @@ function estPaintBadges(n){
 let _estInboxT = null;
 function estInboxSoon(){ clearTimeout(_estInboxT); _estInboxT = setTimeout(estInboxCheck, 300); }
 function estInboxCheck(){
+  try{ tcInboxCheck(); }catch(e){}   /* م242 */
   try{ estEdLiveSync(); }catch(e){}   /* م237 */
   try{
     if(!session || !loaded || !estTableOk() || !estAnyPerm()){ estAlertClose(); estPaintBadges(0); return; }
@@ -11191,11 +11559,12 @@ function workOrderReportHTML(jobId, opts){
   </div>`:''}
   ${liveInternalNotes(job).length ? `
   <div class="card" style="margin-top:12px;border-right:3px solid var(--accent-2)">
-    <label class="f-label" style="color:var(--accent-2)">📝 ملاحظات الورشة الداخلية (عرض داخلي فقط)</label>
+    <label class="f-label" style="color:var(--accent-2)">📝 ملاحظات الورشة القديمة (عرض داخلي فقط)</label>
     <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
       ${liveInternalNotes(job).map(n=>`<div style="font-size:12.5px"><b>${n.byName||'—'}</b> <span class="muted">· ${n.dept||'—'} · ${fmtDateTime(n.date)}</span><div style="white-space:pre-wrap">${n.text}</div></div>`).join('')}
     </div>
   </div>`:''}
+  ${canTcView() && tcLive(job).length ? `<div style="margin-top:12px">${tcSectionHTML(job)}</div>` : ''}
   `;
   }
   return `
@@ -11264,11 +11633,12 @@ function workOrderReportHTML(jobId, opts){
   </div>`:''}
   ${liveInternalNotes(job).length ? `
   <div class="card" style="margin-top:12px;border-right:3px solid var(--accent-2)">
-    <label class="f-label" style="color:var(--accent-2)">📝 ملاحظات الورشة الداخلية (عرض داخلي فقط — لا تظهر للعميل)</label>
+    <label class="f-label" style="color:var(--accent-2)">📝 ملاحظات الورشة القديمة (عرض داخلي فقط — لا تظهر للعميل)</label>
     <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
       ${liveInternalNotes(job).map(n=>`<div style="font-size:12.5px"><b>${n.byName||'—'}</b> <span class="muted">· ${n.dept||'—'} · ${fmtDateTime(n.date)}</span><div style="white-space:pre-wrap">${n.text}</div></div>`).join('')}
     </div>
   </div>`:''}
+  ${canTcView() && tcLive(job).length ? `<div style="margin-top:12px">${tcSectionHTML(job)}</div>` : ''}
   <button class="btn" style="width:100%;margin-top:16px" onclick="printJobTicket('${job.id}')">🖨 طباعة صورة من أمر الشغل</button>
   `;
 }
@@ -27664,7 +28034,7 @@ async function saveNewStaff(){
   const emp = DB.employees.find(e=>e.name===name && e.status==='نشط');
   DB.staff.push({ id:uid('st'), name, username, password: await hashSecret(password),   // مشفّرة من الأساس (م67)
     dept, role: dept, template, employeeId: emp?emp.id:null,
-    screens: perms.screens, actions: perms.actions, permsV: 2, estV: 1,
+    screens: perms.screens, actions: perms.actions, permsV: 2, estV: 1, tcV: 1,
     active:true, createdAt:new Date().toISOString() });
   await saveKey('staff', DB.staff);
   await logAction('إنشاء مستخدم: '+name+' — القسم: '+(ROLE_LABEL[dept]||dept)+(tpl?' — القالب: '+tpl.label:'')+' — '+perms.screens.length+' شاشة و'+perms.actions.length+' إجراء');
@@ -27787,6 +28157,7 @@ async function savePerms(staffId){
   st.screens = screens; st.actions = actions;
   st.permsV = 2;   // صلاحيات صريحة ومستقلة — مفيش توسعة توافق بعد كده
   st.estV = 1;      // م230: صلاحيات المقايسات بقت صريحة من المحرر
+  st.tcV = 1;       // م242: وصلاحيات التعليقات الفنية كمان
   if(tplSel) st.template = tplSel;
   st.dept = dept; st.role = dept;
   await saveKey('staff', DB.staff);
@@ -28027,7 +28398,7 @@ function setBusy(on){
   const opNames = ['saveNewCustomer','saveNewCar','saveNewJob','saveServiceRow','saveEditJobItem','saveExtItem',
     'createInvoiceFromJob','savePayment','saveExpense','saveNewPart','saveEditItem','saveCostReval','saveEditCar','saveStockIn','saveStockOut',
     'savePaintOut','saveExtOutFromStock','saveNewSupplier','saveSupplierPayment','saveSupplierReturn','savePurchaseInvoice',
-    'saveCustomerReturn','saveStockAdjustment','saveScrap','saveTransfer','saveNewWarehouse','saveNewAppointment','apptArrived','apptUndoArrive',
+    'saveCustomerReturn','saveStockAdjustment','saveScrap','saveTransfer','saveNewWarehouse','saveNewAppointment','apptArrived','apptUndoArrive','saveTechComment',
     'saveCannedService','saveCountProgress','submitCountForApproval','confirmCancelJob','saveInvoiceInfo','saveTaxWa','savePins','saveCenterName','saveNewStaff','toggleStaff','saveStaffPass','savePerms','saveFinAccount','saveOpeningBalance','saveFinTransfer','saveExternalDeposit','saveCustodySettle','saveExpenseCat',
     'saveNewEmployee','saveEmployeeEdit','saveLeaveRequest','saveAbsence','saveAdvance','saveExpAdvance','savePenalty','savePermit',
     'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveWorkingDays',
