@@ -1155,7 +1155,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v265';
+const APP_VERSION = 'v266';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -6030,20 +6030,21 @@ function partsRequestHTML(job, r){
   const odo = job ? jobOdometer(job, car) : '';
   const fld = (ar, en, v)=> `<div class="es-f"><div class="es-fl"><b>${ar}</b><small>${en}</small></div><div class="es-fv">${_joEsc(v || '')}</div></div>`;
   const rows = estPrepRows(r), g = estPrepProg(r);
-  const srcL = { stock:'من المخزن', outside:'مورد' };
+  /* م245 (سيف): «المصدر» (من المخزن / مورد) مايبانش في الورقة — طباعة أو تحميل.
+     بيفضل في شاشة التجهيز عند المخزن ومتسجل في الطلب زي ما هو. */
   const nR = Math.max(10, rows.length);
   const box = '<span class="es-ckb"></span>';
   const body = Array.from({length:nR}, (_, i)=>{
     const p = rows[i];
-    if(!p) return `<div class="es-r es-rq"><div>${i+1}</div><div></div><div></div><div></div><div class="es-ck">${box}</div><div class="es-ck">${box}</div><div></div></div>`;
+    if(!p) return `<div class="es-r es-rq"><div>${i+1}</div><div></div><div></div><div class="es-ck">${box}</div><div class="es-ck">${box}</div><div></div></div>`;
     const na = p.src === 'na', rd = !!p.ready && !na;
     return `<div class="es-r es-fill es-rq"><div>${i+1}</div><div>${_joEsc(p.name)}${p.note ? ' — <span style="font-weight:400">' + _joEsc(p.note) + '</span>' : ''}</div>
-      <div>${_joEsc(estFmtP(p.qty))}</div><div>${na ? '' : _joEsc(srcL[p.src] || '')}</div>
+      <div>${_joEsc(estFmtP(p.qty))}</div>
       <div class="es-ck">${rd ? '✓' : (na ? '' : box)}</div><div class="es-ck">${na ? '✗' : (rd ? '' : box)}</div><div>${_joEsc(p.wnote || '')}</div></div>`;
   }).join('');
   const prog = ['ready','done'].includes(r.status) || g.ok || g.na;
   return `<style>${estimateCSS()}
-    .es-rq{grid-template-columns:24px minmax(0,1fr) 46px 84px 58px 64px minmax(0,.8fr)}
+    .es-rq{grid-template-columns:24px minmax(0,1fr) 46px 58px 64px minmax(0,.8fr)}
     .es-ck{text-align:center;font-size:15px;font-weight:900}
     .es-ckb{display:inline-block;width:13px;height:13px;border:1.4px solid #111;border-radius:2px;vertical-align:middle}
     .es-info{font-size:11.5px;padding:5px 9px;line-height:1.7}
@@ -6073,7 +6074,7 @@ function partsRequestHTML(job, r){
     </div></div>
     <div class="es-box">
       <div class="es-h">قطع الغيار المطلوبة <small>SPARE PARTS</small></div>
-      <div class="es-r es-rq es-th"><div>م</div><div>الصنف · Item Description</div><div>الكمية</div><div>المصدر</div><div>✓ اتجهزت</div><div>✗ مش متوفرة</div><div>ملاحظة المخزن</div></div>
+      <div class="es-r es-rq es-th"><div>م</div><div>الصنف · Item Description</div><div>الكمية</div><div>✓ اتجهزت</div><div>✗ مش متوفرة</div><div>ملاحظة المخزن</div></div>
       ${body}
       <div class="es-sum" style="grid-template-columns:1fr 210px"><div>عدد القطع: ${g.n}</div><div>${prog ? 'اتجهز ' + g.ok + ' · مش متوفر ' + g.na : 'اتجهز ____ · مش متوفر ____'}</div></div>
     </div>
