@@ -228,7 +228,10 @@ tr:hover td{background:var(--surface-2);}
 .est-lw{grid-template-columns:20px minmax(0,1fr) 86px 36px}
 .est-lr{grid-template-columns:20px minmax(0,1fr) 70px 68px 30px}
 .est-lo{grid-template-columns:20px minmax(0,1fr) 90px 72px}
-.est-rpr{grid-template-columns:20px minmax(0,1.3fr) 44px 104px 126px minmax(0,1fr) 90px}
+.est-rpr{grid-template-columns:20px minmax(0,1.2fr) 44px 98px 108px 112px minmax(0,1fr) 82px 64px}
+.est-var{box-shadow:inset -3px 0 0 var(--accent-2)}
+.est-var-t{font-size:10.5px;font-weight:800;color:var(--accent-2);white-space:nowrap}
+.est-dec.pick{border-color:var(--accent);color:var(--accent);font-weight:800}
 .est-rv{grid-template-columns:20px minmax(0,1.4fr) 58px 86px 92px 82px 36px}
 .est-rp{grid-template-columns:44px minmax(0,1.4fr) 50px 140px minmax(0,1fr)}
 .est-ro{grid-template-columns:20px minmax(0,1.4fr) 50px 90px 96px 86px}
@@ -402,6 +405,7 @@ tr.mv-voided td{background:rgba(224,37,37,.06)}
   .est-lw>:nth-child(3){grid-column:span 5}
   .est-rpr>:nth-child(4){grid-column:span 4}
   .est-rpr>:nth-child(7),.est-ro>:nth-child(6){grid-column:1/-1}
+  .est-rpr>:nth-child(8),.est-rpr>:nth-child(9){grid-column:span 3}
   .est-rv>:nth-child(3),.est-rv>:nth-child(4),.est-rv>:nth-child(5),.est-ro>:nth-child(3),.est-ro>:nth-child(4),.est-ro>:nth-child(5){grid-column:span 2}
   .est-rv>:nth-child(6){grid-column:span 5}
   .est-rv>:nth-child(7){grid-column:span 1}
@@ -1151,7 +1155,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v263';
+const APP_VERSION = 'v265';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1349,8 +1353,8 @@ const PERM_INFO = {
   'wip.delete':'حذف Snapshot محفوظة نهائياً بسبب إلزامي. حساسة — دي مراجع محاسبية للإقفال.',
   'est.write':'كتابة المقايسة على السيستم: «📝 مقايسة إصلاح» ⇐ «💰 تسعير مقايسة إصلاح» ⇐ المصنعيات وقطع الغيار بالكميات (كتابة باليد) ⇐ إرسالها للمخزن يسعّرها. وكمان أسعار المصنعيات، وإضافة بنود جديدة أو شيلها قبل الاعتماد، وطباعتها للعميل. بتظهّر شاشة «📋 المقايسات». <b>مابتلمسش المخزون ولا بنود أمر الشغل.</b>',
   'est.approve':'تسجيل رد العميل على المقايسة المتسعرة: علامة ✗ على البنود اللي رفضها و«✅ تم اعتماد المقايسة» (الباقي يتحسب موافق)، أو «العميل رفضها كلها». المقايسة المعتمدة بتتحوّل لوحدها لـ«📦 طلب صرف قطع غيار» عند المخزن يجهّزه.',
-  'est.price':'المخزن: كتابة <b>سعر البيع</b> لكل قطعة في المقايسة (من المخزن · من بره · مش متوفرة) و«✅ تم التسعير». مالوش دعوة بالمصنعيات. بتظهّر شاشة «📋 المقايسات» ورسايل «مقايسة محتاجة تسعير».',
-  'est.prepare':'المخزن: تجهيز <b>طلبات صرف قطع الغيار</b> (اللي جاية من مقايسة اعتمدها العميل، أو من الاستقبال علطول): لكل قطعة «✓ اتجهزت» أو «مش متوفرة» (من المخزن / من مورد بره)، و«✅ تم التجهيز» — الاستقبال بيوصله إشعار «اتجهز 3 من 5». <b>علامة بس</b> — الصرف على الأمر بيفضل بالطريقة العادية وبصلاحياته.',
+  'est.price':'المخزن: كتابة <b>سعر البيع</b> لكل قطعة في المقايسة (من المخزن · مورد · مش متوفرة) و«✅ تم التسعير». مالوش دعوة بالمصنعيات. بتظهّر شاشة «📋 المقايسات» ورسايل «مقايسة محتاجة تسعير».',
+  'est.prepare':'المخزن: تجهيز <b>طلبات صرف قطع الغيار</b> (اللي جاية من مقايسة اعتمدها العميل، أو من الاستقبال علطول): لكل قطعة «✓ اتجهزت» أو «مش متوفرة» (من المخزن / مورد)، و«✅ تم التجهيز» — الاستقبال بيوصله إشعار «اتجهز 3 من 5». <b>علامة بس</b> — الصرف على الأمر بيفضل بالطريقة العادية وبصلاحياته.',
   'tc.view':'يشوف «🔧 التعليقات الفنية» (الكلام والصور) اللي الورشة كتبتها جوه أمر الشغل.',
   'tc.write':'يكتب تعليق فني على العربية ويصوّره من التابلت أو الموبايل (شغل زيادة لقيته الورشة والعميل مايعرفش عنه). بيعدّل ويحذف تعليقاته هو بس — وصاحب المركز أي تعليق.',
   'tc.send':'يبعت التعليقات الفنية للعميل واتساب (برقم أمر الشغل ولينكات الصور) ويطبع ورقة التعليقات لو العميل موجود. بيتنبّه بأي تعليق جديد.',
@@ -5743,9 +5747,11 @@ function estimateHTML(job, est){
      المرفوض (✗) مش بيتطبع · «مش متوفرة» بتتطبع قبل الاعتماد بس عشان العميل يعرف */
   const fN230 = n=>(Math.round((+n || 0)*100)/100).toLocaleString(NUM_LOCALE);
   const lD230 = est ? (est.labor || []).filter(l=>l && String(l.name || '').trim() && l.dec !== 'no').map(l=>[l.name, l.price == null ? '' : fN230(l.price)]) : null;
+  const open244 = est ? new Set(estOpenTypes(est).map(p=>p.grp)) : new Set();
   const pD230 = est ? (est.parts || []).filter(p=>p && String(p.name || '').trim() && p.dec !== 'no')
-    .map(p=>[p.name, fN230(p.qty), p.src === 'na' ? 'غير متوفرة' : (+p.price > 0 ? fN230(estLineTotal(p)) : '')]) : null;
+    .map(p=>[(open244.has(p.grp) && estPartOk(p) ? '☐ ' : '') + estPtypeName(p), fN230(p.qty), p.src === 'na' ? 'غير متوفرة' : (+p.price > 0 ? fN230(estLineTotal(p)) : '')]) : null;
   const tot230 = est ? estTotals(est) : null;
+  const fR244 = (lo, hi)=>hi > lo + 0.004 ? 'من ' + fN230(lo) + ' لـ ' + fN230(hi) : fN230(lo);
   const nRows230 = est ? Math.max(8, lD230.length, pD230.length) : ES_ROWS198;
   const rows = (cls, cells, data)=> Array.from({length:nRows230}, (_, i)=>{
     const d = data && data[i];
@@ -5783,10 +5789,11 @@ function estimateHTML(job, est){
         <div class="es-h">قطع الغيار <small>SPARE PARTS</small></div>
         <div class="es-r es-rp es-th"><div>م</div><div>الصنف · Item Description</div><div>الكمية</div><div>السعر (ج.م)</div></div>
         ${rows('es-rp', 3, pD230)}
-        <div class="es-sum"><div>إجمالي قطع الغيار</div><div>${tot230 ? fN230(tot230.parts) : ''}</div></div>
+        <div class="es-sum"><div>إجمالي قطع الغيار</div><div>${tot230 ? fR244(tot230.parts, tot230.partsMax) : ''}</div></div>
       </div>
     </div>
-    <div class="es-grand"><div>إجمالي سعر المقايسة${apv230 ? ' (البنود المعتمدة)' : ''}</div><div>${tot230 ? fN230(tot230.all) + ' ج.م' : ''}</div></div>
+    <div class="es-grand"><div>إجمالي سعر المقايسة${apv230 ? ' (البنود المعتمدة)' : ''}</div><div>${tot230 ? fR244(tot230.all, tot230.allMax) + ' ج.م' : ''}</div></div>
+    ${open244.size ? `<div style="font-size:12.5px;font-weight:800;margin:6px 2px">☐ القطع اللي ليها أكتر من نوع: علّم على النوع اللي حضرتك عايزه (نوع واحد لكل قطعة) — والإجمالي حسب اختيارك.</div>` : ''}
     <div class="es-box"><div class="es-h">ملاحظات <small>NOTES</small></div>
       <ol class="es-note">
         <li>الأسعار دي تقديرية وصالحة لمدة شهر من تاريخ المقايسة، لأن أسعار قطع الغيار بتتغير.</li>
@@ -5964,7 +5971,7 @@ function estKindWord(e){ return estIsReq(e) ? 'الطلب ده' : 'المقاي�
 function _estSig(w){
   const pr = v=>(v == null || v === '') ? null : +v;
   const P = (w.parts || []).filter(p=>p && String(p.name || '').trim()).map(p=>[p.id, String(p.name).trim(), +(estNum(p.qty) || 0), String(p.note || '').trim(),
-    pr(p.price), p.src || 'stock', String(p.wnote || '').trim(), p.dec || 'ok', !!p.ready]);
+    pr(p.price), p.src || 'stock', String(p.wnote || '').trim(), p.dec || 'ok', !!p.ready, String(p.ptype || '').trim(), p.grp || '']);
   const L = (w.labor || []).filter(l=>l && String(l.name || '').trim()).map(l=>[l.id, String(l.name).trim(), pr(l.price), l.dec || 'ok']);
   return JSON.stringify([P, L, String(w.note || '').trim()]);
 }
@@ -6000,6 +6007,7 @@ function estPriceLive(){
     const ed = _estEd;
     if(!ed) return;
     let tot = 0;
+    const live = [];
     (ed.work.parts || []).forEach(p=>{
       if(!String(p.name || '').trim() || p.dec === 'no') return;
       const pe = document.getElementById('estP_pr_' + p.id), se = document.getElementById('estP_s_' + p.id), le = document.getElementById('estP_lt_' + p.id);
@@ -6007,9 +6015,10 @@ function estPriceLive(){
       const lt = (src !== 'na' && +pr > 0) ? _estR2((+p.qty || 0) * +pr) : 0;
       if(le) le.textContent = lt ? money(lt) : '—';
       tot += lt;
+      live.push(Object.assign({}, p, { price:pr, src }));
     });
     const te = document.getElementById('estPrTot');
-    if(te) te.textContent = money(_estR2(tot));
+    if(te){ const r = estPartsRange(live); te.textContent = estMoneyRange(r.low, r.high); }   /* م244: «من … لـ …» لو فيه أنواع */
   }catch(e){}
 }
 /* ورقة «طلب صرف قطع غيار» المطبوعة — أمين المخزن بيعلّم عليها ✓ / ✗ بإيده */
@@ -6021,7 +6030,7 @@ function partsRequestHTML(job, r){
   const odo = job ? jobOdometer(job, car) : '';
   const fld = (ar, en, v)=> `<div class="es-f"><div class="es-fl"><b>${ar}</b><small>${en}</small></div><div class="es-fv">${_joEsc(v || '')}</div></div>`;
   const rows = estPrepRows(r), g = estPrepProg(r);
-  const srcL = { stock:'من المخزن', outside:'من مورد بره' };
+  const srcL = { stock:'من المخزن', outside:'مورد' };
   const nR = Math.max(10, rows.length);
   const box = '<span class="es-ckb"></span>';
   const body = Array.from({length:nR}, (_, i)=>{
@@ -6076,7 +6085,7 @@ function partsRequestHTML(job, r){
     <div class="es-foot"><span>📍 ${_joEsc(s.address || '')}</span><span>طلب الصرف مابيتلغيش — أي تغيير بمرتجع أو طلب صرف جديد</span></div>
   </div>`;
 }
-const EST_SRC230 = [['stock','من المخزن'], ['outside','من بره (مورد)'], ['na','مش متوفرة']];
+const EST_SRC230 = [['stock','من المخزن'], ['outside','مورد'], ['na','مش متوفرة']];   /* م243 (سيف): «مورد» بدل «من بره (مورد)» */
 function estTableOk(){ return window._estTableOk !== false; }
 function estAnyPerm(){ return !!session && (isOwnerSession() || EST_ACTIONS.some(a=>can(a))); }
 function estGuard(){
@@ -6129,10 +6138,33 @@ function estNum(v){
 function _estR2(n){ return Math.round((n||0)*100)/100; }
 function estPartOk(p){ return !!p && String(p.name||'').trim() !== '' && p.dec !== 'no' && p.src !== 'na'; }
 function estLineTotal(p){ return _estR2((+p.qty || 0) * (+p.price || 0)); }
+/* ============ م244: «النوع» — نفس القطعة بكذا نوع (أصلي / كوبي / أفتر ماركت …) ============
+   طلب سيف: المخزن وقت التسعير بيدوس «➕ نوع» جنب القطعة ⇐ سطر تاني لنفس القطعة (نفس الاسم والكمية) بسعره ونوعه.
+   أنواع القطعة الواحدة ليها نفس grp · «النوع» (ptype) بيتطبع للعميل جنب الاسم — «ملاحظة المخزن» بتفضل داخلية.
+   قبل ما العميل يختار: الإجمالي «من (بأرخص نوع) لـ (بأغلى نوع)» · وقت الاعتماد الاستقبال بيختار نوع واحد لكل قطعة
+   (الباقي ✗ لوحده) — مفيش اعتماد قبل الاختيار، فطلب الصرف بيروح للمخزن بالنوع اللي اتختار بس. */
+const EST_PTYPES = ['أصلي', 'كوبي', 'أفتر ماركت', 'تجاري', 'ياباني', 'كوري', 'صيني'];
+function estPtypeName(p){ const t = String((p && p.ptype) || '').trim(); return String((p && p.name) || '') + (t ? ' — ' + t : ''); }
+function estGrpRows(w, p){ return (p && p.grp) ? (w.parts || []).filter(x=>x && x.grp === p.grp) : [p]; }
+function estIsMulti(w, p){ return !!(p && p.grp) && estGrpRows(w, p).length > 1; }
+/* القطع اللي لسه العميل مااختارش نوعها: أكتر من نوع مش مرفوض */
+function estOpenTypes(w){
+  const g = new Map();
+  (w.parts || []).forEach(p=>{ if(p && p.grp && estPartOk(p)) g.set(p.grp, (g.get(p.grp) || []).concat([p])); });
+  return [...g.values()].filter(a=>a.length > 1).map(a=>a[0]);
+}
+function estPartsRange(parts){
+  const g = new Map();
+  (parts || []).filter(p=>estPartOk(p) && +p.price > 0).forEach(p=>{ const k = p.grp || p.id; g.set(k, (g.get(k) || []).concat([estLineTotal(p)])); });
+  let low = 0, high = 0, open = 0;
+  g.forEach(a=>{ if(a.length > 1) open++; low += Math.min(...a); high += Math.max(...a); });
+  return { low:_estR2(low), high:_estR2(high), open };
+}
+function estMoneyRange(lo, hi){ return hi > lo + 0.004 ? 'من ' + money(lo) + ' لـ ' + money(hi) : money(lo); }
 function estTotals(e){
-  const parts = (e.parts||[]).filter(p=>estPartOk(p) && +p.price > 0).reduce((s,p)=>s + estLineTotal(p), 0);
+  const r = estPartsRange(e.parts);
   const labor = (e.labor||[]).filter(l=>l && String(l.name||'').trim() && l.dec !== 'no').reduce((s,l)=>s + (+l.price || 0), 0);
-  return { parts:_estR2(parts), labor:_estR2(labor), all:_estR2(parts + labor) };
+  return { parts:r.low, partsMax:r.high, labor:_estR2(labor), all:_estR2(r.low + labor), allMax:_estR2(r.high + labor), open:r.open };
 }
 /* قطع لسه محتاجة سعر (مش مرفوضة ومش «مش متوفرة») */
 function estUnpriced(e){ return (e.parts||[]).filter(p=>estPartOk(p) && !(+p.price > 0)); }
@@ -6368,7 +6400,7 @@ function estRowHTML(e){
         ${estProgText(e) ? ' · <b>' + estProgText(e) + '</b>' : ''}${e.fromEstNo ? ' · من مقايسة #' + _joEsc(e.fromEstNo) : ''}
         · آخر خطوة: ${_joEsc(e.stageByName || '—')} الساعة ${estTime(e.stageAt)}
         ${live ? ` · <b class="${mine ? 'est-late' : ''}" data-est-since="${escAttr(e.stageAt || '')}">${estAgo(e.stageAt)}</b>` : ''}
-        · ${(e.parts||[]).length} قطعة${estIsReq(e) ? '' : ' · ' + (e.labor||[]).length + ' مصنعية'}${!estIsReq(e) && t.all ? ` · الإجمالي ${money(t.all)}` : ''}</div>
+        · ${(e.parts||[]).length} قطعة${estIsReq(e) ? '' : ' · ' + (e.labor||[]).length + ' مصنعية'}${!estIsReq(e) && t.all ? ` · الإجمالي ${estMoneyRange(t.all, t.allMax)}` : ''}</div>
     </div>
     <button class="btn btn-sm${mine ? ' btn-accent' : ''}" onclick="event.stopPropagation();openEstEditor('${e.id}')">افتح</button>
   </div>`;
@@ -6388,7 +6420,7 @@ function jobEstimatesBoxHTML(job){
   const row = e=>{
     const st = EST_ST230[e.status] || {}, t = estTotals(e), prog = estProgText(e);
     const live = EST_LIVE230.includes(e.status) || e.status === 'ready';
-    return `<div class="est-mini" onclick="openEstEditor('${e.id}')"><span>${estIsReq(e) ? '📦' : (e.convertedTo ? '🔁' : (st.icon || ''))} <b>${_joEsc(estTitle(e))}</b> · ${_joEsc(estStShort(e))}${prog ? ' · <b>' + prog + '</b>' : ''}${e.fromEstNo ? ' <span class="muted">(من مقايسة #' + _joEsc(e.fromEstNo) + ')</span>' : ''}${live ? ` · <span class="muted" data-est-since="${escAttr(e.stageAt || '')}">${estAgo(e.stageAt)}</span>` : ''}</span><span>${!estIsReq(e) && t.all ? money(t.all) : ''}</span></div>`;
+    return `<div class="est-mini" onclick="openEstEditor('${e.id}')"><span>${estIsReq(e) ? '📦' : (e.convertedTo ? '🔁' : (st.icon || ''))} <b>${_joEsc(estTitle(e))}</b> · ${_joEsc(estStShort(e))}${prog ? ' · <b>' + prog + '</b>' : ''}${e.fromEstNo ? ' <span class="muted">(من مقايسة #' + _joEsc(e.fromEstNo) + ')</span>' : ''}${live ? ` · <span class="muted" data-est-since="${escAttr(e.stageAt || '')}">${estAgo(e.stageAt)}</span>` : ''}</span><span>${!estIsReq(e) && t.all ? estMoneyRange(t.all, t.allMax) : ''}</span></div>`;
   };
   const lastE = ests[ests.length - 1];
   const estSum = !ests.length ? '' : (ests.length === 1 ? 'يوجد 1 مقايسة — ' + estStShort(lastE) : 'يوجد ' + ests.length + ' مقايسة — آخر واحدة: ' + estStShort(lastE));
@@ -6540,7 +6572,7 @@ function estModeHint(mode, w){
   if(estIsReq(w)){   /* م231 */
     const hr = {
       write:'📦 <b>طلب صرف قطع غيار — العميل موافق.</b> اكتب القطع اللي عايزها بالكميات. الطلب ده <b>معتمد ونهائي</b> — بعد ما يتبعت للمخزن <b>مابيتلغيش</b> (أي تغيير: طلب صرف جديد، واللي زيادة المخزن يرجّعه بمرتجع). لما تخلص دوس «📦 إرسال للمخزن».',
-      prepare:'📦 <b>طلب صرف قطع غيار' + (w.fromEstNo ? ' — من مقايسة #' + _joEsc(w.fromEstNo) + ' اعتمدها العميل' : ' — العميل موافق') + '.</b> قدام كل قطعة اختار المصدر (من المخزن / من مورد بره) ودوس <b>«✓ اتجهزت»</b> أول ما تجهز — ولو مش موجودة ومش هتعرف تجيبها اختار <b>«مش متوفرة»</b>. «✅ تم التجهيز» بيشتغل لما كل القطع تتعلّم. <b>الصرف على الأمر بيفضل بالطريقة العادية.</b>'
+      prepare:'📦 <b>طلب صرف قطع غيار' + (w.fromEstNo ? ' — من مقايسة #' + _joEsc(w.fromEstNo) + ' اعتمدها العميل' : ' — العميل موافق') + '.</b> قدام كل قطعة اختار المصدر (من المخزن / مورد) ودوس <b>«✓ اتجهزت»</b> أول ما تجهز — ولو مش موجودة ومش هتعرف تجيبها اختار <b>«مش متوفرة»</b>. «✅ تم التجهيز» بيشتغل لما كل القطع تتعلّم. <b>الصرف على الأمر بيفضل بالطريقة العادية.</b>'
     }[mode];
     if(hr) return `<div class="est-hint">${hr}</div>`;
     const pg = estProgText(w), na = estPrepNA(w);
@@ -6598,6 +6630,22 @@ function estEdHTML(){
   <div class="est-actions">${estActionsHTML(w, mode)}</div>
   ${estTimelineHTML(w)}`;
 }
+/* م244: قطعة ليها أكتر من نوع ⇐ «اختار ده» (الأنواع التانية ✗ لوحدها) · دوسة على المختار = العميل رفض القطعة كلها */
+function estPickBtn(w, p){
+  const alive = estGrpRows(w, p).filter(x=>x.dec !== 'no' && x.src !== 'na');
+  if(p.dec !== 'no' && alive.length === 1) return `<button class="btn btn-sm est-dec ok" onclick="estPickType('${p.id}')" title="دوس لو العميل رفض القطعة كلها">✅ اختاره</button>`;
+  return `<button class="btn btn-sm est-dec ${p.dec === 'no' ? 'no' : 'pick'}" onclick="estPickType('${p.id}')" title="العميل اختار النوع ده">${p.dec === 'no' ? '✗ — اختار ده' : 'اختار ده'}</button>`;
+}
+function estPickType(id){
+  if(!_estEd) return;
+  estHarvest();
+  const w = _estEd.work, p = w.parts.find(x=>x.id === id);
+  if(!p || p.src === 'na') return;
+  const g = estGrpRows(w, p), alive = g.filter(x=>x.dec !== 'no' && x.src !== 'na');
+  if(p.dec !== 'no' && alive.length === 1) g.forEach(x=>{ x.dec = 'no'; });   // العميل رفض القطعة كلها
+  else g.forEach(x=>{ x.dec = x.id === id ? 'ok' : 'no'; });
+  estEdRedraw();
+}
 function estDecBtn(kind, it, on){
   if(!on) return it.dec === 'no' ? '<span class="est-dec-t no">✗ رفض</span>' : '<span class="est-dec-t ok">✓ موافق</span>';
   return `<button class="btn btn-sm est-dec ${it.dec === 'no' ? 'no' : 'ok'}" onclick="estToggleDec('${kind}','${it.id}')" title="دوس عشان تغيّر">${it.dec === 'no' ? '✗ رفض' : '✓ موافق'}</button>`;
@@ -6638,17 +6686,22 @@ function estPartsBoxHTML(w, mode){
       <button class="btn btn-sm" onclick="estDelRow('p','${p.id}')" title="شيل السطر">🗑</button></div>`).join('');
     foot = `<div style="padding:6px 8px"><button class="btn btn-sm" style="white-space:nowrap" onclick="estAddRow('p')">➕ قطعة غيار</button></div>`;
   } else if(mode === 'price'){
-    head = `<div class="est-r est-rpr est-th"><span>م</span><span>الصنف</span><span>الكمية</span><span>سعر البيع للوحدة</span><span>المصدر</span><span>ملاحظة المخزن</span><span>الإجمالي</span></div>`;
+    head = `<div class="est-r est-rpr est-th"><span>م</span><span>الصنف</span><span>الكمية</span><span>سعر البيع للوحدة</span><span>المصدر</span><span>النوع (بيتطبع للعميل)</span><span>ملاحظة المخزن (داخلية)</span><span>الإجمالي</span><span></span></div>`;
     body = rows.map((p, i)=>{
-      const nm = `<span><b>${_joEsc(p.name)}</b>${isNew(p) ? ' <span class="est-new">🆕 جديدة</span>' : ''}${p.note ? `<div class="muted" style="font-size:11.5px">${_joEsc(p.note)}</div>` : ''}</span>`;
-      if(p.dec === 'no') return `<div class="est-r est-rpr est-no"><span>${i+1}</span>${nm}<span>${_joEsc(p.qty)}</span><span>العميل رفضها</span><span></span><span></span><span></span></div>`;
+      const multi = estIsMulti(w, p);
+      const nm = `<span><b>${_joEsc(p.name)}</b>${multi ? ' <span class="est-var-t">🔀 نوع</span>' : ''}${isNew(p) ? ' <span class="est-new">🆕 جديدة</span>' : ''}${p.note ? `<div class="muted" style="font-size:11.5px">${_joEsc(p.note)}</div>` : ''}</span>`;
+      if(p.dec === 'no') return `<div class="est-r est-rpr est-no"><span>${i+1}</span>${nm}<span>${_joEsc(p.qty)}</span><span>العميل رفضها</span><span></span><span></span><span></span><span></span><span></span></div>`;
       const pend = !(+p.price > 0) && p.src !== 'na';
-      return `<div class="est-r est-rpr${pend ? ' est-pend' : ''}"><span>${i+1}</span>${nm}<span>${_joEsc(p.qty)}</span>
+      return `<div class="est-r est-rpr${pend ? ' est-pend' : ''}${multi ? ' est-var' : ''}"><span>${i+1}</span>${nm}<span>${_joEsc(p.qty)}</span>
         <input class="f" id="estP_pr_${p.id}" inputmode="decimal" value="${p.price == null ? '' : escAttr(p.price)}" placeholder="سعر الوحدة" oninput="estPriceLive()">
         <select class="f" id="estP_s_${p.id}" onchange="estPriceLive()">${EST_SRC230.map(([v, l])=>`<option value="${v}" ${(p.src || 'stock') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <input class="f" id="estP_pt_${p.id}" list="estPtList" value="${escAttr(p.ptype || '')}" placeholder="${multi ? 'أصلي / كوبي …' : 'اختياري'}" onfocus="this.select()">
         <input class="f" id="estP_w_${p.id}" value="${escAttr(p.wnote || '')}" placeholder="مثال: توصل بكرة">
-        <span id="estP_lt_${p.id}">${+p.price > 0 && p.src !== 'na' ? money(estLineTotal(p)) : '—'}</span></div>`;
-    }).join('');
+        <span id="estP_lt_${p.id}">${+p.price > 0 && p.src !== 'na' ? money(estLineTotal(p)) : '—'}</span>
+        ${multi && p.grp !== p.id
+          ? `<button class="btn btn-sm" title="شيل النوع ده" onclick="estDelType('${p.id}')">✕</button>`
+          : `<button class="btn btn-sm" title="نفس القطعة بنوع تاني (أصلي / كوبي / أفتر ماركت …)" onclick="estAddType('${p.id}')">➕ نوع</button>`}</div>`;
+    }).join('') + `<datalist id="estPtList">${EST_PTYPES.map(t=>`<option value="${t}">`).join('')}</datalist>`;
   } else if(mode === 'review'){
     const canEdit = can('est.write');
     head = `<div class="est-r est-rv est-th"><span>م</span><span>الصنف</span><span>الكمية</span><span>سعر الوحدة</span><span>الإجمالي</span><span>العميل</span><span></span></div>`;
@@ -6657,11 +6710,11 @@ function estPartsBoxHTML(w, mode){
       const no = p.dec === 'no' ? ' est-no' : '';
       const nameCell = (canEdit && unpriced && p.dec !== 'no')
         ? `<input class="f" id="estP_n_${p.id}" value="${escAttr(p.name)}" placeholder="اسم القطعة الجديدة">`
-        : `<span><b>${_joEsc(p.name)}</b>${p.src && p.src !== 'na' ? ` <span class="muted" style="font-size:11px">· ${srcLbl(p.src)}</span>` : ''}${p.wnote ? `<div class="muted" style="font-size:11.5px">🏷️ ${_joEsc(p.wnote)}</div>` : ''}</span>`;
+        : `<span><b>${_joEsc(estPtypeName(p))}</b>${estIsMulti(w, p) ? ' <span class="est-var-t">🔀 نوع</span>' : ''}${p.src && p.src !== 'na' ? ` <span class="muted" style="font-size:11px">· ${srcLbl(p.src)}</span>` : ''}${p.wnote ? `<div class="muted" style="font-size:11.5px">🏷️ ${_joEsc(p.wnote)}</div>` : ''}</span>`;
       const qtyCell = canEdit && p.src !== 'na' ? `<input class="f" id="estP_q_${p.id}" inputmode="decimal" value="${escAttr(p.qty)}" onfocus="this.select()">` : `<span>${_joEsc(p.qty)}</span>`;
       const was = (p.prevPrice !== undefined && p.dec !== 'no') ? `<span class="est-chg">⚠️ كان ${estFmtP(p.prevPrice)}</span>` : '';
       const priceCell = p.src === 'na' ? `<span><span class="est-dec-t no">مش متوفرة</span>${was}</span>` : (+p.price > 0 ? `<span>${money(+p.price)}${was}</span>` : '<span class="est-pend-t">لسه ماتسعرتش</span>');
-      const decCell = p.src === 'na' ? '<span class="est-dec-t no">✗</span>' : estDecBtn('p', p, true);
+      const decCell = p.src === 'na' ? '<span class="est-dec-t no">✗</span>' : (estIsMulti(w, p) ? estPickBtn(w, p) : estDecBtn('p', p, true));   /* م244 */
       return `<div class="est-r est-rv${no}${unpriced && p.dec !== 'no' ? ' est-pend' : ''}${was ? ' est-chg-row' : ''}"><span>${i+1}</span>${nameCell}${qtyCell}${priceCell}
         <span>${+p.price > 0 && p.src !== 'na' ? money(estLineTotal(p)) : '—'}</span>${decCell}
         ${canEdit && unpriced ? `<button class="btn btn-sm" onclick="estDelRow('p','${p.id}')" title="شيل السطر">🗑</button>` : '<span></span>'}</div>`;
@@ -6699,7 +6752,7 @@ function estPartsBoxHTML(w, mode){
       const state = !showDec ? '' : (p.src === 'na' ? '<span class="est-dec-t no">مش متوفرة</span>'
         : (p.dec === 'no' ? '<span class="est-dec-t no">✗ رفض</span>' : (p.ready ? '<span class="est-dec-t ok">🟢 جاهزة</span>' : (estIsReq(w) ? '<span class="est-dec-t ok">⏳ مطلوبة</span>' : '<span class="est-dec-t ok">✓ موافق</span>'))));
       return `<div class="est-r est-ro${p.dec === 'no' ? ' est-no' : ''}"><span>${i+1}</span>
-        <span><b>${_joEsc(p.name)}</b>${p.note ? `<div class="muted" style="font-size:11.5px">${_joEsc(p.note)}</div>` : ''}${p.wnote ? `<div class="muted" style="font-size:11.5px">🏷️ ${_joEsc(p.wnote)}</div>` : ''}</span>
+        <span><b>${_joEsc(estPtypeName(p))}</b>${p.note ? `<div class="muted" style="font-size:11.5px">${_joEsc(p.note)}</div>` : ''}${p.wnote ? `<div class="muted" style="font-size:11.5px">🏷️ ${_joEsc(p.wnote)}</div>` : ''}</span>
         <span>${_joEsc(p.qty)}</span><span>${+p.price > 0 ? money(+p.price) : '—'}</span><span>${+p.price > 0 && p.src !== 'na' ? money(estLineTotal(p)) : '—'}</span><span>${state}</span></div>`;
     }).join('');
   }
@@ -6708,13 +6761,13 @@ function estPartsBoxHTML(w, mode){
 function estTotalsHTML(w, mode){
   if(mode === 'prepare' || estIsReq(w)) return '';   // الطلب من غير أسعار
   const t = estTotals(w);
-  if(mode === 'price') return `<div class="est-tot"><div class="est-grand">إجمالي قطع الغيار<b><span id="estPrTot">${money(t.parts)}</span></b></div></div>`;
+  if(mode === 'price') return `<div class="est-tot"><div class="est-grand">إجمالي قطع الغيار<b><span id="estPrTot">${estMoneyRange(t.parts, t.partsMax)}</span></b></div></div>`;
   if(!t.all && ['draft','pricing'].includes(w.status)) return '';
   return `<div class="est-tot">
     <div>إجمالي المصنعيات<b>${money(t.labor)}</b></div>
-    <div>إجمالي قطع الغيار<b>${money(t.parts)}</b></div>
-    <div class="est-grand">الإجمالي${mode === 'review' ? ' (من غير اللي عليه ✗)' : ''}<b>${money(t.all)}</b></div>
-  </div>`;
+    <div>إجمالي قطع الغيار<b>${estMoneyRange(t.parts, t.partsMax)}</b></div>
+    <div class="est-grand">الإجمالي${mode === 'review' ? ' (من غير اللي عليه ✗)' : ''}<b>${estMoneyRange(t.all, t.allMax)}</b></div>
+  </div>${t.open ? `<div class="est-hint">🔀 فيه <b>${t.open}</b> قطعة ليها أكتر من نوع — الإجمالي حسب النوع اللي العميل يختاره${mode === 'review' ? '. دوس «اختار ده» قدام النوع اللي وافق عليه' : ''}.</div>` : ''}`;
 }
 function estNoteHTML(w, mode){
   if(mode === 'write' || (mode === 'review' && can('est.write')))
@@ -6811,6 +6864,7 @@ function estHarvest(){
     if((v = val('estP_pr_' + p.id)) !== undefined) p.price = estNum(v);
     if((v = val('estP_s_' + p.id)) !== undefined) p.src = v;
     if((v = val('estP_w_' + p.id)) !== undefined) p.wnote = String(v).trim();
+    if((v = val('estP_pt_' + p.id)) !== undefined) p.ptype = String(v).trim();   /* م244 */
   });
   (w.labor || []).forEach(l=>{
     let v;
@@ -6826,6 +6880,28 @@ function estToggleDec(kind, id){
   const it = (kind === 'p' ? _estEd.work.parts : _estEd.work.labor).find(x=>x.id===id);
   if(!it || (kind === 'p' && it.src === 'na')) return;
   it.dec = it.dec === 'no' ? 'ok' : 'no';
+  estEdRedraw();
+}
+/* م244: «➕ نوع» — نفس القطعة بنوع تاني (المخزن وقت التسعير) · «✕» بيشيل النوع الزيادة */
+function estAddType(id){
+  if(!estReq('est.price', ['pricing'])) return;
+  estHarvest();
+  const w = _estEd.work, i = w.parts.findIndex(x=>x.id === id);
+  if(i < 0) return;
+  const p = w.parts[i];
+  if(p.dec === 'no') return;
+  if(!p.grp) p.grp = p.id;
+  let at = i;
+  w.parts.forEach((x, k)=>{ if(x.grp === p.grp) at = k; });
+  w.parts.splice(at + 1, 0, { id:uid('ep'), name:p.name, qty:p.qty, note:p.note || '', grp:p.grp, src:'stock', price:null, ptype:'', wnote:'' });
+  estEdRedraw();
+}
+function estDelType(id){
+  if(!estReq('est.price', ['pricing'])) return;
+  estHarvest();
+  const w = _estEd.work, p = w.parts.find(x=>x.id === id);
+  if(!p || !estIsMulti(w, p) || p.grp === p.id) return;   // السطر الأصلي مابيتشالش من هنا
+  w.parts = w.parts.filter(x=>x.id !== id);
   estEdRedraw();
 }
 function estAddRow(kind){
@@ -6862,15 +6938,17 @@ function estDiffText(before, after){
   const out = [];
   const cmp = (bArr, aArr, pre)=>{
     const bm = new Map((bArr || []).map(x=>[x.id, x])), am = new Map((aArr || []).map(x=>[x.id, x]));
+    const N = x=>estPtypeName(x);   /* م244: «فلتر زيت — كوبي» مش «فلتر زيت» بس */
     am.forEach((a, id)=>{
       const b = bm.get(id);
-      if(!b){ out.push('+ ' + pre + a.name + (a.qty != null && pre === '' ? ' ×' + a.qty : '')); return; }
+      if(!b){ out.push('+ ' + pre + N(a) + (a.qty != null && pre === '' ? ' ×' + a.qty : '')); return; }
       if(b.name !== a.name) out.push(pre + b.name + ' ← ' + a.name);
-      if(a.qty != null && +b.qty !== +a.qty) out.push('كمية ' + a.name + ': ' + b.qty + ' ← ' + a.qty);
-      if((+b.price || 0) !== (+a.price || 0)) out.push('سعر ' + pre + a.name + ': ' + (b.price == null ? '—' : b.price) + ' ← ' + (a.price == null ? '—' : a.price));
-      if((b.dec || 'ok') !== (a.dec || 'ok')) out.push((a.dec === 'no' ? '✗ ' : '✓ ') + pre + a.name);
+      if(String(b.ptype || '') !== String(a.ptype || '')) out.push('نوع ' + a.name + ': ' + (b.ptype || '—') + ' ← ' + (a.ptype || '—'));
+      if(a.qty != null && +b.qty !== +a.qty) out.push('كمية ' + N(a) + ': ' + b.qty + ' ← ' + a.qty);
+      if((+b.price || 0) !== (+a.price || 0)) out.push('سعر ' + pre + N(a) + ': ' + (b.price == null ? '—' : b.price) + ' ← ' + (a.price == null ? '—' : a.price));
+      if((b.dec || 'ok') !== (a.dec || 'ok')) out.push((a.dec === 'no' ? '✗ ' : '✓ ') + pre + N(a));
     });
-    bm.forEach((b, id)=>{ if(!am.has(id)) out.push('− ' + pre + b.name); });
+    bm.forEach((b, id)=>{ if(!am.has(id)) out.push('− ' + pre + N(b)); });
   };
   cmp(before.parts, after.parts, '');
   cmp(before.labor, after.labor, 'مصنعية ');
@@ -6996,6 +7074,9 @@ async function estMarkPriced(){
     toast('فيه ' + miss.length + ' قطعة لسه من غير سعر (' + estNames(miss) + ') — اكتب السعر أو اختار «مش متوفرة»', true);
     return;
   }
+  /* م244: القطعة اللي ليها أكتر من نوع ⇐ كل سطر لازم يتكتب نوعه عشان العميل يفرّق */
+  const noType = w.parts.filter(p=>p.dec !== 'no' && estIsMulti(w, p) && !String(p.ptype || '').trim());
+  if(noType.length){ toast('اكتب «النوع» لكل سطر في «' + noType[0].name + '» (أصلي / كوبي / أفتر ماركت …) — عشان العميل يفرّق بين الأنواع', true); return; }
   const t = estTotals(w), na = w.parts.filter(p=>p.src === 'na' && p.dec !== 'no').length;
   /* م237: سعر قطعة اتغيّر عن آخر مرة اتسعرت (والعميل شافه) ⇐ «كان …» عند الاستقبال + في الرسالة */
   const chg = [];
@@ -7007,7 +7088,7 @@ async function estMarkPriced(){
   });
   const r = await estPersist({ status:'priced',
     mutate:(real, now)=>{ if(!real.firstPricedAt) real.firstPricedAt = now; real.priceChg = chg.length ? { at:now, items:chg } : null; },
-    events:[{ type:'priced', text:'إجمالي قطع الغيار ' + money(t.parts) + (na ? ' · ' + na + ' مش متوفرة' : '') + (chg.length ? ' · ⚠️ اتغيّر سعر: ' + chg.map(x=>x[0] + ' ' + estFmtP(x[1]) + ' ← ' + estFmtP(x[2])).join('، ') : '') }] });
+    events:[{ type:'priced', text:'إجمالي قطع الغيار ' + estMoneyRange(t.parts, t.partsMax) + (t.open ? ' (' + t.open + ' قطعة ليها أكتر من نوع)' : '') + (na ? ' · ' + na + ' مش متوفرة' : '') + (chg.length ? ' · ⚠️ اتغيّر سعر: ' + chg.map(x=>x[0] + ' ' + estFmtP(x[1]) + ' ← ' + estFmtP(x[2])).join('، ') : '') }] });
   if(!r) return;
   closeModal();
   toast('✅ اتسعرت — اتبعتت للاستقبال');
@@ -7043,6 +7124,8 @@ function estApprove(){
   if(miss.length){ toast('فيه ' + miss.length + ' قطعة لسه ماتسعرتش (' + estNames(miss) + ') — ابعتها للتسعير الأول أو علّم عليها ✗', true); return; }
   const noLab = labor.filter(l=>l.dec !== 'no' && l.price == null);
   if(noLab.length){ toast('اكتب سعر المصنعية «' + noLab[0].name + '» أو علّم عليها ✗', true); return; }
+  const openT244 = estOpenTypes(w);
+  if(openT244.length){ toast('«' + openT244[0].name + '» ليها أكتر من نوع — دوس «اختار ده» قدام النوع اللي العميل وافق عليه (أو «✅ اختاره» تاني لو رفض القطعة كلها)', true); return; }
   const okP = parts.filter(estPartOk), okL = labor.filter(l=>l.dec !== 'no');
   if(!okP.length && !okL.length){ toast('مفيش ولا بند موافق عليه — لو العميل رفض كله دوس «❌ العميل رفض المقايسة كلها»', true); return; }
   const t = estTotals(w);
@@ -7062,6 +7145,7 @@ async function estApproveDo(){
   if(estUnpriced(w).length){ estAskInline(''); toast('فيه قطع لسه ماتسعرتش — ابعتها للتسعير الأول أو علّم عليها ✗', true); return; }
   const noLab = w.labor.find(l=>String(l.name || '').trim() && l.dec !== 'no' && l.price == null);   // اتمسح سعرها بعد ما التأكيد ظهر
   if(noLab){ estAskInline(''); toast('اكتب سعر المصنعية «' + noLab.name + '» أو علّم عليها ✗', true); return; }
+  if(estOpenTypes(w).length){ estAskInline(''); toast('فيه قطعة ليها أكتر من نوع لسه مااتختارش — اختار نوع واحد الأول', true); return; }   /* م244 */
   w.parts.forEach(p=>{ p.dec = (p.src === 'na' || p.dec === 'no') ? 'no' : 'ok'; });
   w.labor.forEach(l=>{ l.dec = l.dec === 'no' ? 'no' : 'ok'; });
   const parts = w.parts.filter(p=>String(p.name || '').trim()), labor = w.labor.filter(l=>String(l.name || '').trim());
@@ -7081,7 +7165,7 @@ async function estApproveDo(){
       const okNow = (real.parts || []).filter(estPartOk);
       rq = { id:uid('est'), estNo:reqNo, kind:'request', fromEstId:real.id, fromEstNo:real.estNo, jobId:real.jobId, jobNo:real.jobNo, carId:real.carId, customerId:real.customerId, round:1,
         status:'approved', stageSeq:1, stageAt:now, stageById:me, stageByName:by, rev:1, createdAt:now, createdBy:by, createdById:me, approvedAt:now, approvedBy:by,
-        parts:okNow.map(p=>({ id:uid('ep'), name:p.name, qty:p.qty, note:p.note || '', src:p.src === 'outside' ? 'outside' : 'stock', wnote:p.wnote || '', dec:'ok', estPartId:p.id, addedAt:now, addedBy:by })),
+        parts:okNow.map(p=>({ id:uid('ep'), name:estPtypeName(p), ptype:p.ptype || '', qty:p.qty, note:p.note || '', src:p.src === 'outside' ? 'outside' : 'stock', wnote:p.wnote || '', dec:'ok', estPartId:p.id, addedAt:now, addedBy:by })),
         labor:[], note:'', events:[
           { id:uid('ev'), type:'created', at:now, by, byId:me, seq:0, text:'' },
           { id:uid('ev'), type:'fromest', at:now, by, byId:me, seq:1, text:'مقايسة #' + real.estNo + ' — ' + okNow.length + ' قطعة: ' + okNow.slice(0, 6).map(p=>p.name + ' ×' + p.qty).join('، ') + (note ? ' · ' + note : '') } ] };
