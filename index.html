@@ -169,6 +169,7 @@ input,select,textarea{font-family:'Tajawal',sans-serif;}
 .emp-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
 .emp-actions .btn{flex:1;min-width:110px}
 .emp-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.bn-pay{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 12px}.bn-pay .btn{flex:1;min-width:140px}   /* م251 */
 .emp-tile{background:var(--surface-2);border-radius:10px;padding:10px 12px;border-top:3px solid var(--accent)}
 .emp-tile .lbl{font-size:12px;color:var(--muted)}
 .emp-tile .val{font-size:20px;font-weight:900;margin-top:2px}
@@ -759,6 +760,208 @@ async function deactivateDevice(){
     location.reload();
   });
 }
+/* ============ م253: 📱 الأجهزة — صاحب المركز يشوف كل جهاز شغال عليه السيستم ويقدر يوقفه ============
+   طلب سيف: السيستم هيتحط على موبايلات ولابتوبات موظفين بيروّحوا بيها — لو موظف مشي، قفل اليوزر بتاعه مش كفاية:
+   عايز يوقف الجهاز نفسه فمايدخلش منه بأي يوزر تاني، ولو مسح السيستم ونزّله تاني مايشتغلش.
+   • كل جهاز بيسجّل نفسه لوحده (رقم عشوائي محفوظ على الجهاز) في جدول «devices» — نوعه وآخر مين دخل منه وآخر ظهور.
+   • الحظر (صاحب المركز بس — قرار سيف: مش صلاحية) ⇐ الجهاز بيتقفل في نفس اللحظة (مزامنة لحظية + نبضة كل 5 دقايق)
+     وتفعيله بيتلغي من السيرفر نفسه (device_admin بيمسح جلسته) ⇐ مايرجعش غير بإيميل وكلمة سر المركز.
+     ولو اتفعّل تاني وهو لسه محظور ⇐ device_ping بيلغي التفعيل الجديد على طول.
+   • 🛡️ قرار سيف: الحظر **مابيمسحش أي حاجة** — لا من السيرفر ولا من الجهاز. الجهاز بس بيتقفل.
+   • الأجهزة الجديدة بتشتغل عادي (اللي بيفعّلها سيف نفسه بإيميله) — بس بيوصله إشعار «📱 جهاز جديد».
+   • ملف SQL م253 لسه ماتنفذش ⇐ السيستم شغال عادي بالظبط زي الأول (والشاشة بتقول نفّذ الملف). */
+const DEV_ID_KEY = 'mers_device_id', DEV_BLOCK_FLAG = 'mers_device_blocked';
+const DEV_PING_MS = 5 * 60000, DEV_ONLINE_MS = 12 * 60000;
+var _devState = { ok:null, row:null, timer:null, ch:null };   // ok: null لسه · true الجدول شغال · false ملف SQL لسه ماتنفذش
+function devId(){
+  try{
+    let id = localStorage.getItem(DEV_ID_KEY);
+    if(!id){ id = 'dev_' + tcRand(); localStorage.setItem(DEV_ID_KEY, id); }
+    return id;
+  }catch(e){ return null; }
+}
+function devBlockedFlag(){ try{ return localStorage.getItem(DEV_BLOCK_FLAG) === '1'; }catch(e){ return false; } }
+function devInfoNow(){
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  const touch = ((typeof navigator !== 'undefined' && navigator.maxTouchPoints) || 0) > 0;
+  const ipad = /iPad/.test(ua) || (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && touch);
+  const kind = (ipad || /Tablet/.test(ua) || (/Android/.test(ua) && !/Mobile/.test(ua))) ? 'tablet' : (/Mobi|iPhone|Android/.test(ua) ? 'mobile' : 'desktop');
+  const di = String(deviceInfo()).split(' - ');
+  let app = false;
+  try{ app = !!((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (typeof navigator !== 'undefined' && navigator.standalone === true)); }catch(e){}
+  let scr = '';
+  try{ scr = (screen.width || 0) + '×' + (screen.height || 0); }catch(e){}
+  return { kind, os: ipad ? 'iPad' : (di[0] || ''), browser: di[1] || '', app, screen: scr, ver: APP_VERSION };
+}
+const DEV_KIND = { mobile:['📱','موبايل'], tablet:['📟','تابلت'], desktop:['💻','كمبيوتر'] };
+function devAutoLabel(d){ const k = DEV_KIND[d && d.kind] || DEV_KIND.desktop; return k[0] + ' ' + k[1] + ' ' + ((d && d.os) || ''); }
+function devLabel(d){ return (d && d.name) ? (DEV_KIND[d.kind] || DEV_KIND.desktop)[0] + ' ' + d.name : devAutoLabel(d); }
+/* نبضة الجهاز: بيسجّل نفسه ويعرف لو اتوقف — أي فشل (نت · الملف لسه ماتنفذش) ⇐ السيستم يكمّل عادي */
+async function devPing(extra){
+  if(!sb || typeof sb.rpc !== 'function' || window._devLocked) return null;
+  const id = devId(); if(!id) return null;
+  try{
+    const r = await Promise.race([
+      sb.rpc('device_ping', { p_id:id, p_info:Object.assign(devInfoNow(), extra || {}) }),
+      new Promise((_, rej)=>setTimeout(()=>rej(new Error('timeout')), 8000))
+    ]);
+    if(!r || r.error){
+      const m = String((r && r.error && (r.error.code + ' ' + r.error.message)) || '');
+      if(/PGRST202|42883|42P01|device_ping|Could not find|does not exist/i.test(m)) _devState.ok = false;
+      return null;
+    }
+    if(!r.data || typeof r.data !== 'object') return null;
+    _devState.ok = true; _devState.row = r.data;
+    if(r.data.blocked){ devLockNow(); return r.data; }
+    try{ localStorage.removeItem(DEV_BLOCK_FLAG); }catch(e){}
+    return r.data;
+  }catch(e){ return null; }
+}
+/* الجهاز اتوقف ⇐ يتقفل في نفس اللحظة: اليوزر بيخرج والتفعيل بيتشال من الجهاز — من غير ما يمسح أي بيانات */
+function devLockNow(){
+  if(window._devLocked) return;
+  window._devLocked = true;
+  try{ localStorage.setItem(DEV_BLOCK_FLAG, '1'); }catch(e){}
+  session = null;
+  try{ if(_devState.timer) clearInterval(_devState.timer); }catch(e){}
+  try{ if(_devState.ch && sb.removeChannel) sb.removeChannel(_devState.ch); }catch(e){}
+  try{ if(typeof _rtChannel !== 'undefined' && _rtChannel && sb.removeChannel) sb.removeChannel(_rtChannel); }catch(e){}
+  try{ const ov = document.getElementById('modalOverlay'); if(ov) ov.remove(); }catch(e){}
+  try{ const p = sb.auth.signOut({ scope:'local' }); if(p && p.catch) p.catch(()=>{}); }catch(e){}
+  const root = document.getElementById('root'); if(root) root.innerHTML = devBlockedHTML();
+}
+function devBlockedHTML(){
+  return `
+  <div class="login-wrap"><div class="login-card" style="text-align:right;max-width:520px">
+    <p class="login-title" style="color:var(--danger)">🚫 الجهاز ده موقوف</p>
+    <p class="login-sub" style="line-height:2">صاحب المركز وقّف الجهاز ده عن السيستم — <b>مفيش دخول منه بأي يوزر</b>.<br>لو ده حصل بالغلط، كلّم صاحب المركز.</p>
+    <p class="muted" style="font-size:11.5px;margin:10px 0 0;line-height:1.8">صاحب المركز: فك الحظر الأول من «⚙️ الإعدادات ← 📱 الأجهزة» على جهاز تاني، وبعدين
+      <a href="#" style="color:var(--accent)" onclick="showDeviceActivationForm();return false;">فعّل الجهاز ده من هنا</a> بإيميل وكلمة سر المركز.</p>
+  </div></div>`;
+}
+/* لحظة الإقلاع (بعد ما الجهاز اتأكد إنه مفعّل وقبل تحميل أي بيانات) */
+async function devBootGuard(){
+  const r = await devPing({});
+  if(r && r.blocked) return true;
+  if(r && r.isNew) window._devNew = true;
+  return false;
+}
+/* المزامنة اللحظية لسطر الجهاز ده بس (قناة لوحدها — لو الجدول مش موجود ماتوقعش قناة البيانات) + نبضة كل 5 دقايق */
+function devOnRemote(p){ const d = p && p.new && p.new.data; if(d && d.blocked) devLockNow(); }
+function devStartWatch(){
+  if(_devState.ok !== true || window._devLocked) return;
+  try{ _devState.timer = setInterval(()=>{ devPing({}); }, DEV_PING_MS); if(_devState.timer && _devState.timer.unref) _devState.timer.unref(); }catch(e){}
+  try{
+    const id = devId();
+    _devState.ch = sb.channel('dev-' + id).on('postgres_changes', { event:'UPDATE', schema:'public', table:'devices', filter:'id=eq.' + id }, devOnRemote).subscribe();
+  }catch(e){}
+}
+/* بعد دخول أي يوزر: آخر مين دخل من الجهاز ده — وأول دخول من جهاز جديد ⇐ إشعار لصاحب المركز */
+async function devAfterLogin(){
+  const r = await devPing({ lastStaff:actorName(), lastLoginAt:new Date().toISOString() });
+  if(!r || r.blocked) return;
+  if(r.isNew || window._devNew){
+    window._devNew = false;
+    notify('device_new', '📱 جهاز جديد اتسجل على السيستم: ' + devAutoLabel(r) + ' (' + (r.browser || '') + (r.app ? ' — تطبيق' : '') + ') — أول دخول منه: ' + actorName(), { category:'system' });
+  }
+}
+/* ---------- شاشة «📱 الأجهزة» (صاحب المركز بس) ---------- */
+var _devList = null;   // null = لسه بيتحمّل · { error } · { rows }
+async function devLoadList(){
+  if(!isOwnerSession()) return;
+  try{
+    const r = await sb.from('devices').select('id,data,updated_at');
+    if(r.error) _devList = { error:r.error };
+    else _devList = { rows:(r.data || []).map(x=>Object.assign({ id:x.id }, x.data || {})) };
+  }catch(e){ _devList = { error:e }; }
+  const box = document.getElementById('devListBox'); if(box) box.innerHTML = devListHTML();
+}
+function devListHTML(){
+  if(!_devList) return '<div class="muted" style="font-size:12.5px">⏳ بيحمّل الأجهزة…</div>';
+  if(_devList.error){
+    const m = String(_devList.error.message || _devList.error.code || _devList.error);
+    if(/42P01|PGRST205|does not exist|relation|schema cache|Could not find/i.test(m) || _devState.ok === false)
+      return `<div style="border:1px solid var(--danger);border-radius:8px;padding:10px;font-size:12.5px;line-height:1.9">⚠️ قايمة الأجهزة لسه مش شغالة — نفّذ ملف <b>db/تحديث-م253-الأجهزة.sql</b> مرة واحدة في Supabase (SQL Editor ← الصق الملف كله ← Run).<br><span class="muted">السيستم شغال عادي لحد ما تنفّذه.</span></div>`;
+    return `<div class="muted" style="font-size:12.5px">الأجهزة مااتحمّلتش (${escNote(m.slice(0, 80))}) — <a href="#" style="color:var(--accent)" onclick="_devList=null;devLoadList();return false;">جرّب تاني</a></div>`;
+  }
+  const me = devId(), now = Date.now();
+  const rows = _devList.rows.slice().sort((a, b)=>(!!a.blocked - !!b.blocked) || String(b.lastSeen || '').localeCompare(String(a.lastSeen || '')));
+  if(!rows.length) return '<div class="muted" style="font-size:12.5px">لسه مفيش أجهزة اتسجلت — كل جهاز بيظهر هنا أول ما يفتح السيستم.</div>';
+  const on = d => d.lastSeen && (now - new Date(d.lastSeen).getTime()) < DEV_ONLINE_MS;
+  return `<div class="muted" style="font-size:12px;margin-bottom:8px">${rows.length} جهاز · 🟢 ${rows.filter(d=>on(d) && !d.blocked).length} شغالين دلوقتي${rows.some(d=>d.blocked) ? ' · 🚫 ' + rows.filter(d=>d.blocked).length + ' محظور' : ''}</div>`
+    + rows.map(d=>`<div class="card" style="padding:10px 12px;margin-bottom:8px${d.blocked ? ';border:1px solid var(--danger);opacity:.85' : ''}">
+      <div class="flex-between" style="gap:8px;flex-wrap:wrap">
+        <div style="min-width:0">
+          <div style="font-weight:800">${escNote(devLabel(d))}${d.id === me ? ' <span class="tag tag-paid" style="font-size:10.5px">الجهاز ده</span>' : ''}${d.blocked ? ' <span class="tag tag-unpaid" style="font-size:10.5px">🚫 محظور</span>' : on(d) ? ' <span style="font-size:11.5px">🟢 شغال دلوقتي</span>' : ''}</div>
+          <div class="muted" style="font-size:11.5px;line-height:1.8">${escNote([d.name ? devAutoLabel(d) : '', d.browser, d.app ? 'تطبيق' : 'متصفح', d.screen].filter(Boolean).join(' · '))}
+            <br>آخر دخول: <b>${escNote(d.lastStaff || '—')}</b>${d.lastLoginAt ? ' (' + fmtDateTime(d.lastLoginAt) + ')' : ''} · آخر ظهور: ${d.lastSeen ? fmtDateTime(d.lastSeen) : '—'} · اتسجل: ${d.firstSeen ? fmtDate(d.firstSeen) : '—'}
+            ${d.blocked ? '<br><span style="color:var(--danger)">اتحظر ' + (d.blockedAt ? fmtDateTime(d.blockedAt) : '') + ' — ' + escNote(d.blockReason || '') + '</span>' : ''}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-sm" onclick="openDevRename('${escAttr(d.id)}')">✏️ اسم</button>
+          ${d.blocked ? `<button class="btn btn-sm" onclick="openDevUnblock('${escAttr(d.id)}')">✅ فك الحظر</button>`
+            : d.id === me ? '' : `<button class="btn btn-sm btn-danger" onclick="openDevBlock('${escAttr(d.id)}')">🚫 حظر الجهاز</button>`}
+        </div>
+      </div></div>`).join('');
+}
+function devFind(id){ return ((_devList && _devList.rows) || []).find(d=>d.id === id) || null; }
+async function devAdmin(id, patch){
+  const r = await sb.rpc('device_admin', { p_id:id, p_patch:patch });
+  if(r && r.error) throw r.error;
+  return r && r.data;
+}
+function openDevRename(id){
+  if(!isOwnerSession()){ toast('الأجهزة لصاحب المركز بس', true); return; }
+  const d = devFind(id); if(!d) return;
+  openModal(`<h3>✏️ اسم الجهاز</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:8px">${escNote(devAutoLabel(d))} · آخر دخول: ${escNote(d.lastStaff || '—')}</div>
+    <div class="form-row"><label class="f-label">اسم يفكّرك بيه</label><input class="f" id="devNameIn" value="${escAttr(d.name || '')}" placeholder="مثال: موبايل أحمد علي · لابتوب الحسابات"></div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveDevRename('${escAttr(id)}')">💾 حفظ</button>`);
+}
+async function saveDevRename(id){
+  if(!isOwnerSession()){ toast('الأجهزة لصاحب المركز بس', true); return; }
+  const d = devFind(id); if(!d) return;
+  const name = ((document.getElementById('devNameIn') || {}).value || '').trim().slice(0, 60);
+  try{ await devAdmin(id, { name }); }catch(e){ toast('ماتحفظش — ' + String((e && e.message) || e).slice(0, 80), true); return; }
+  await logAction('📱 تسمية جهاز: ' + devAutoLabel(d) + ' ⇐ «' + (name || '—') + '»');
+  closeModal(); toast('اتحفظ اسم الجهاز'); _devList = null; devLoadList();
+}
+function openDevBlock(id){
+  if(!isOwnerSession()){ toast('الأجهزة لصاحب المركز بس', true); return; }
+  const d = devFind(id); if(!d) return;
+  if(id === devId()){ toast('ماينفعش تحظر الجهاز اللي إنت فاتح منه', true); return; }
+  askConfirmReason(`🚫 حظر <b>${escNote(devLabel(d))}</b>؟<br><span class="muted" style="font-size:12.5px">آخر دخول منه: ${escNote(d.lastStaff || '—')}</span><br><br>
+    🔒 الجهاز هيتقفل في نفس اللحظة وأي حد داخل منه هيخرج — <b>ومفيش دخول منه بأي يوزر</b><br>
+    🔑 تفعيله هيتلغي من السيرفر — مايرجعش يشتغل غير بإيميل وكلمة سر المركز، حتى لو مسح السيستم ونزّله تاني<br>
+    🛡️ <b>مفيش أي بيانات هتتمسح</b> — لا من السيرفر ولا من الجهاز<br>
+    <span class="muted" style="font-size:12px">لو الجهاز مقفول أو من غير نت دلوقتي، هيتقفل أول ما يفتح · وتقدر تفك الحظر بعدين</span>`, reason=>saveDevBlock(id, reason));
+}
+async function saveDevBlock(id, reason){
+  if(!isOwnerSession()){ toast('الأجهزة لصاحب المركز بس', true); return; }
+  reason = String(reason || '').trim(); if(!reason){ toast('اكتب سبب الحظر', true); return; }
+  if(id === devId()){ toast('ماينفعش تحظر الجهاز اللي إنت فاتح منه', true); return; }
+  const d = devFind(id); if(!d) return;
+  let res = null;
+  try{ res = await devAdmin(id, { blocked:true, blockedAt:new Date().toISOString(), blockedBy:actorName(), blockReason:reason }); }
+  catch(e){ toast('الحظر ماتمش — ' + String((e && e.message) || e).slice(0, 80), true); return; }
+  const noRevoke = !!res && res.revoked === false;   // السيرفر رفض يلغي التفعيل ⇐ الجهاز برضه بيتقفل من السيستم
+  await logAction('🚫 حظر جهاز: ' + devLabel(d) + auditDetails([['الجهاز', devAutoLabel(d) + ' · ' + (d.browser || '')], ['آخر دخول منه', d.lastStaff || null], ['السبب', reason],
+    ['تفعيله على السيرفر', noRevoke ? 'ماتلغاش (السيرفر رفض) — الجهاز مقفول من السيستم' : null]]));
+  toast(noRevoke ? '🚫 الجهاز اتحظر واتقفل — بس إلغاء تفعيله من السيرفر ماتمش، كلّم الدعم' : '🚫 الجهاز اتحظر', noRevoke); _devList = null; devLoadList();
+}
+function openDevUnblock(id){
+  if(!isOwnerSession()){ toast('الأجهزة لصاحب المركز بس', true); return; }
+  const d = devFind(id); if(!d) return;
+  askConfirm(`✅ فك الحظر عن <b>${escNote(devLabel(d))}</b>؟<br><span class="muted" style="font-size:12.5px">عشان يرجع يشتغل لازم يتفعّل تاني بإيميل وكلمة سر المركز.</span>`, ()=>saveDevUnblock(id));
+}
+async function saveDevUnblock(id){
+  if(!isOwnerSession()){ toast('الأجهزة لصاحب المركز بس', true); return; }
+  const d = devFind(id); if(!d) return;
+  try{ await devAdmin(id, { blocked:false, unblockedAt:new Date().toISOString(), unblockedBy:actorName() }); }
+  catch(e){ toast('ماتمش — ' + String((e && e.message) || e).slice(0, 80), true); return; }
+  await logAction('✅ فك الحظر عن جهاز: ' + devLabel(d));
+  toast('✅ اتفك الحظر — فعّل الجهاز بإيميل وكلمة سر المركز'); _devList = null; devLoadList();
+}
 function _actor(){ try{ return (session && typeof actorName==='function') ? actorName() : null; }catch(e){ return null; } }
 function _snapshot(key){
   const m = new Map();
@@ -920,6 +1123,7 @@ const MERGE_SUBARRAYS = {
   customers:  ['attachments'],
   employees:  ['salaryPays','advances','bonuses','penalties','absences'],
   suppliers:  ['recons'],   /* م241: مطابقات كشف المورد من جهازين مايمسحوش بعض */   /* م239: الصرف والسلف والجزاءات من أجهزة مختلفة مايمسحوش بعض */
+  expenses:   ['photos'],   /* م249: «📎 ضيف صورة» لنفس المصروف من جهازين في نفس الوقت */
 };
 window._mergeRescues = 0;
 window._mergeBlocked = 0;    /* م203: بنود اتمنعت من الرجوع بعد ما اتشالت من جهاز تاني */
@@ -1423,7 +1627,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v269';
+const APP_VERSION = 'v274';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1569,6 +1773,7 @@ const ACTION_GROUPS = [
   ['المالية', [
     ['fin.expenses','تسجيل مصروفات'],
     ['exp.advance','سلفة الموظفين من شاشة المصروفات (تسجيل + تقارير)'],   /* م166 */
+    ['fin.exp_delete','حذف مصروف (الفلوس بترجع لمصدرها)'],   /* م250 */
     ['fin.manage','إدارة الخزنة والحسابات والتحويلات'],
     ['fin.adjust','تسوية رصيد حساب مالي'],
     ['fin.archive','أرشفة/استرجاع حساب مالي'],
@@ -1676,6 +1881,7 @@ const PERM_INFO = {
   'bill.print':'طباعة الفاتورة وتحميلها كملف. عرض فقط.',
   'fin.expenses':'تسجيل مصروفات المركز. بتتخصم من الحساب المختار.',
   'exp.advance':'تسجيل سلف الموظفين من شاشة المصروفات (للمكودين وغير المكودين) وعرض تقارير السلفة. صلاحية مستقلة تماماً عن «الرواتب» — وworkflow السلف في الموارد البشرية زي ما هو مش بيتأثر.',   /* م166 */
+  'fin.exp_delete':'حذف مصروف اتسجل بالغلط من شاشة «المصروفات» (لازم معاها الشاشة) — بسبب إلزامي. الفلوس بترجع للحساب اللي اتصرفت منه بسطر رجوع بتاريخ يوم الحذف، والسلفة بتتشال من ملف الموظف. المرتبات وسداد الموردين والاستهلاك الداخلي مابيتحذفوش من هنا. كل حذف بيتسجل وبيوصل إشعار لصاحب المركز.',   /* م250 */
   'fin.manage':'إنشاء الحسابات والخزن والتحويلات والإيداعات بينها. <b>مابتديش</b> حق تسوية الأرصدة ولا أرشفة الحسابات — دول صلاحيتين منفصلتين.',
   'fin.adjust':'تسوية رصيد حساب مالي: تكتب الرصيد الصحيح بعد الجرد والسيستم يسجّل حركة موثقة بالفرق. بتشمل كمان تعديل الرصيد الافتتاحي. <b>بتغيّر أرقام مالية مباشرة — إدّيها لمين تثق فيه بس.</b>',
   'fin.archive':'أرشفة حساب مالي مش هيتستخدم تاني (بيختفي من كل قوائم الاختيار وحركاته القديمة تفضل زي ما هي)، واسترجاعه من الأرشيف.',
@@ -1698,8 +1904,8 @@ const PERM_INFO = {
   'notif.review':'الضغط على «تمت المراجعة» و«متابعة» و«تحديد كمقروء» في مركز الإشعارات. صاحب المركز عنده تلقائياً — اللي عنده الشاشة من غيرها بيشوف ويعلّق بس. (م180)',
   'hr.emp_view':'شاشة ملفات الموظفين (كروت أو سجلات) وملف كل موظف: الإجازات والمكافآت والسلف والجزاءات والغياب — من غير المرتب ولا كشف الراتب.',
   'hr.employees':'زرار «تعديل الملف» وإضافة موظف جديد. بيانات المرتب جوه الملف بتظهر لصاحب صلاحية «الرواتب» بس.',
-  'hr.advance':'زرار «سلفة» في ملف الموظف (السلفة بتتخصم من حساب). لو السلفة عدّت حد السلف بيتسأل ويوصل إشعار لصاحب المركز.',
-  'hr.reward':'زرار «مكافأة» في ملف الموظف — النوع كتابة حرة (حافز · سهرة · مأمورية …) وبتتضاف على كشف راتب الشهر.',
+  'hr.advance':'زرار «سلفة» في ملف الموظف (السلفة بتتخصم من حساب وبتتسجل في المصروفات تحت نوع المصروف اللي بيتختار). لو السلفة عدّت حد السلف بيتسأل ويوصل إشعار لصاحب المركز.',
+  'hr.reward':'زرار «مكافأة» في ملف الموظف — النوع كتابة حرة (حافز · سهرة · مأمورية …). يا إما «تتصرف دلوقتي» من حساب وتتسجل في المصروفات تحت نوع المصروف، يا إما «تتضاف على المرتب» وتتقبض معاه.',
   'hr.approve':'اعتماد أو رفض الإجازات والأذونات.',
   'hr.payroll':'رؤية وحساب كشوف المرتبات والرواتب — وهي بس اللي بتظهّر المرتب وقيمة اليوم وكشف الراتب في ملف الموظف (وبتشمل السلف والمكافآت).',
   'hr.penalties':'تسجيل جزاءات وخصومات على الموظفين.',
@@ -2567,6 +2773,8 @@ async function initApp(){
      وبنشيل علامة التخطي القديمة من أي جهاز لسه شايلها من النسخ القديمة. */
   clearSkipFlag();
   if(!_deviceAuthed){
+    /* م253: جهاز اتحظر (وتفعيله اتلغى) ⇐ شاشة «الجهاز ده موقوف» — مش «خدمة الدخول واقعة» */
+    if(devBlockedFlag()){ window._devLocked = true; document.getElementById('root').innerHTML = devBlockedHTML(); return; }
     /* م184: الجهاز اتفعّل قبل كده؟ يبقى دي خدمة الدخول واقعة — مش إلغاء تفعيل */
     if(deviceEverActivated()){
       document.getElementById('root').innerHTML = deviceWaitingHTML();
@@ -2577,6 +2785,8 @@ async function initApp(){
     return;
   }
   markDeviceActivated();   /* م184 */
+  /* م253: الجهاز ده محظور؟ ⇐ يتقفل قبل ما يحمّل أي بيانات (أي فشل في الفحص ⇐ يكمّل عادي) */
+  if(await devBootGuard()) return;
   /* ============ م228: الإقلاع بيحاول لوحده قبل ما يقول «تعذر الاتصال» ============
      شكوى سيف: الرسالة بتظهر كتير والنت شغال، ولازم يدوس «إعادة المحاولة» كذا مرة.
      القياس (قراءة بس): تحميل كل البيانات بقى تقيل على سيرفر القاعدة الصغير (نص جيجا رام)،
@@ -2651,6 +2861,7 @@ async function initApp(){
   try{ await _obTimed(outboxReplay(), 6000); }catch(e){ console.error('outbox replay failed', e); }
   render();
   startRealtime();
+  devStartWatch();   /* م253 */
   startUpdateChecker();
   startDevtoolsWatch();
   // إصلاح ذاتي: استرجاع أي حركات صرف اتفقدت بسبب فشل حفظ سابق
@@ -2901,6 +3112,7 @@ function askConfirmReason(msg, cb){
 function render(){
   const root = document.getElementById('root');
   applyUserTheme();   // الملاحظة 48: ثيم المستخدم الحالي بيتطبق مع كل رسم
+  if(window._devLocked){ root.innerHTML = devBlockedHTML(); return; }   /* م253: الجهاز اتوقف */
   if(!loaded){ root.innerHTML = appSplashHTML(); return; }   /* م234 */
   if(!session){ root.innerHTML = loginHTML(); return; }
   root.innerHTML = shellHTML();
@@ -3064,6 +3276,7 @@ async function doStaffLogin(){
   currentTab = firstVisibleTab();
   logAction('تسجيل دخول');
   render();
+  devAfterLogin().catch(()=>{});   /* م253 */
 }
 async function doLogin(){
   const err = document.getElementById('loginErr');
@@ -3077,6 +3290,7 @@ async function doLogin(){
   currentTab = firstVisibleTab();
   render();
   logAction('🔑 دخول بالرقم السري — قسم '+(ROLE_LABEL[pickedRole]||pickedRole)).catch(()=>{});   /* م179ب */
+  devAfterLogin().catch(()=>{});   /* م253 */
 }
 function logout(){
   try{ if(session) logAction('🚪 تسجيل خروج').catch(()=>{}); }catch(e){}
@@ -20432,14 +20646,17 @@ const EXP_TXN_TYPES = {
   expense:          { label:'مصروف تشغيلي',      icon:'💸', locked:false, operating:true  },
   purchase_payment: { label:'سداد فاتورة مورد',   icon:'🧾', locked:true,  operating:false },
   supplier_payment: { label:'سداد مورد (دفعة)',   icon:'🏭', locked:true,  operating:false },
-  advance:          { label:'سلفة موظف',          icon:'💰', locked:true,  operating:false },
+  /* م251 (قرار سيف): السلفة مصروف تحت النوع والمجموعة اللي اتختاروا يوم صرفها — والجزء اللي بيتخصم منها
+     من المرتب بعدين (salary_settle) مابيتحسبش تاني ⇒ المرتب بيتحسب مرة واحدة: السلف يوم صرفها + الكاش يوم المرتب */
+  advance:          { label:'سلفة موظف',          icon:'💰', locked:true,  operating:true  },
+  reward:           { label:'مكافأة موظف',        icon:'🎁', locked:true,  operating:true  },   // م251: مكافأة اتصرفت كاش
   deposit_refund:   { label:'استرداد عربون',       icon:'↩️', locked:true,  operating:false },   // م127
   cust_refund:      { label:'رد فلوس للعميل',      icon:'💸', locked:true,  operating:false },   // م207
   internal_use:     { label:'استهلاك داخلي (من المخزون)', icon:'🏍', locked:true, operating:true },   // م155: غير نقدي
   /* م238: المرتب = تكلفة تشغيلية. النقدي اللي خرج من الخزنة يوم الصرف + السلف اللي اتخصمت منه (غير نقدي —
      فلوسها خرجت يوم السلفة كحركة غير تشغيلية) ⇒ الربحية بتشوف المرتب كامل مرة واحدة بس */
   salary:           { label:'مرتبات',             icon:'💵', locked:true,  operating:true  },
-  salary_settle:    { label:'تسوية سلف من المرتب', icon:'💵', locked:true,  operating:true  },   // غير نقدي
+  salary_settle:    { label:'تسوية سلف من المرتب', icon:'💵', locked:true,  operating:false },   // غير نقدي — م251: السلف اتحسبت يوم صرفها
 };
 function expTxnType(e){
   if(e.txnType && EXP_TXN_TYPES[e.txnType]) return e.txnType;
@@ -20449,14 +20666,14 @@ function expTxnType(e){
 function expTxnDef(e){ return EXP_TXN_TYPES[expTxnType(e)] || EXP_TXN_TYPES.expense; }
 function isOperatingExpense(e){ return expTxnDef(e).operating; }
 function operatingExpenses(list){ return (list||DB.expenses).filter(isOperatingExpense); }
-function expCatOptionsHTML(){
+function expCatOptionsHTML(selId){
   let html = `<option value="">— اختر نوع المصروف —</option>`;
   /* م154: المجموعات المخصوصة (م141) كانت أنواعها مش بتظهر هنا خالص —
      كانت اللفة على المجموعات الثابتة بس، فأي نوع في مجموعة جديدة
      كان مستحيل يتسجل بيه مصروف. */
   allExpenseGroups().forEach(g=>{
     const cats = DB.expenseCategories.filter(c=>c.group===g).sort(cmpName);
-    if(cats.length) html += `<optgroup label="${g}">`+cats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')+`</optgroup>`;
+    if(cats.length) html += `<optgroup label="${g}">`+cats.map(c=>`<option value="${c.id}"${selId && c.id===selId?' selected':''}>${c.name}</option>`).join('')+`</optgroup>`;
   });
   return html;
 }
@@ -20649,7 +20866,7 @@ function expRowsHTML(){
       <td style="font-weight:800">${money(e.amount)}</td>
       <td class="muted">${e.payAccount||'—'}</td>
       <td class="muted" style="font-size:12px">${e.notes||'—'}</td>
-      <td style="white-space:nowrap">${e.receipt?`<button class="btn btn-sm" onclick="viewReceipt('${e.id}')">📎</button>`:''}${expSourceBtn(e)}</td>
+      <td style="white-space:nowrap">${expCatBtn(e)}${expPhotoBtn(e)}${expSourceBtn(e)}${expDelBtn(e)}</td>
     </tr>`;
   }).join('') + moreRow;
 }
@@ -20658,7 +20875,10 @@ function renderExpenseList(){
   const f = expFilters;
   return `
   <div class="section-head"><h3>المصروفات والحركات المالية</h3>
-    ${can('fin.expenses')?`<button class="btn btn-accent" onclick="openNewExpenseModal()">${ICONS.plus} مصروف جديد</button>`:''}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" title="تصدير اللي ظاهر في الشاشة (الفترة + النوع + البحث) بكل السطور" onclick="exportExpensesXLSX()">⬇ Excel</button>
+      ${can('fin.expenses')?`<button class="btn btn-accent" onclick="openNewExpenseModal()">${ICONS.plus} مصروف جديد</button>`:''}
+    </div></div>
   ${noCats?`<div class="muted" style="margin-bottom:12px">⚠️ لسه مفيش أنواع مصروفات مكوّدة. روح تبويب "أنواع المصروفات" وكوّدها الأول.</div>`:''}
   <div class="card" style="margin-bottom:14px">
     <div class="form-row"><label class="f-label">🔍 بحث شامل (اسم مورد · موظف · رقم فاتورة · وصف · حساب · أي حاجة)</label>
@@ -20689,6 +20909,7 @@ function openNewExpenseModal(){
   if(DB.expenseCategories.length===0){ toast('كوّد أنواع المصروفات الأول من تبويب "أنواع المصروفات"', true); setExpenseView('categories'); return; }
   const today = new Date().toISOString().slice(0,10);
   const nextNoVal = nextNo(DB.expenses,'expNo');
+  _expPh = { expId:null, photos:[] };   /* م249 */
   openModal(`
     <h3>مصروف جديد <span class="muted" style="font-size:12px">— رقم العملية #${nextNoVal}</span></h3>
     <div class="grid g2">
@@ -20701,38 +20922,253 @@ function openNewExpenseModal(){
       <div class="form-row"><label class="f-label">وسيلة الدفع / الحساب</label>
         <select class="f" id="expAcc">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
     </div>
-    <div class="form-row"><label class="f-label">صورة الفاتورة (اختياري)</label><input class="f" id="expReceipt" type="file" accept="image/*"></div>
+    <div class="form-row"><label class="f-label">📎 صورة الفاتورة (اختياري — لحد صورتين)</label><div id="expPhotos">${expPhotosHTML()}</div></div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="expNotes"></div>
-    <button class="btn btn-accent" style="width:100%" onclick="saveExpense()">حفظ المصروف وخصمه من الحساب</button>
+    <button class="btn btn-accent" id="expSaveBtn" style="width:100%" onclick="saveExpense()">حفظ المصروف وخصمه من الحساب</button>
   `);
 }
-function readImageResized(file){
-  return new Promise((resolve,reject)=>{
-    if(file.size > 5*1024*1024){ toast('الصورة كبيرة جداً (أكثر من 5 ميجا) — استخدم صورة أصغر', true); return reject(new Error('too big')); }
-    const reader = new FileReader();
-    reader.onerror = ()=>reject(new Error('read failed'));
-    reader.onload = ()=>{
-      const img = new Image();
-      img.onerror = ()=>resolve(reader.result);
-      img.onload = ()=>{
-        try{
-          const max = 1000; let w = img.width, h = img.height;
-          if(w>max){ h = Math.round(h*max/w); w = max; }
-          const canvas = document.createElement('canvas');
-          canvas.width = w; canvas.height = h;
-          canvas.getContext('2d').drawImage(img,0,0,w,h);
-          resolve(canvas.toDataURL('image/jpeg',0.7));
-        }catch(err){ resolve(reader.result); }
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
+/* ============ م249: 📎 صور فاتورة المصروف في «مخزن الصور» (نفس مكان صور التعليقات الفنية) ============
+   كانت الصورة بتتحفظ جوه سطر المصروف في القاعدة نفسها ⇐ كل جهاز كان هيحمّلها مع كل فتحة للسيستم،
+   وكانت بترفض أي صورة أكبر من 5 ميجا (صور الموبايلات الجديدة أكبر من كده).
+   دلوقتي: بتتصغّر على الجهاز وتترفع لـ job-photos (فولدر exp/المصروف) — القاعدة بتشيل اللينك بس.
+   • لحد صورتين للمصروف (قرار سيف) · مطبوع عليها «مصروف #الرقم · التاريخ · الساعة»
+   • النت فاصل وقت الحفظ ⇐ المصروف مايتسجلش والفلوس ماتتخصمش
+   • «📎 ضيف صورة» بعدين للمصروف التشغيلي اللي ناقصه صور — لنفس اللي بيسجلوا المصروفات · مفيش مسح
+   • الصور القديمة (e.receipt جوه القاعدة) بتفضل تظهر وبتتحسب من الصورتين */
+const EXP_MAX_PHOTOS = 2;
+var _expPh = null;   // { expId (null = مصروف جديد), newId, photos:[{ file, preview, at, up }] }
+function expPhotoList(e){ return ((e && e.photos) || []).filter(p=>p && p.url); }
+function expPhotoCount(e){ return expPhotoList(e).length + (e && e.receipt ? 1 : 0); }
+function expCanAddPhoto(e){ return !!e && can('fin.expenses') && expTxnType(e) === 'expense' && expPhotoCount(e) < EXP_MAX_PHOTOS; }
+function expPhotoBtn(e){
+  const n = expPhotoCount(e);
+  if(n) return `<button class="btn btn-sm" title="صورة الفاتورة" onclick="viewReceipt('${e.id}')">📎${n > 1 ? ' ' + n : ''}</button>`;
+  return expCanAddPhoto(e) ? `<button class="btn btn-sm" onclick="openExpPhotoModal('${e.id}')">📎 ضيف صورة</button>` : '';
+}
+function expStampText(no, at){
+  const d = new Date(at || Date.now());
+  return ['مصروف' + (no ? ' #' + no : ''), fmtDate(d.toISOString()), d.toLocaleTimeString(NUM_LOCALE, { hour:'2-digit', minute:'2-digit' })].join(' · ');
+}
+function expPhRoom(){
+  if(!_expPh) return 0;
+  const e = _expPh.expId ? DB.expenses.find(x=>x.id === _expPh.expId) : null;
+  return EXP_MAX_PHOTOS - (e ? expPhotoCount(e) : 0) - _expPh.photos.length;
+}
+function expPhotosHTML(){
+  const room = expPhRoom(), have = _expPh ? _expPh.photos.length : 0;
+  const grid = have ? `<div class="tc-phs">${_expPh.photos.map((p, i)=>`<div class="tc-ph-w"><img class="tc-ph" src="${escAttr(p.preview)}" alt="صورة"><button class="tc-ph-x" title="شيل الصورة" onclick="expRemovePhoto(${i})">✕</button></div>`).join('')}</div>` : '';
+  const btns = room > 0 ? `<div style="display:flex;gap:8px;flex-wrap:wrap${have ? ';margin-top:10px' : ''}">
+      <label class="btn" style="cursor:pointer">📷 صوّر<input type="file" accept="image/*" capture="environment" style="display:none" onchange="expPickFiles(this)"></label>
+      <label class="btn" style="cursor:pointer">🖼 من المعرض / الكمبيوتر<input type="file" accept="image/*" multiple style="display:none" onchange="expPickFiles(this)"></label>
+    </div>` : `<div class="muted" style="font-size:11.5px;margin-top:8px">✅ اكتملوا الصورتين — لو عايز تغيّر صورة شيلها الأول</div>`;
+  return grid + btns;
+}
+function expPhotosRedraw(){ const el = document.getElementById('expPhotos'); if(el) el.innerHTML = expPhotosHTML(); }
+function expRemovePhoto(i){ if(_expPh){ _expPh.photos.splice(i, 1); expPhotosRedraw(); } }
+/* الصورة بتتصغّر وقت الحفظ مش وقت الاختيار — عشان رقم المصروف المطبوع عليها يبقى رقمه الحقيقي */
+function expPickFiles(input){
+  if(!_expPh) return;
+  const files = [...((input && input.files) || [])];
+  if(input) input.value = '';
+  for(const f of files){
+    if(expPhRoom() <= 0){ toast('أقصى حاجة صورتين للمصروف', true); break; }
+    if(!f || (f.type && !/^image\//.test(f.type))){ toast('الملف ده مش صورة', true); continue; }
+    let preview = '';
+    try{ preview = URL.createObjectURL(f); }catch(e){}
+    _expPh.photos.push({ file:f, preview, at:new Date().toISOString() });
+  }
+  expPhotosRedraw();
+}
+/* الرفع: اللي اترفع بيتحفظ مكانه — لو النت فصل في النص وجرّبت تاني مابيترفعش مرتين */
+async function expUploadAll(expId, expNo, btn, label){
+  const who = ciAuthor(), n = _expPh.photos.length, out = [];
+  try{
+    for(let i = 0; i < n; i++){
+      const p = _expPh.photos[i];
+      if(btn){ btn.disabled = true; btn.textContent = '⏳ بيرفع الصورة ' + (i + 1) + ' من ' + n + '…'; }
+      if(!p.up){
+        let c;
+        try{ c = await tcCompress(p.file, expStampText(expNo, p.at)); }catch(e){ throw new Error('decode'); }
+        const id = uid('eph');
+        const up = await tcUpload('exp/' + expId, id, c.blob);
+        p.up = { id, url:up.url, path:up.path, at:p.at, by:who.by, byName:who.byName };
+      }
+      out.push(p.up);
+    }
+  } finally { if(btn){ btn.disabled = false; btn.textContent = label; } }
+  return out;
+}
+function expUploadErrText(err, tail){
+  if(err && err.message === 'decode') return 'صورة من الصور مااتقرتش — شيلها وجرّب صورة تانية';
+  const t = tcUploadErrText(err);
+  return tail ? t.replace(/\s*[،—]\s*جرّب تاني$/, '') + tail : t;
 }
 function viewReceipt(id){
   const e = DB.expenses.find(x=>x.id===id);
-  if(!e || !e.receipt){ toast('لا توجد صورة مرفقة', true); return; }
-  openModal(`<h3>صورة الفاتورة — ${e.category||''}</h3><img src="${e.receipt}" style="max-width:100%;border-radius:10px;margin-top:8px">`);
+  const list = expPhotoList(e);
+  if(!e || (!e.receipt && !list.length)){ toast('لا توجد صورة مرفقة', true); return; }
+  openModal(`<h3>صورة الفاتورة — ${e.category||''}${e.expNo ? ' <span class="muted" style="font-size:12px">مصروف #' + e.expNo + '</span>' : ''}</h3>
+    ${e.receipt ? `<img src="${e.receipt}" style="max-width:100%;border-radius:10px;margin-top:8px">` : ''}
+    ${list.map(p=>`<img src="${escAttr(p.url)}" loading="lazy" alt="صورة الفاتورة" style="max-width:100%;border-radius:10px;margin-top:8px;display:block">`).join('')}
+    ${expCanAddPhoto(e) ? `<button class="btn" style="margin-top:12px" onclick="openExpPhotoModal('${e.id}')">📎 ضيف صورة تانية</button>` : ''}`);
+}
+function openExpPhotoModal(id){
+  const e = DB.expenses.find(x=>x.id===id);
+  if(!e) return;
+  if(!can('fin.expenses')){ toast('مالكش صلاحية تسجيل المصروفات', true); return; }
+  if(!expCanAddPhoto(e)){ toast(expTxnType(e) !== 'expense' ? 'الصور بتتضاف على المصروفات التشغيلية بس' : 'المصروف ده عليه صورتين خلاص', true); return; }
+  _expPh = { expId:id, photos:[] };
+  openModal(`<h3>📎 ضيف صورة للفاتورة${e.expNo ? ' — مصروف #' + e.expNo : ''}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">${e.category||''} · ${money(e.amount)} · ${fmtDate(e.date)}</div>
+    <div id="expPhotos">${expPhotosHTML()}</div>
+    <div class="muted" style="font-size:11.5px;margin-top:8px">🔒 الصورة بعد الحفظ مابتتمسحش · التاريخ والساعة بيتطبعوا عليها</div>
+    <button class="btn btn-accent" id="expPhSaveBtn" style="width:100%;margin-top:12px" onclick="saveExpPhotos()">💾 حفظ</button>`);
+}
+async function saveExpPhotos(){
+  if(!_expPh || !_expPh.expId) return;
+  if(!can('fin.expenses')){ toast('مالكش صلاحية تسجيل المصروفات', true); return; }
+  const id = _expPh.expId;
+  let e = DB.expenses.find(x=>x.id===id);
+  if(!e){ toast('المصروف ده مش موجود', true); return; }
+  if(!_expPh.photos.length){ toast('صوّر الفاتورة الأول', true); return; }
+  if(expTxnType(e) !== 'expense' || expPhRoom() < 0){ toast('أقصى حاجة صورتين للمصروف — شيل صورة', true); return; }
+  let photos;
+  try{ photos = await expUploadAll(id, e.expNo, document.getElementById('expPhSaveBtn'), '💾 حفظ'); }
+  catch(err){ toast(expUploadErrText(err, ''), true); return; }
+  e = DB.expenses.find(x=>x.id===id) || e;   // بعد الرفع — نسخة الذاكرة الحالية
+  e.photos = expPhotoList(e).concat(photos);
+  _expPh = null;
+  await saveKey('expenses');
+  await logAction('📎 ' + (photos.length === 1 ? 'صورة' : 'صورتين') + ' فاتورة لمصروف' + (e.expNo ? ' #' + e.expNo : '') + ' — ' + (e.category||'') + ' (' + money(e.amount) + ')');
+  closeModal(); toast('تم حفظ صورة الفاتورة'); refreshContent();
+}
+/* ============ م250: ⬇ تصدير المصروفات Excel — نفس اللي ظاهر في الشاشة بالظبط ============
+   الفترة + نوع العملية + البحث اللي مختارين فوق · بكل السطور (مش أول 100 بس) · وسطر إجمالي في الآخر */
+function expPeriodText(){
+  const f = expFilters;
+  if(f.preset === 'custom') return (f.from ? fmtDate(f.from) : '…') + ' إلى ' + (f.to ? fmtDate(f.to) : '…');
+  return (EXP_DATE_PRESETS.find(p=>p[0] === f.preset) || [null, 'الكل'])[1];
+}
+function expensesCSVContent(){
+  const list = [...DB.expenses].filter(expMatchesFilters).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const r2 = x => Math.round((+x || 0)*100)/100;
+  const rows = [['التاريخ','رقم','نوع العملية','النوع','المجموعة','الوصف','المبلغ','وسيلة الدفع','ملاحظات']];
+  let tot = 0;
+  list.forEach(e=>{
+    tot += +e.amount || 0;
+    rows.push([fmtDate(e.date), e.expNo ? '#'+e.expNo : '', expTxnDef(e).label, e.category||'', isOperatingExpense(e) ? expGroupOf(e) : '',
+      e.description||e.note||'', r2(e.amount), e.payAccount||'', e.notes||'']);
+  });
+  rows.push(['الإجمالي (' + list.length + ' عملية)', '', '', '', '', '', r2(tot), '', '']);
+  return { n:list.length, tot:r2(tot), csv:'﻿' + rows.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n') };
+}
+function exportExpensesXLSX(){
+  const x = expensesCSVContent(), lbl = expPeriodText();
+  if(!x.n){ toast('مفيش عمليات في الفترة دي — غيّر الفترة أو البحث', true); return; }
+  downloadXLSXFromCSV(('المصروفات — ' + lbl + ' — ' + fmtDate(new Date().toISOString())).replace(/[\\/:*?"<>|]/g, '-'), x.csv);
+  logAction('⬇ تصدير Excel للمصروفات — ' + lbl + ' (' + x.n + ' عملية · ' + money(x.tot) + ')');
+  toast('اتصدّر ملف Excel — ' + x.n + ' عملية');
+}
+/* ============ م250: 🗑 حذف مصروف اتسجل بالغلط — الأثر بيرجع لمصدره (قرار سيف) ============
+   • صلاحية «حذف مصروف» (fin.exp_delete) — صاحب المركز دايماً، والباقي لما سيف يفعّلهالهم بإيده.
+   • سبب إلزامي · المصروف بيختفي من القايمة والتقارير كأنه ماكانش · سجل العمليات + إشعار لصاحب المركز.
+   • الفلوس بترجع للحساب اللي اتصرفت منه بسطر «↩ رجوع» بتاريخ يوم الحذف (قرار سيف) — حركة الخزنة الأصلية
+     بتفضل في يومها، فتقفيل الأيام اللي فاتت مابيتغيّرش.
+   • السلفة بتتشال من ملف الموظف — إلا لو مرتب شهرها اتصرف (يبقى اتخصمت منه): الغي صرف المرتب الأول.
+   • سداد الموردين مابيتحذفش خالص (قرار سيف) · المرتبات / سداد فاتورة الشراء / الاستهلاك الداخلي ليهم مكانهم ·
+     استرداد العربون ورد الفلوس للعميل ومصروف تسوية العهدة مقفولين. */
+function expDelHidden(e){ const t = expTxnType(e); return t === 'supplier_payment' || t === 'deposit_refund' || t === 'cust_refund' || !!e.fromCustody; }
+function expDeleteBlock(e){
+  const t = expTxnType(e);
+  if(t === 'supplier_payment') return 'سداد الموردين مابيتحذفش من المصروفات';
+  if(t === 'deposit_refund' || t === 'cust_refund') return 'استرداد العربون ورد الفلوس للعميل مابيتحذفوش — مربوطين بأمر الشغل والفاتورة';
+  if(e.fromCustody) return 'المصروف ده من تسوية عهدة — مابيتحذفش من هنا';
+  if(t === 'salary' || t === 'salary_settle') return 'المرتبات بتتلغي من شاشة المرتبات ← «إلغاء الصرف» (صاحب المركز)';
+  if(t === 'purchase_payment') return 'سداد فاتورة الشراء بيتعدّل من فاتورة الشراء نفسها (طريقة الدفع)';
+  if(t === 'internal_use') return 'الاستهلاك الداخلي مابيتحذفش — دي قطع خرجت من المخزن. لو اتسجل غلط اعمل تسوية من «حركة المخزن»';
+  if(t !== 'expense' && t !== 'advance' && t !== 'reward') return 'النوع ده مابيتحذفش من هنا';   /* م251: المكافأة الكاش زي السلفة */
+  if(t === 'advance' && e.employeeId){
+    const emp = DB.employees.find(x=>x.id === e.employeeId);
+    const adv = emp && (emp.advances || []).find(a=>a.id === e.advanceId);
+    const r = adv && hrPaidOn(emp, adv.date);
+    if(r) return 'مرتب ' + emp.name + ' لشهر ' + r.ym + ' اتصرف خلاص والسلفة دي اتخصمت منه — الغي صرف المرتب الأول من شاشة المرتبات';
+  }
+  return '';
+}
+/* م251: السلف (والمكافآت) القديمة اللي اتسجلت من غير نوع ⇐ «📂 حدد النوع» مرة واحدة — من غير ما الفلوس تتحرك */
+function expNeedsCat(e){ const t = expTxnType(e); return (t === 'advance' || t === 'reward') && !e.categoryId; }
+function expCatBtn(e){
+  return expNeedsCat(e) && can('fin.expenses') && DB.expenseCategories.length ? `<button class="btn btn-sm" title="السلفة دي من غير نوع — بتظهر تحت «غير مصنّف»" onclick="openExpSetCat('${e.id}')">📂 حدد النوع</button>` : '';
+}
+function openExpSetCat(id){
+  if(!can('fin.expenses')){ toast('مالكش صلاحية تسجيل المصروفات', true); return; }
+  const e = DB.expenses.find(x=>x.id === id);
+  if(!e || !expNeedsCat(e)) return;
+  const emp = e.employeeId ? DB.employees.find(x=>x.id === e.employeeId) : null;
+  openModal(`<h3>📂 حدد نوع المصروف${e.expNo ? ' — #' + e.expNo : ''}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">${escNote(e.description || e.category || '')} · ${money(e.amount)} · ${fmtDate(e.date)}<br>اتسجلت قبل ما يبقى للسلف نوع — عشان تتحسب تحت مجموعتها آخر الشهر. الفلوس مش هتتحرك.</div>
+    ${staffCatFieldHTML('expSetCat', emp ? empLastCatId(emp, expTxnType(e) === 'reward' ? 'reward' : 'advance') : '')}
+    <button class="btn btn-accent" style="width:100%" onclick="saveExpSetCat('${id}')">💾 حفظ</button>`);
+}
+async function saveExpSetCat(id){
+  if(!can('fin.expenses')){ toast('مالكش صلاحية تسجيل المصروفات', true); return; }
+  const e = DB.expenses.find(x=>x.id === id);
+  if(!e || !expNeedsCat(e)) return;
+  const pc = staffCatRead('expSetCat'); if(!pc || !pc.cat) return;
+  Object.assign(e, staffCatFields(pc.cat));
+  const emp = e.employeeId ? DB.employees.find(x=>x.id === e.employeeId) : null;
+  const rec = emp && (expTxnType(e) === 'advance' ? (emp.advances || []).find(a=>a.id === e.advanceId) : (emp.bonuses || []).find(b=>b.id === e.bonusId));
+  if(rec && !rec.categoryId) rec.categoryId = pc.cat.id;
+  await Promise.all(rec ? [saveKey('expenses'), saveKey('employees')] : [saveKey('expenses')]);
+  await logAction('📂 تحديد نوع ' + expTxnDef(e).label + (e.expNo ? ' #' + e.expNo : '') + ' — ' + money(e.amount) + ' ⇐ ' + pc.cat.name + ' (' + pc.cat.group + ')');
+  closeModal(); toast('اتحدد النوع: ' + pc.cat.name); refreshContent();
+}
+function expDelBtn(e){
+  return can('fin.exp_delete') && !expDelHidden(e) ? `<button class="btn btn-sm btn-danger" title="حذف المصروف" onclick="openExpDelete('${e.id}')">🗑</button>` : '';
+}
+function openExpDelete(id){
+  if(!can('fin.exp_delete')){ toast('مالكش صلاحية «حذف مصروف»', true); return; }
+  const e = DB.expenses.find(x=>x.id === id);
+  if(!e) return;
+  const blk = expDeleteBlock(e);
+  if(blk){ toast(blk, true); return; }
+  const acc = e.accountId ? DB.finAccounts.find(a=>a.id === e.accountId) : null;
+  const tt = expTxnType(e);
+  const emp = (tt === 'advance' || tt === 'reward') && e.employeeId ? DB.employees.find(x=>x.id === e.employeeId) : null;
+  const fx = [
+    acc && +e.amount > 0 ? '💰 <b>' + money(e.amount) + '</b> هترجع لـ <b>' + escNote(acc.name) + '</b> بسطر رجوع بتاريخ النهارده' : 'المصروف ده مكانش متخصم من حساب — مفيش فلوس هترجع',
+    emp ? '👤 ' + (tt === 'reward' ? 'المكافأة' : 'السلفة') + ' هتتشال من ملف <b>' + escNote(emp.name) + '</b>' : '',
+    '🗑 المصروف هيختفي من القايمة ومن كل التقارير'
+  ].filter(Boolean);
+  askConfirmReason(`حذف مصروف <b>${e.expNo ? '#' + e.expNo : ''}</b> — ${escNote(e.category || expTxnDef(e).label)} · <b>${money(e.amount)}</b> · ${fmtDate(e.date)}${e.description ? '<br><span class="muted">' + escNote(e.description) + '</span>' : ''}<br><br>${fx.join('<br>')}`, reason=>saveExpDelete(id, reason));
+}
+async function saveExpDelete(id, reason){
+  if(!can('fin.exp_delete')){ toast('مالكش صلاحية «حذف مصروف»', true); return; }
+  reason = String(reason || '').trim();
+  if(!reason){ toast('اكتب سبب الحذف', true); return; }
+  const e = DB.expenses.find(x=>x.id === id);
+  if(!e){ toast('المصروف ده اتحذف خلاص', true); refreshContent(); return; }
+  const blk = expDeleteBlock(e);
+  if(blk){ toast(blk, true); return; }
+  const t = expTxnType(e), lbl = expTxnDef(e).label, no = e.expNo ? '#' + e.expNo : '', amt = +e.amount || 0;
+  const acc = e.accountId ? DB.finAccounts.find(a=>a.id === e.accountId) : null;
+  const fm = acc && amt > 0 ? addFinMove(acc.id, 'in', amt, 'reversal', '↩ رجوع مصروف ' + no + ' اتحذف — ' + (e.description || e.category || lbl) + ' — السبب: ' + reason, { expDeletedId:e.id, expNo:e.expNo || null }) : null;
+  let emp = (t === 'advance' || t === 'reward') && e.employeeId ? DB.employees.find(x=>x.id === e.employeeId) : null;
+  if(emp && t === 'advance' && (emp.advances || []).some(a=>a.id === e.advanceId)) emp.advances = emp.advances.filter(a=>a.id !== e.advanceId);
+  else if(emp && t === 'reward' && (emp.bonuses || []).some(b=>b.id === e.bonusId)) emp.bonuses = emp.bonuses.filter(b=>b.id !== e.bonusId);   /* م251 */
+  else emp = null;
+  DB.expenses = DB.expenses.filter(x=>x.id !== e.id);
+  const ps = [saveKey('expenses')];
+  if(fm) ps.push(saveKey('finMoves'));
+  if(emp) ps.push(saveKey('employees'));
+  await Promise.all(ps);
+  await logAction('🗑 حذف مصروف ' + no + ' — ' + lbl + ' · ' + money(amt) + auditDetails([
+    ['النوع', e.category], ['الوصف', e.description || e.note], ['تاريخ المصروف', fmtDate(e.date)], ['كان متصرف من', e.payAccount],
+    ['سجّله', e.actor || e.recordedBy], ['الموظف', emp ? emp.name : (e.extEmpName || null)],
+    ['الفلوس رجعت لـ', fm ? acc.name : null], ['السبب', reason]]));
+  notify('expense_delete', '🗑 حذف مصروف ' + no + ' — ' + (e.category || lbl) + ' · ' + money(amt) + (fm ? ' (رجعت لـ' + acc.name + ')' : '') + ' — السبب: ' + reason,
+    { category:'financial', amount:amt, reason, refType:'expense' });
+  toast('اتحذف المصروف' + (fm ? ' و' + money(amt) + ' رجعت لـ' + acc.name : '')); refreshContent();
 }
 async function saveExpense(){
   if(!can('fin.expenses')){ toast('مالكش صلاحية تسجيل المصروفات', true); return; }
@@ -20747,22 +21183,29 @@ async function saveExpense(){
   if(amount<=0){ toast('اكتب مبلغ صحيح', true); return; }
   const acc = DB.finAccounts.find(a=>a.id===accId);
   if(!acc){ toast('اختار الحساب اللي هيتخصم منه المصروف — مصروف من غير حساب = فلوس خرجت من غير قيد', true); return; }   /* م179ب */
-  let receipt = '';
-  const fileEl = document.getElementById('expReceipt');
-  if(fileEl && fileEl.files && fileEl.files[0]){
-    try{ receipt = await readImageResized(fileEl.files[0]); }catch(err){ if(err && err.message==='too big') return; }
+  /* م249: صور الفاتورة بتترفع لمخزن الصور الأول — النت فاصل ⇐ المصروف مايتسجلش والفلوس ماتتخصمش */
+  const ph = (_expPh && !_expPh.expId) ? _expPh : null;
+  const expId = (ph && ph.newId) || uid('exp');
+  const expNo = nextNo(DB.expenses,'expNo');
+  let photos = [];
+  if(ph && ph.photos.length){
+    if(ph.photos.length > EXP_MAX_PHOTOS){ toast('أقصى حاجة صورتين للمصروف — شيل صورة', true); return; }
+    ph.newId = expId;
+    try{ photos = await expUploadAll(expId, expNo, document.getElementById('expSaveBtn'), 'حفظ المصروف وخصمه من الحساب'); }
+    catch(err){ toast(expUploadErrText(err, ' — المصروف مااتسجلش والفلوس ماتخصمتش. جرّب تاني، أو شيل الصورة واحفظ وضيفها بعدين من «📎»'), true); return; }
   }
   const date = dateVal ? new Date(dateVal+'T'+new Date().toTimeString().slice(0,8)).toISOString() : new Date().toISOString();
   DB.expenses.push({
-    id:uid('exp'), expNo: nextNo(DB.expenses,'expNo'), txnType:'expense',
+    id:expId, expNo, txnType:'expense',
     category: cat.name, categoryId: cat.id, group: cat.group,
     description, notes, note: description, amount,
     accountId: acc?acc.id:null, payAccount: acc?acc.name:null,
-    receipt, actor: actorName(), date
+    photos, actor: actorName(), date
   });
+  if(ph) _expPh = null;
   if(acc) addFinMove(acc.id, 'out', amount, 'expense', 'مصروف: '+cat.name+(description?' — '+description:''));
   await Promise.all([saveKey('expenses'), saveKey('finMoves')]);
-  await logAction('مصروف '+money(amount)+' — '+cat.name+(acc?' من '+acc.name:''));
+  await logAction('مصروف '+money(amount)+' — '+cat.name+(acc?' من '+acc.name:'')+(photos.length ? ' · 📎 '+(photos.length === 1 ? 'صورة' : 'صورتين')+' فاتورة' : ''));
   if(amount >= (DB.settings.largeExpenseThreshold||20000)){
     pushNotif({ category:'financial', type:'large_expense', priority: amount>=50000?'critical':'high', amount,
       action:'مصروف كبير: '+cat.name+(description?' — '+description:''), refType:'expense' });
@@ -20837,7 +21280,7 @@ function renderExpenseReport(){
   const allInRange = DB.expenses.filter(e=>inPeriod(e.date, range));
   const inRange = allInRange.filter(isOperatingExpense);
   const supPaid125 = allInRange.filter(e=>['purchase_payment','supplier_payment'].includes(expTxnType(e))).reduce((s,e)=>s+(e.amount||0),0);
-  const advPaid125 = allInRange.filter(e=>expTxnType(e)==='advance').reduce((s,e)=>s+(e.amount||0),0);
+  /* م251: السلف والمكافآت بقوا جوه الإجمالي تحت نوعهم ومجموعتهم (والسلفة اللي بتتخصم من المرتب مابتتحسبش تاني) */
   const total = inRange.reduce((s,e)=>s+(e.amount||0),0);
   const sumBy = (fn)=>{ const m={}; inRange.forEach(e=>{ const k=fn(e)||'غير محدد'; m[k]=(m[k]||0)+(e.amount||0); }); return Object.entries(m).sort((a,b)=>b[1]-a[1]); };
   const cats = sumBy(e=>e.category);
@@ -20873,11 +21316,10 @@ function renderExpenseReport(){
     ${stat(money(investment),'مصروفات استثمارية (أصول)')}
     ${stat(cats.length?cats[0][0]:'—','أعلى بند مصروف')}
   </div>
-  ${(supPaid125>0||advPaid125>0)?`<div class="card" style="margin-bottom:20px;padding:10px 14px;font-size:12.5px">
+  ${supPaid125>0?`<div class="card" style="margin-bottom:20px;padding:10px 14px;font-size:12.5px">
     <b>حركات خزنة في نفس الفترة (خارج إجمالي المصروفات):</b>
-    ${supPaid125>0?` 🧾 سداد موردين كاش: <b>${money(supPaid125)}</b>`:''}
-    ${advPaid125>0?` · 💰 سلف موظفين: <b>${money(advPaid125)}</b>`:''}
-    <span class="muted">— تكلفة القطع بتتحسب في الربحية، والسلف بتتخصم من المرتبات</span>
+    🧾 سداد موردين كاش: <b>${money(supPaid125)}</b>
+    <span class="muted">— تكلفة القطع بتتحسب في الربحية</span>
   </div>`:''}
   <div class="grid g2" style="margin-bottom:22px">
     ${stat(money(thisM),'مصروفات هذا الشهر')}
@@ -21599,7 +22041,9 @@ function attParseTime(str){
 }
 function attToTs(dateStr, timeStr, fmt){
   const d = attParseDate(dateStr, fmt); if(!d) return null;
-  const t = attParseTime(timeStr) || attParseTime(dateStr) || { h:0, mi:0, se:0 };
+  /* م252: سطر فيه تاريخ من غير ساعة (ملفات «ملخص يومي» بتسيب اليوم فاضي) = مفيش بصمة — كان بيتحسب بصمة 12 بالليل */
+  const t = attParseTime(timeStr) || attParseTime(dateStr);
+  if(!t) return null;
   const dt = new Date(d.y, d.mo-1, d.d, t.h, t.mi, t.se||0);
   return isNaN(dt.getTime()) ? null : dt.getTime();
 }
@@ -22352,10 +22796,11 @@ async function attCommitImport(){
   const picks = P.groups.filter(g=>!g.linked && g.emp);
   const twice = picks.find((g, i)=>picks.findIndex(x=>x.emp.id===g.emp.id)!==i);
   if(twice){ toast('اخترت '+twice.emp.name+' لأكتر من كود — كل كود لموظف واحد', true); return; }
-  const linkedNow = [];
+  const linkedNow = [], links = [];
   if(canLink) picks.forEach(g=>{
     const prev = String(g.emp.fpId||'').trim();
     g.emp.fpId = g.fpId;
+    links.push({ empId:g.emp.id, fpId:g.fpId, prev });   /* م252: «إلغاء الاستيراد» بيرجّع الكود القديم */
     linkedNow.push(g.emp.name+' ← كود '+g.fpId+(prev && prev!==g.fpId ? ' (كان '+prev+')' : ''));
     DB.attendance.forEach(r=>{
       if(r.kind==='punch' && !r.empId && r.fpId===g.fpId) r.empId = g.emp.id;
@@ -22381,7 +22826,7 @@ async function attCommitImport(){
   });
   // سجل الاستيراد بيتحط الأول — عشان المعالجة تعرف الفترة اللي الملف بيغطيها
   const imp = { id:importId, kind:'import', fileName:d.fileName, at:now, by:actorName(),
-    total:d.rows.length, accepted, review:0, unmatched, dup, bad:P.bad, unmatchedFps:[...unmatchedFps], cover, status:'' };
+    total:d.rows.length, accepted, review:0, unmatched, dup, bad:P.bad, unmatchedFps:[...unmatchedFps], cover, links, status:'' };
   DB.attendance.push(imp);
   touchedEmps.forEach(attReprocessEmployee);
   attCloseStaleCheck([...touchedEmps]);   /* م217: شهر معتمد اتغير ⇒ إشعار للمعتمد */
@@ -22404,6 +22849,86 @@ async function attCommitImport(){
   if(one.length===1){ attSubView = 'reports'; attRep = { mode:'emp', month:attCycleOf(one[0].to), emp:one[0].empId, from:one[0].from, to:one[0].to }; }
   toast('تم الاستيراد: '+accepted+' بصمة'+(dup?' ('+dup+' مكرر اتجاهل)':'')+(imp.review?' — '+imp.review+' يوم محتاج مراجعة':''));
   refreshContent();
+}
+/* ============ م252: ↩ إلغاء استيراد بصمة اترفع غلط ============
+   حادثة 27/10: ملف «رمضان.xls» (بصمات رمضان دوكو — كود 10) اترفع واتربط بعبد الله ⇐ 25 بصمة غلط في ملفه، ولما اترفع
+   ملفه الصح اتجمعت معاها والأيام اتلخبطت — ومكانش فيه أي طريقة تشيل استيراد غلط.
+   الإلغاء: بيشيل بصمات الملف ده بس (كل بصمة ليها ملف واحد — المكرر مابيتحفظش تاني) ⇐ يعيد حساب أيام الموظفين ⇐
+   يرجّع الكود اللي الاستيراد ربطه (لو لسه زي ما هو) ⇐ الملف بيفضل في السجل «اتلغى». التصحيحات اليدوية بتفضل.
+   ممنوع لو مرتب شهر من الأيام دي اتصرف · التقفيل اللي اتبعت/اتعتمد بيتعلّم «البيانات اتغيرت» (والمعتمد بيوصله إشعار) */
+function attImportPunches(importId){ return DB.attendance.filter(r=>r.kind==='punch' && r.importId===importId); }
+function attUndoBlock(im){
+  if(!im || im.kind!=='import') return 'الاستيراد ده مش موجود';
+  if(im.undone) return 'الاستيراد ده اتلغى قبل كده';
+  for(const p of attImportPunches(im.id)){
+    const e = p.empId ? DB.employees.find(x=>x.id===p.empId) : null;
+    const r = e && hrPaidOn(e, attDateStr(p.ts));
+    if(r) return 'مرتب ' + e.name + ' لشهر ' + r.ym + ' اتصرف خلاص — بصمات الشهر ده ماينفعش تتشال';
+  }
+  return '';
+}
+function openAttUndoImport(importId){
+  if(!can('hr.att_edit')){ toast('إلغاء الاستيراد لصاحب صلاحية «تعديل وتصحيح الحضور»', true); return; }
+  const im = DB.attendance.find(r=>r.kind==='import' && r.id===importId);
+  const blk = attUndoBlock(im); if(blk){ toast(blk, true); return; }
+  const ps = attImportPunches(importId);
+  const per = {}; ps.forEach(p=>{ const k = p.empId || ('كود ' + p.fpId); per[k] = (per[k] || 0) + 1; });
+  const nm = id => (DB.employees.find(x=>x.id===id) || {}).name || '';
+  const who = Object.entries(per).map(([k, n])=>'<b>' + escNote(nm(k) || k) + '</b> (' + n + ' بصمة)').join(' · ');
+  const hit = (r, empId) => ps.some(p=>p.empId===empId && attDateStr(p.ts)>=r.from && attDateStr(p.ts)<=r.to);
+  const sent = DB.attendance.filter(r=>r.kind==='close' && (r.status==='pending' || r.status==='approved') && hit(r, r.empId));
+  const lk = (im.links || []).filter(l=>{ const e = DB.employees.find(x=>x.id===l.empId); return e && String(e.fpId || '').trim()===l.fpId; });
+  askConfirmReason(`↩ إلغاء استيراد <b>${escNote(im.fileName)}</b> (${fmtDateTime(im.at)} — ${escNote(im.by || '')})؟<br><br>
+    🗑 هيتشال <b>${ps.length}</b> بصمة جت من الملف ده: ${who || '—'}<br>
+    ♻️ أيامهم هتتحسب تاني من البصمات الباقية — التصحيحات اللي بالإيد بتفضل زي ما هي
+    ${lk.length ? '<br>🔢 الكود هيرجع زي ما كان: ' + lk.map(l=>escNote(nm(l.empId)) + ' ← ' + (l.prev ? 'كود ' + escNote(l.prev) : 'من غير كود')).join(' · ') : ''}
+    ${sent.length ? '<br><span style="color:var(--danger)">⚠️ تقفيل ' + sent.map(r=>escNote(nm(r.empId)) + ' لشهر ' + r.ym).join(' · ') + ' اتبعت قبل كده — هيتعلّم عليه «البيانات اتغيرت» ولازم يتبعت تاني</span>' : ''}`,
+    reason=>saveAttUndoImport(importId, reason));
+}
+async function saveAttUndoImport(importId, reason){
+  if(!can('hr.att_edit')){ toast('إلغاء الاستيراد لصاحب صلاحية «تعديل وتصحيح الحضور»', true); return; }
+  reason = String(reason || '').trim();
+  if(!reason){ toast('اكتب سبب الإلغاء', true); return; }
+  const im = DB.attendance.find(r=>r.kind==='import' && r.id===importId);
+  const blk = attUndoBlock(im); if(blk){ toast(blk, true); return; }
+  const ps = attImportPunches(importId), ids = new Set(ps.map(p=>p.id));
+  const emps = [...new Set(ps.filter(p=>p.empId).map(p=>p.empId))];
+  DB.attendance = DB.attendance.filter(r=>!ids.has(r.id));
+  const reverted = [];
+  (im.links || []).forEach(l=>{
+    const e = DB.employees.find(x=>x.id===l.empId);
+    if(e && String(e.fpId || '').trim()===l.fpId){ e.fpId = l.prev || ''; reverted.push(e.name + ' ← ' + (l.prev ? 'كود ' + l.prev : 'من غير كود')); }
+  });
+  emps.forEach(attReprocessEmployee);
+  attCloseStaleCheck(emps);   /* م217: شهر معتمد اتغير ⇒ إشعار للمعتمد */
+  Object.assign(im, { undone:true, undoneAt:new Date().toISOString(), undoneBy:actorName(), undoReason:reason, undoneCount:ps.length });
+  await Promise.all(reverted.length ? [saveKey('attendance'), saveKey('employees')] : [saveKey('attendance')]);
+  const names = emps.map(id=>(DB.employees.find(x=>x.id===id) || {}).name).filter(Boolean);
+  await logAction('↩ إلغاء استيراد بصمة: ' + im.fileName + ' (' + fmtDateTime(im.at) + ') — اتشال ' + ps.length + ' بصمة' + auditDetails([
+    ['الموظفين', names.join('، ') || null], ['الكود رجع', reverted.join(' · ') || null], ['السبب', reason]]));
+  notify('att_import_undo', '↩ إلغاء استيراد بصمة «' + im.fileName + '» — ' + ps.length + ' بصمة' + (names.length ? ' (' + names.join('، ') + ')' : '') + ' — السبب: ' + reason,
+    { category:'hr', reason });
+  toast('اتلغى الاستيراد — اتشال ' + ps.length + ' بصمة'); refreshContent();
+}
+/* م252: الموظف اللي اتختار عنده بصمات في نفس الفترة من كود تاني ⇒ غالباً استيراد قديم اتربط بيه غلط — تحذير قبل الحفظ */
+function attForeignPunches(emp, fpId, cover){
+  if(!emp || !cover) return [];
+  const f = String(fpId || '').trim(), by = new Map();
+  DB.attendance.forEach(r=>{
+    if(r.kind!=='punch' || r.empId!==emp.id || String(r.fpId || '').trim()===f) return;
+    const ds = attDateStr(r.ts); if(ds < cover.from || ds > cover.to) return;
+    const k = r.importId || '';
+    if(!by.has(k)) by.set(k, { n:0, fp:r.fpId });
+    by.get(k).n++;
+  });
+  return [...by.entries()].map(([importId, x])=>({ importId, n:x.n, fp:x.fp, im:DB.attendance.find(r=>r.kind==='import' && r.id===importId) || null }));
+}
+function attForeignWarnHTML(emp, fpId, cover){
+  const fx = attForeignPunches(emp, fpId, cover);
+  if(!fx.length) return '';
+  return `<div style="border:1px solid var(--danger);border-radius:8px;padding:8px 10px;margin:8px 0;font-size:12.5px;line-height:1.8;color:var(--danger)">
+    ⚠️ <b>${escNote(emp.name)}</b> عنده بصمات في الفترة دي من <b>كود تاني</b>: ${fx.map(x=>'<b>' + x.n + '</b> بصمة من كود ' + escNote(x.fp) + (x.im ? ' (ملف «' + escNote(x.im.fileName) + '» — ' + fmtDateTime(x.im.at) + ')' : '')).join(' · ')}
+    — لو ده غلط، ألغي الاستيراد ده الأول من «📋 سجل عمليات الاستيراد» تحت، وإلا البصمات هتتجمع مع بعض والأيام هتتلخبط.</div>`;
 }
 /* ---------- شاشة استيراد البصمة ---------- */
 function attReadFile(input){
@@ -22477,6 +23002,7 @@ function renderAttImport(){
           <div>🔢 كود الجهاز <b>${escNote(g.fpId)}</b>${g.name?` · الاسم في الجهاز <b dir="auto">${escNote(g.name)}</b>`:''} · ${g.punches.length} بصمة</div>
           <div>👤 الموظف: ${empSel}</div>
         </div>
+        ${attForeignWarnHTML(g.emp, g.fpId, g.cover)}
         <div class="grid g3" style="align-items:end">
           <div class="form-row" style="margin:0"><label class="f-label">الملف بيغطي من يوم</label><input class="f" type="date" value="${g.cover.from}" onchange="attSetCover(${gi},'from',this.value)"></div>
           <div class="form-row" style="margin:0"><label class="f-label">لحد يوم</label><input class="f" type="date" value="${g.cover.to}" onchange="attSetCover(${gi},'to',this.value)"></div>
@@ -22488,7 +23014,7 @@ function renderAttImport(){
         ${c.dup?`<div class="muted" style="font-size:11.5px;margin-top:4px">♻️ ${c.dup} بصمة متسجلة قبل كده — هتتجاهل.</div>`:''}`;
       if(!multi) return `<div class="card" style="margin-bottom:14px">${inner}</div>`;
       return `<details class="card" style="margin-bottom:8px;padding:12px 16px" ${g.emp ? '' : 'open'}>
-        <summary style="cursor:pointer;font-size:13px;line-height:1.8">🔢 <b>${escNote(g.fpId)}</b>${g.name ? ' · <span dir="auto">' + escNote(g.name) + '</span>' : ''} ← ${g.emp ? '<b>' + escNote(g.emp.name) + '</b>' : '<b style="color:var(--danger)">⚠️ لسه مش متربط بموظف</b>'}
+        <summary style="cursor:pointer;font-size:13px;line-height:1.8">🔢 <b>${escNote(g.fpId)}</b>${g.name ? ' · <span dir="auto">' + escNote(g.name) + '</span>' : ''} ← ${g.emp ? '<b>' + escNote(g.emp.name) + '</b>' : '<b style="color:var(--danger)">⚠️ لسه مش متربط بموظف</b>'}${attForeignPunches(g.emp, g.fpId, g.cover).length ? ' · <b style="color:var(--danger)">⚠️ عنده بصمات من كود تاني</b>' : ''}
           · ${g.punches.length} بصمة · حضور ${c.t.present}${c.t.absent ? ' · <b style="color:var(--danger)">غياب ' + c.t.absent + '</b>' : ''}${c.t.missing ? ' · <b style="color:var(--danger)">ناقص بصمة ' + c.t.missing + '</b>' : ''} · ${fmtMins(c.t.worked)}${c.dup ? ' · <span class="muted">' + c.dup + ' متسجلة قبل كده</span>' : ''}</summary>
         <div style="margin-top:10px">${inner}</div></details>`;
     }).join('');
@@ -22521,15 +23047,17 @@ function renderAttImport(){
   body += `
   <div class="section-head"><h3>📋 سجل عمليات الاستيراد</h3></div>
   <div class="card" style="overflow-x:auto">
-    <table><thead><tr><th>الملف</th><th>التاريخ</th><th>بواسطة</th><th>الفترة</th><th>مقبول</th><th>مراجعة</th><th>غير معروف</th><th>مكرر</th></tr></thead>
-    <tbody>${imports.length? imports.map(im=>`<tr>
+    <table><thead><tr><th>الملف</th><th>التاريخ</th><th>بواسطة</th><th>الفترة</th><th>مقبول</th><th>مراجعة</th><th>غير معروف</th><th>مكرر</th><th></th></tr></thead>
+    <tbody>${imports.length? imports.map(im=>`<tr${im.undone ? ' style="opacity:.6"' : ''}>
       <td>${escNote(im.fileName)}</td><td style="white-space:nowrap">${fmtDateTime(im.at)}</td><td class="muted">${im.by||'—'}</td>
       <td style="font-size:11.5px;white-space:nowrap">${coverTxt(im)}</td>
-      <td style="color:#1a7f37;font-weight:700">${im.accepted}</td>
+      <td style="color:#1a7f37;font-weight:700">${im.undone ? '<s>' + im.accepted + '</s>' : im.accepted}</td>
       <td>${im.review?`<span class="tag tag-partial">${im.review}</span>`:'0'}</td>
       <td>${im.unmatched?`<span class="tag tag-unpaid">${im.unmatched}</span>`:'0'}</td>
       <td class="muted">${im.dup||0}</td>
-    </tr>`).join('') : `<tr><td colspan="8" class="empty">لسه مفيش عمليات استيراد</td></tr>`}</tbody></table>
+      <td style="white-space:nowrap">${im.undone ? `<span class="tag tag-unpaid" title="${escAttr((im.undoneBy || '') + ' — ' + fmtDateTime(im.undoneAt) + ' — ' + (im.undoReason || ''))}">↩ اتلغى</span><div class="muted" style="font-size:10.5px">${escNote(im.undoneBy || '')} · ${escNote(im.undoReason || '')}</div>`
+        : (can('hr.att_edit') && (im.accepted || 0) > 0 ? `<button class="btn btn-sm btn-danger" onclick="openAttUndoImport('${im.id}')">↩ إلغاء الاستيراد</button>` : '')}</td>
+    </tr>`).join('') : `<tr><td colspan="9" class="empty">لسه مفيش عمليات استيراد</td></tr>`}</tbody></table>
   </div>`;
   return body;
 }
@@ -23501,7 +24029,7 @@ function exportPayrollSheet(){
 function renderHR(){
   // الشاشات الفرعية بتظهر حسب صلاحيات المستخدم (الملاحظة 32)
   const views = [];
-  if(hrCanViewEmps()) views.push(['employees','👥 ملفات الموظفين']);   /* م215: عرض الملفات بصلاحية العرض أو أي صلاحية بتشتغل منها */
+  if(hrCanViewEmps()) views.push(['employees','👥 ملفات الموظفين'], ['rewards','🎁 تقرير المكافآت']);   /* م215: عرض الملفات بصلاحية العرض أو أي صلاحية بتشتغل منها · م251 */
   views.push(['leaves','🏖️ طلبات الإجازات'], ['early','⏰ أذونات الانصراف'], ['errands','🚗 المأموريات']);
   if(can('hr.attendance') || can('hr.att_close') || can('hr.att_approve')) views.push(['attendance','🕒 الحضور والانصراف']);   /* م217 */
   if(can('hr.payroll')) views.push(['payroll','💵 الرواتب']);
@@ -23515,8 +24043,77 @@ function renderHR(){
     : hrView==='errands' ? renderPermits('errand')
     : hrView==='attendance' ? renderAttendance()
     : hrView==='payroll' ? renderPayroll()
+    : hrView==='rewards' ? renderRewardsReport()
     : renderEmployees();
   return tabsBar + body;
+}
+/* ============ م251: 🎁 تقرير المكافآت — كل موظف خد قد إيه من المركز متفنّط بالنوع ============
+   طلب سيف: «عشان أعرف الناس بياخدوا قد إيه من المركز تحت بند المكافآت» — حافز كذا · سهرة كذا · مأمورية كذا …
+   الكاش واللي على المرتب مع بعض (العمودين الآخرانيين بيفصلوهم) · فلتر بشهر المرتب (26 ← 25) أو فترة · Excel */
+let rwPeriod = { preset:'cycle', from:'', to:'' };
+function setRwPeriod(k, v){ if(k === 'preset') rwPeriod.preset = v; else { rwPeriod[k] = v; rwPeriod.preset = 'custom'; } refreshContent(); }
+function rwRange(){
+  const cur = hrCycleOf();
+  if(rwPeriod.preset === 'prev'){ const d = new Date(cur.from + 'T12:00:00'); d.setDate(d.getDate() - 1); return hrCycleOf(attDateStr(d.getTime())); }
+  if(rwPeriod.preset === 'custom') return { from:rwPeriod.from || '0000-01-01', to:rwPeriod.to || '9999-12-31' };
+  return cur;
+}
+function rewardsReportData(){
+  const rg = rwRange();
+  const rows = DB.employees.map(e=>{
+    const list = (e.bonuses || []).filter(b=>inRange(b.date, rg.from, rg.to));
+    const sum = arr => Math.round(arr.reduce((s, b)=>s + (+b.amount || 0), 0) * 100) / 100;
+    return { e, list, total:sum(list), byType:Object.fromEntries(bonusTypeTotals(list)), cash:sum(list.filter(b=>!bonusOnSalary(b))), onSal:sum(list.filter(bonusOnSalary)) };
+  }).filter(r=>r.list.length).sort((a, b)=>b.total - a.total);
+  const types = bonusTypeTotals(rows.flatMap(r=>r.list)).map(([t])=>t);
+  return { rg, rows, types };
+}
+function renderRewardsReport(){
+  const { rg, rows, types } = rewardsReportData();
+  const T = k => Math.round(rows.reduce((s, r)=>s + (+(k === 'total' || k === 'cash' || k === 'onSal' ? r[k] : r.byType[k]) || 0), 0) * 100) / 100;
+  const P = rwPeriod.preset;
+  const lbl = P === 'custom' ? (rwPeriod.from ? fmtDate(rwPeriod.from) : 'البداية') + ' ← ' + (rwPeriod.to ? fmtDate(rwPeriod.to) : 'النهاردة') : fmtDate(rg.from) + ' ← ' + fmtDate(rg.to);
+  return `
+  <div class="section-head"><h3>🎁 تقرير المكافآت — ${lbl}</h3>
+    <button class="btn" onclick="exportRewardsXLSX()">⬇ Excel</button></div>
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn btn-sm ${P === 'cycle' ? 'btn-accent' : ''}" onclick="setRwPeriod('preset','cycle')">شهر المرتب الحالي</button>
+      <button class="btn btn-sm ${P === 'prev' ? 'btn-accent' : ''}" onclick="setRwPeriod('preset','prev')">شهر المرتب اللي فات</button>
+    </div>
+    <div class="grid g2" style="max-width:440px">
+      <input class="f" type="date" value="${P === 'custom' ? rwPeriod.from : ''}" onchange="setRwPeriod('from',this.value)">
+      <input class="f" type="date" value="${P === 'custom' ? rwPeriod.to : ''}" onchange="setRwPeriod('to',this.value)">
+    </div>
+    <div class="muted" style="font-size:12px;margin-top:8px">كل المكافآت — اللي اتصرفت كاش واللي على المرتب — متفنّطة بالنوع. دوس على اسم الموظف يفتح ملفه.</div>
+  </div>
+  ${rows.length ? `<div class="grid g4" style="margin-bottom:14px">
+      ${stat(money(T('total')), 'إجمالي المكافآت (' + rows.length + ' موظف)')}
+      ${types.slice(0, 3).map(t=>stat(money(T(t)), escNote(t))).join('')}
+    </div>` : ''}
+  <div class="card" style="overflow-x:auto">
+    <table><thead><tr><th>الموظف</th><th>الإجمالي</th>${types.map(t=>`<th>${escNote(t)}</th>`).join('')}<th>💵 اتصرفت كاش</th><th>📅 على المرتب</th></tr></thead><tbody>
+    ${rows.length ? rows.map(r=>`<tr><td><a href="#" style="color:var(--accent);text-decoration:underline" onclick="event.preventDefault();openEmployeeDetail('${r.e.id}')"><b>${escNote(r.e.name)}</b></a><div class="muted" style="font-size:11px">${escNote(r.e.job || '')}</div></td>
+      <td style="font-weight:800">${money(r.total)}</td>${types.map(t=>`<td>${r.byType[t] ? money(r.byType[t]) : '—'}</td>`).join('')}
+      <td class="muted">${r.cash ? money(r.cash) : '—'}</td><td class="muted">${r.onSal ? money(r.onSal) : '—'}</td></tr>`).join('')
+      + `<tr style="font-weight:900;background:var(--surface-2)"><td>الإجمالي</td><td>${money(T('total'))}</td>${types.map(t=>`<td>${money(T(t))}</td>`).join('')}<td>${money(T('cash'))}</td><td>${money(T('onSal'))}</td></tr>`
+      : `<tr><td colspan="${types.length + 4}" class="empty">مفيش مكافآت في الفترة دي</td></tr>`}
+    </tbody></table>
+  </div>`;
+}
+function exportRewardsXLSX(){
+  if(!hrCanViewEmps()){ toast('مالكش صلاحية عرض ملفات الموظفين', true); return; }
+  const { rg, rows, types } = rewardsReportData();
+  if(!rows.length){ toast('مفيش مكافآت في الفترة دي', true); return; }
+  const r2 = x => Math.round((+x || 0) * 100) / 100;
+  const out = [['الموظف', 'الوظيفة', 'الإجمالي', ...types, 'اتصرفت كاش', 'على المرتب']];
+  rows.forEach(r=>out.push([r.e.name, r.e.job || '', r2(r.total), ...types.map(t=>r2(r.byType[t])), r2(r.cash), r2(r.onSal)]));
+  const sumK = f => r2(rows.reduce((s, r)=>s + (+f(r) || 0), 0));
+  out.push(['الإجمالي (' + rows.length + ' موظف)', '', sumK(r=>r.total), ...types.map(t=>sumK(r=>r.byType[t])), sumK(r=>r.cash), sumK(r=>r.onSal)]);
+  const lbl = rwPeriod.preset === 'custom' ? (rwPeriod.from || 'البداية') + ' إلى ' + (rwPeriod.to || 'النهاردة') : rg.from + ' إلى ' + rg.to;
+  downloadXLSXFromCSV(('المكافآت — ' + lbl).replace(/[\\/:*?"<>|]/g, '-'), '﻿' + out.map(r=>r.map(v=>'"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\r\n'));
+  logAction('⬇ تصدير Excel لتقرير المكافآت — ' + lbl + ' (' + rows.length + ' موظف)');
+  toast('اتصدّر ملف Excel — ' + rows.length + ' موظف');
 }
 let hrShowArchived = false;
 function toggleHrArchive(){ hrShowArchived = !hrShowArchived; refreshContent(); }
@@ -23626,7 +24223,7 @@ function empMovesOf(e, inP, sal){
   const dayVal = empDayValue(e);
   const accName = id => { const a = (DB.finAccounts || []).find(x=>x.id===id); return a ? a.name : ''; };
   return [
-    ...(e.bonuses || []).filter(b=>inP(b.date)).map(b=>({ date:b.date, kind:'reward', tag:'🎁 ' + bonusType(b), desc:[b.reason, b.note].filter(Boolean).join(' — '), amt:+b.amount || 0, by:b.recordedBy })),
+    ...(e.bonuses || []).filter(b=>inP(b.date)).map(b=>({ date:b.date, kind:'reward', tag:'🎁 ' + bonusType(b), desc:[b.reason, bonusPayText(b), b.note].filter(Boolean).join(' — '), amt:+b.amount || 0, by:b.recordedBy })),
     ...(e.advances || []).filter(a=>inP(a.date)).map(a=>({ date:a.date, kind:'advance', tag:'💰 سلفة', desc:[a.reason, accName(a.accountId) ? 'من ' + accName(a.accountId) : '', a.note].filter(Boolean).join(' — '), amt:-(+a.amount || 0), by:a.recordedBy })),
     ...(e.penalties || []).filter(p=>inP(p.date)).map(p=>({ date:p.date, kind:'penalty', tag:'⚖️ جزاء', desc:[p.reason, p.note].filter(Boolean).join(' — '), amt:-(+p.amount || 0), by:p.recordedBy })),
     /* م217: خصم الحضور المعتمد — والغياب اليدوي في شهر معتمد جوه التقفيل (مايتكررش) */
@@ -23825,7 +24422,7 @@ function openEmployeeDetail(empId){
   const sum = arr => arr.reduce((s2,x)=>s2 + (+x.amount || 0), 0);
   const totAdv = sum(advances), totPen = sum(penalties), totBon = sum(bonuses);
   const absDays = absences.reduce((s2,a)=>s2 + (a.days || 1), 0);
-  const types = {}; bonuses.forEach(b=>{ const t = bonusType(b); types[t] = (types[t] || 0) + 1; });
+  const bonTypes = bonusTypeTotals(bonuses);   /* م251: المكافآت متفنّطة بالمبلغ (حافز · سهرة · مأمورية …) */
   const adv = empAdvanceState(e);
   const inPeriodLbl = fltOn ? ' (في الفترة)' : '';
   const perTxt = !fltOn ? 'كل الفترات' : isCycle ? 'شهر المرتب الحالي (' + fmtDate(cyc.from) + ' ← ' + fmtDate(cyc.to) + ')'
@@ -23858,9 +24455,12 @@ function openEmployeeDetail(empId){
       <tr style="background:var(--surface-2)"><td colspan="5" style="font-size:12.5px;font-weight:700">المكافآت <span style="color:var(--success)">+ ${money(totBon)}</span> · السلف <span style="color:var(--danger)">− ${money(totAdv)}</span> · الجزاءات <span style="color:var(--danger)">− ${money(totPen)}</span> · الغياب ${absDays} يوم</td></tr>
       </tbody></table>` : empty('مفيش حركات في الفترة دي');
   } else if(empDetailTab === 'reward'){
-    body = bonuses.length ? `<table><thead><tr><th>التاريخ</th><th>النوع</th><th>السبب</th><th>المبلغ</th><th>سجّله</th></tr></thead><tbody>
+    /* م251: اتصرفت إزاي (كاش من حساب / على المرتب) + الإجمالي متفنّط بالنوع تحت */
+    const oldBtn = b => sal && !b.pay && bonusOnSalary(b) && !hrPaidOn(e, b.date) ? ` <button class="btn btn-sm" title="اتصرفت كاش قبل كده — ماتتضافش على المرتب" onclick="openBonusPaidOutside('${empId}','${b.id}')">💵 اتصرفت قبل كده؟</button>` : '';
+    body = bonuses.length ? `<table><thead><tr><th>التاريخ</th><th>النوع</th><th>السبب</th><th>المبلغ</th><th>اتصرفت</th><th>سجّله</th></tr></thead><tbody>
       ${bonuses.map(b=>`<tr>${dcell(b.date)}<td style="font-weight:700">${escNote(bonusType(b))}</td><td class="muted" style="font-size:12px">${escNote([b.reason, b.note].filter(Boolean).join(' — ') || '—')}</td>
-        <td style="white-space:nowrap">${empMoveAmtHTML(+b.amount || 0)}</td><td>${by(b.recordedBy)}</td></tr>`).join('')}</tbody></table>` : empty('مفيش مكافآت مسجلة');
+        <td style="white-space:nowrap">${empMoveAmtHTML(+b.amount || 0)}</td><td style="font-size:12px;white-space:nowrap">${escNote(bonusPayText(b))}${oldBtn(b)}</td><td>${by(b.recordedBy)}</td></tr>`).join('')}
+      <tr style="background:var(--surface-2)"><td colspan="6" style="font-size:12.5px;font-weight:700">إجمالي المكافآت <span style="color:var(--success)">${money(totBon)}</span>: ${bonTypes.map(([t, v])=>escNote(t) + ' ' + money(v)).join(' · ')}</td></tr></tbody></table>` : empty('مفيش مكافآت مسجلة');
   } else if(empDetailTab === 'advance'){
     const accName = id => { const a = (DB.finAccounts || []).find(x=>x.id===id); return a ? a.name : '—'; };
     body = advLimitHTML(e, attDateStr(Date.now()), 0) + (advances.length ? `<table><thead><tr><th>التاريخ</th><th>المبلغ</th><th>السبب</th><th>اتصرفت من</th><th>سجّلها</th></tr></thead><tbody>
@@ -23902,7 +24502,7 @@ function openEmployeeDetail(empId){
     ${btns.length ? `<div class="emp-actions">${btns.join('')}</div>` : ''}
     <div class="emp-tiles">
       ${tile('الإجازات المتبقية', st.remaining + ' من ' + st.total, 'اتخصم ' + st.used + ' يوم' + (st.usedOther ? ' · ' + st.usedOther + ' يوم إجازات أخرى' : ''), st.remaining <= 0)}
-      ${tile('المكافآت' + inPeriodLbl, '+ ' + money(totBon), Object.keys(types).map(t=>escNote(t) + ' ' + types[t]).join(' · ') || 'مفيش')}
+      ${tile('المكافآت' + inPeriodLbl, '+ ' + money(totBon), bonTypes.map(([t, v])=>escNote(t) + ' ' + money(v)).join(' · ') || 'مفيش')}
       ${tile('السلف' + inPeriodLbl, money(totAdv), advSub, adv.over)}
       ${tile('الجزاءات والغياب' + inPeriodLbl, money(totPen), absDays + ' يوم غياب', totPen > 0 || absDays > 0)}
     </div>
@@ -24321,7 +24921,8 @@ function payrollCalc(emp, from, to){
   const absenceDeduct = Math.round((dayVal*manAbsDays + closeSum('absence'))*100)/100;
   const missingDeduct = closeSum('missing'), lateDeduct = closeSum('late'), unpaidDeduct = closeSum('unpaid');
   const penalties = (emp.penalties||[]).filter(p=>inRange(p.date, from, to)).reduce((s,p)=>s+(p.amount||0),0);
-  const bonuses   = (emp.bonuses||[]).filter(b=>inRange(b.date, from, to)).reduce((s,b)=>s+(b.amount||0),0);
+  /* م251: المكافأة اللي اتصرفت كاش (أو اتعلّمت «اتصرفت قبل كده») مش بتتضاف على المرتب — ماتتصرفش مرتين */
+  const bonuses   = (emp.bonuses||[]).filter(b=>inRange(b.date, from, to) && bonusOnSalary(b)).reduce((s,b)=>s+(b.amount||0),0);
   const socialIns = emp.socialIns||0, healthIns = emp.healthIns||0, otherDeduct = emp.otherDeduct||0;
   const fixed = socialIns+healthIns+otherDeduct;
   /* م238: الشهر اللي فات صافيه طلع بالسالب ⇒ الفرق بيتخصم من الشهر ده لوحده */
@@ -24348,6 +24949,7 @@ function openAdvanceModal(empId){
     <!-- م125 (قرار سيف): مصدر الدفع إلزامي — سلفة يعني فلوس خرجت فعلاً من حساب -->
     <div class="form-row"><label class="f-label">مصدر الدفع (إلزامي — الحساب اللي هتتخصم منه)</label>
       <select class="f" id="advAcc"><option value="">— اختار الحساب —</option>${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+    ${staffCatFieldHTML('advCat', empLastCatId(e, 'advance'))}
     <div class="form-row"><label class="f-label">سبب السلفة</label><input class="f" id="advReason"></div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="advNote"></div>
     <div class="muted" style="font-size:12px;margin-bottom:10px">السلفة هتتخصم تلقائياً من راتب شهرها في شاشة الرواتب.</div>
@@ -24369,15 +24971,45 @@ async function saveAdvance(empId){
   /* م125 (قرار سيف): مصدر الدفع إلزامي — والسلفة بتتسجل في السجل المالي الموحد */
   const acc = accId ? DB.finAccounts.find(a=>a.id===accId) : null;
   if(!acc){ toast('اختار مصدر الدفع — السلفة لازم تتخصم من حساب', true); return; }
+  const pc = staffCatRead('advCat'); if(!pc) return;   /* م251 */
   /* م215: حد السلف — تنبيه مش منع: «متأكد؟» + إشعار لصاحب المركز */
   const st = empAdvanceState(e, date, amount);
   const go = async () => {
-    await _writeAdvance({ emp:e, date, amount, reason, note, acc });   /* م166: نفس الكاتب المركزي */
+    await _writeAdvance({ emp:e, date, amount, reason, note, acc, cat:pc.cat });   /* م166: نفس الكاتب المركزي */
     if(st.over) await advOverRecord(e, st, amount);
     closeModal(); toast('تم تسجيل السلفة وخصمها من '+acc.name+(st.over?' — ⚠️ عدّت حد السلف':'')); openEmployeeDetail(empId);
   };
   if(st.over){ askConfirm(advOverConfirmMsg(e, st, amount), go); return; }
   await go();
+}
+/* ============ م251: السلف والمكافآت تحت «نوع المصروف» (والمجموعة بتيجي معاه) ============
+   طلب سيف: آخر الشهر يعرف كل مجموعة مصروفات فيها إيه — والسلف والمكافآت اللي بتتصرف من ملف الموظف
+   لازم تدخل تحت النوع اللي هو عامله (زي «سلف الموظفيين - التشغيل» / «سهرات الموظفيين - الاداريين»).
+   النوع إلزامي لما يكون فيه أنواع مكوّدة · والسيستم بيفتكر آخر نوع اتختار لنفس الموظف (ولنفس نوع المكافأة). */
+function staffCatFields(cat, fallback){ return cat ? { category:cat.name, categoryId:cat.id, group:cat.group } : { category:fallback }; }
+/* تاريخ صف المصروف = اليوم المختار + ساعة التسجيل (زي المصروف العادي) — اليوم لوحده بيتقري 2 الفجر بتوقيت مصر،
+   فالسلفة اللي اتسجلت بعد نص الليل ماكانتش بتظهر في «اليوم» و«الشهر ده» غير بعد الساعة 2 */
+function expDayISO(day){ const d = new Date(String(day || '').slice(0, 10) + 'T' + new Date().toTimeString().slice(0, 8)); return isNaN(d) ? new Date().toISOString() : d.toISOString(); }
+function staffCatFieldHTML(id, selId, onchange){
+  return `<div class="form-row"><label class="f-label">نوع المصروف (إلزامي — المجموعة بتيجي معاه: تشغيلية · إدارية …)</label>
+    <select class="f" id="${id}"${onchange ? ` onchange="${onchange}"` : ''}>${expCatOptionsHTML(selId)}</select></div>`;
+}
+/* بيرجّع النوع المختار — أو null + رسالة لو مش مختار (ولو مفيش أنواع مكوّدة خالص بيعدّي من غير نوع) */
+function staffCatRead(id){
+  const v = (document.getElementById(id)||{}).value;
+  const cat = v ? DB.expenseCategories.find(c=>c.id === v) : null;
+  if(cat) return { cat };
+  if(!DB.expenseCategories.length) return { cat:null };
+  toast('اختار نوع المصروف (زي «سلف الموظفيين - التشغيل») — عشان يتحسب تحت مجموعته آخر الشهر', true);
+  return null;
+}
+function empLastCatId(e, kind, type){
+  const list = kind === 'advance' ? (e && e.advances || []) : (e && e.bonuses || []).filter(b=>b.pay === 'cash');
+  const live = x => x.categoryId && DB.expenseCategories.some(c=>c.id === x.categoryId);
+  const byT = type ? list.filter(b=>bonusType(b) === type) : list;
+  const pick = arr => arr.filter(live).sort((a, b)=>String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || '')))[0];
+  const hit = pick(byT) || (type ? pick(list) : null);
+  return hit ? hit.categoryId : '';
 }
 /* ============ م166: الكاتب المركزي الوحيد للسلف ============
    كل سلفة — من HR أو من المصروفات، لمكود أو غير مكود — بتعدي من هنا:
@@ -24385,18 +25017,18 @@ async function saveAdvance(empId){
    (2) حركة خزنة خصم من الحساب
    (3) صف في سجل المصروفات بنوع «سلفة موظف» — وهو السجل المركزي للتقارير.
    غير المكود: مفيش ملف موظف أبداً — بس extEmpId بيربط سلف نفس الاسم. */
-async function _writeAdvance({ emp, extName, extEmpId, date, amount, reason, note, acc }){
+async function _writeAdvance({ emp, extName, extEmpId, date, amount, reason, note, acc, cat }){
   const dispName = emp ? emp.name : normEmpName(extName);
   let advanceId = null;
   if(emp){
     if(!emp.advances) emp.advances = [];
-    const adv = { id:uid('adv'), date, amount, reason, note, accountId:acc.id, recordedBy:actorName(), createdAt:new Date().toISOString() };
+    const adv = { id:uid('adv'), date, amount, reason, note, accountId:acc.id, categoryId:cat ? cat.id : null, recordedBy:actorName(), createdAt:new Date().toISOString() };
     emp.advances.push(adv);
     advanceId = adv.id;
   }
   const advFm = addFinMove(acc.id, 'out', amount, 'advance', 'سلفة موظف: '+dispName+(emp?'':' (غير مكود)')+(reason?' — '+reason:''));
-  DB.expenses.push({ id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'advance', category:'سلفة موظف',
-    description:'سلفة — '+dispName+(emp?'':' (غير مكود)')+(reason?' — '+reason:''), amount, date,
+  DB.expenses.push({ id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'advance', ...staffCatFields(cat, 'سلفة موظف'),
+    description:'سلفة — '+dispName+(emp?'':' (غير مكود)')+(reason?' — '+reason:''), amount, date:expDayISO(date),
     payAccount:acc.name, accountId:acc.id,
     employeeId: emp ? emp.id : null, advanceId,
     extEmpId: emp ? null : extEmpId, extEmpName: emp ? null : dispName,
@@ -24420,7 +25052,7 @@ function openExpAdvanceModal(){
       </select></div>
     <div id="xadvCodedBox">
       <div class="form-row"><label class="f-label">الموظف</label>
-        <select class="f" id="xadvEmp"><option value="">— اختار الموظف —</option>${DB.employees.filter(x=>x.status==='نشط').map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
+        <select class="f" id="xadvEmp" onchange="xadvEmpChanged()"><option value="">— اختار الموظف —</option>${DB.employees.filter(x=>x.status==='نشط').map(x=>`<option value="${x.id}">${x.name}</option>`).join('')}</select></div>
     </div>
     <div id="xadvExtBox" style="display:none">
       <div class="form-row"><label class="f-label">اسم الموظف (اكتبه بدقة — لو اتكتب قبل كدة هيتقترح عليك)</label>
@@ -24434,6 +25066,7 @@ function openExpAdvanceModal(){
     </div>
     <div class="form-row"><label class="f-label">مصدر الدفع (إلزامي — الحساب اللي هتتخصم منه)</label>
       <select class="f" id="xadvAcc"><option value="">— اختار الحساب —</option>${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+    <div id="xadvCatBox">${staffCatFieldHTML('xadvCat', '')}</div>
     <div class="form-row"><label class="f-label">سبب السلفة</label><input class="f" id="xadvReason"></div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="xadvNote"></div>
     <div class="muted" style="font-size:12px;margin-bottom:10px">السلفة بتنزل في نفس السجل المركزي — للمكود هتظهر فوراً في ملفه في الموارد البشرية وهتتخصم من راتبه زي أي سلفة.</div>
@@ -24445,6 +25078,12 @@ function xadvKindChanged(){
   const c = document.getElementById('xadvCodedBox'), x = document.getElementById('xadvExtBox');
   if(c) c.style.display = k==='coded' ? '' : 'none';
   if(x) x.style.display = k==='ext' ? '' : 'none';
+}
+/* م251: اختيار الموظف ⇐ آخر نوع مصروف اتسجلت بيه سلفته بيتختار لوحده (ولو مفيش بيفضل اللي اختاره) */
+function xadvEmpChanged(){
+  const e = DB.employees.find(x=>x.id === (document.getElementById('xadvEmp')||{}).value);
+  const id = empLastCatId(e, 'advance'), box = document.getElementById('xadvCatBox');
+  if(id && box) box.innerHTML = staffCatFieldHTML('xadvCat', id);
 }
 async function saveExpAdvance(){
   if(!can('exp.advance')){ toast('مالكش صلاحية سلفة الموظفين من المصروفات', true); return; }   /* حارس م65 */
@@ -24458,6 +25097,7 @@ async function saveExpAdvance(){
   if(amount<=0){ toast('اكتب قيمة السلفة', true); return; }
   const acc = accId ? DB.finAccounts.find(a=>a.id===accId) : null;
   if(!acc){ toast('اختار مصدر الدفع — السلفة لازم تتخصم من حساب', true); return; }
+  const pc = staffCatRead('xadvCat'); if(!pc) return;   /* م251 */
   if(kind==='coded'){
     const empId = (document.getElementById('xadvEmp')||{}).value;
     const emp = DB.employees.find(x=>x.id===empId);
@@ -24466,7 +25106,7 @@ async function saveExpAdvance(){
     /* م215: نفس تنبيه حد السلف لما السلفة تتسجل من المصروفات */
     const st = empAdvanceState(emp, date, amount);
     const go = async () => {
-      await _writeAdvance({ emp, date, amount, reason, note, acc });
+      await _writeAdvance({ emp, date, amount, reason, note, acc, cat:pc.cat });
       if(st.over) await advOverRecord(emp, st, amount);
       closeModal(); toast('تم تسجيل السلفة وخصمها من '+acc.name+(st.over?' — ⚠️ عدّت حد السلف':''));
       refreshContent();
@@ -24478,7 +25118,7 @@ async function saveExpAdvance(){
     const name = normEmpName((document.getElementById('xadvExtName')||{}).value);
     if(!name){ toast('اكتب اسم الموظف غير المكود', true); return; }
     const extEmpId = findExtEmpId(name) || uid('xemp');
-    await _writeAdvance({ extName:name, extEmpId, date, amount, reason, note, acc });
+    await _writeAdvance({ extName:name, extEmpId, date, amount, reason, note, acc, cat:pc.cat });
   }
   closeModal(); toast('تم تسجيل السلفة وخصمها من '+acc.name);
   refreshContent();
@@ -24509,13 +25149,49 @@ function openBonusModal(empId){
       <div class="form-row"><label class="f-label">المبلغ</label><input class="f" id="bnAmt" type="number" min="0"></div>
     </div>
     <div class="form-row"><label class="f-label">نوع المكافأة * — اكتب اللي إنت عايزه (حافز · سهرة · مأمورية · مكافأة …)</label>
-      <input class="f" id="bnType" list="bnTypeList" placeholder="مثال: سهرة" autocomplete="off">
+      <input class="f" id="bnType" list="bnTypeList" placeholder="مثال: سهرة" autocomplete="off" onchange="bnTypeChanged('${empId}')">
       <datalist id="bnTypeList">${bonusTypeSuggestions().map(t=>`<option value="${escAttr(t)}">`).join('')}</datalist></div>
+    <!-- م251 (طلب سيف): اختيارين — تتصرف دلوقتي من حساب (وتتسجل في المصروفات) أو تتضاف على المرتب -->
+    <label class="f-label">المكافأة هتتصرف إزاي؟</label>
+    <input type="hidden" id="bnPay" value="cash">
+    <div class="bn-pay">
+      <button type="button" class="btn btn-accent" id="bnPayCash" onclick="bnPaySet('cash')">💵 تتصرف دلوقتي</button>
+      <button type="button" class="btn" id="bnPaySal" onclick="bnPaySet('salary')">📅 تتضاف على المرتب</button>
+    </div>
+    <div id="bnCashBox">
+      <div class="form-row"><label class="f-label">مصدر الدفع (إلزامي — الحساب اللي هتتخصم منه)</label>
+        <select class="f" id="bnAcc"><option value="">— اختار الحساب —</option>${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+      <div id="bnCatBox">${staffCatFieldHTML('bnCat', empLastCatId(e, 'reward'))}</div>
+      <div class="muted" style="font-size:12px;margin-bottom:10px">💵 الفلوس هتتخصم من الحساب دلوقتي وهتتسجل في المصروفات تحت النوع ده — <b>ومش هتتضاف على المرتب</b> (عشان ماتتصرفش مرتين).</div>
+    </div>
+    <div id="bnSalBox" style="display:none">
+      <div class="muted" style="font-size:12px;margin-bottom:10px">📅 المكافأة هتتضاف على كشف راتب شهر المرتب اللي التاريخ ده فيه وهيقبضها مع مرتبه — منفصلة عن المرتب الأساسي ومش بتدخل في حد السلف.</div>
+    </div>
     <div class="form-row"><label class="f-label">السبب / التفاصيل</label><input class="f" id="bnReason" placeholder="مثال: سهرة تسليم عربية متأخر"></div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="bnNote"></div>
-    <div class="muted" style="font-size:12px;margin-bottom:10px">المكافأة بتتضاف على كشف راتب شهر المرتب اللي التاريخ ده فيه — منفصلة عن المرتب الأساسي ومش بتدخل في حد السلف.</div>
     <button class="btn btn-accent" style="width:100%" onclick="saveBonus('${empId}')">حفظ المكافأة</button>
   `);
+}
+function bnPaySet(m){
+  const h = document.getElementById('bnPay'); if(h) h.value = m;
+  const c = document.getElementById('bnCashBox'), s = document.getElementById('bnSalBox');
+  if(c) c.style.display = m === 'cash' ? '' : 'none';
+  if(s) s.style.display = m === 'salary' ? '' : 'none';
+  const bc = document.getElementById('bnPayCash'), bs = document.getElementById('bnPaySal');
+  if(bc) bc.className = 'btn' + (m === 'cash' ? ' btn-accent' : '');
+  if(bs) bs.className = 'btn' + (m === 'salary' ? ' btn-accent' : '');
+}
+/* م251: كتابة نوع المكافأة ⇐ آخر نوع مصروف اتصرفت بيه نفس المكافأة (للموظف ده الأول، وبعدين لأي موظف) */
+function bnTypeChanged(empId){
+  const e = DB.employees.find(x=>x.id === empId), type = ((document.getElementById('bnType')||{}).value || '').trim();
+  let id = type ? empLastCatId(e, 'reward', type) : '';
+  if(type && (!id || !(e.bonuses || []).some(b=>b.pay === 'cash' && bonusType(b) === type))){
+    const any = DB.employees.flatMap(x=>(x.bonuses || []).filter(b=>b.pay === 'cash' && bonusType(b) === type && b.categoryId && DB.expenseCategories.some(c=>c.id === b.categoryId)))
+      .sort((a, b)=>String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
+    if(any) id = any.categoryId;
+  }
+  const box = document.getElementById('bnCatBox');
+  if(id && box) box.innerHTML = staffCatFieldHTML('bnCat', id);
 }
 async function saveBonus(empId){
   if(!hrCanReward()){ toast('مالكش صلاحية المكافآت', true); return; }   /* حارس م65 · م215 */
@@ -24526,15 +25202,70 @@ async function saveBonus(empId){
   const type = ((document.getElementById('bnType')||{}).value||'').trim();
   const reason = ((document.getElementById('bnReason')||{}).value||'').trim();
   const note = ((document.getElementById('bnNote')||{}).value||'').trim();
+  const pay = (document.getElementById('bnPay')||{}).value === 'cash' ? 'cash' : 'salary';   /* م251 */
   if(!date){ toast('اختر التاريخ', true); return; }
   if(amount<=0){ toast('اكتب مبلغ المكافأة', true); return; }
   if(!type){ toast('اكتب نوع المكافأة (حافز · سهرة · مأمورية …)', true); return; }
-  if(hrLockGuard(e, date)) return;   /* م238 */
+  if(pay === 'cash'){
+    const accId = (document.getElementById('bnAcc')||{}).value;
+    const acc = accId ? DB.finAccounts.find(a=>a.id===accId) : null;
+    if(!acc){ toast('اختار مصدر الدفع — المكافأة اللي بتتصرف دلوقتي لازم تتخصم من حساب', true); return; }
+    const pc = staffCatRead('bnCat'); if(!pc) return;
+    await _writeReward({ emp:e, date, amount, type, reason, note, acc, cat:pc.cat });
+    closeModal(); toast('تم صرف المكافأة ('+type+') من '+acc.name); openEmployeeDetail(empId);
+    return;
+  }
+  if(hrLockGuard(e, date)) return;   /* م238 — بس للي على المرتب: الكاش مالوش دعوة بشهر المرتب */
   if(!e.bonuses) e.bonuses = [];
-  e.bonuses.push({ id:uid('bon'), date, amount, type, reason, note, recordedBy:actorName(), createdAt:new Date().toISOString() });
+  e.bonuses.push({ id:uid('bon'), date, amount, type, reason, note, pay:'salary', recordedBy:actorName(), createdAt:new Date().toISOString() });
   await saveKey('employees');
-  await logAction('مكافأة ('+type+') '+money(amount)+' — '+e.name+(reason?' — '+reason:''));
-  closeModal(); toast('تم تسجيل المكافأة ('+type+')'); openEmployeeDetail(empId);
+  await logAction('مكافأة ('+type+') '+money(amount)+' — '+e.name+' — 📅 على المرتب'+(reason?' — '+reason:''));
+  closeModal(); toast('تم تسجيل المكافأة ('+type+') على المرتب'); openEmployeeDetail(empId);
+}
+/* م251: المكافأة اللي بتتصرف دلوقتي — زي السلفة بالظبط: ملف الموظف + حركة خزنة + صف في المصروفات تحت نوعه */
+async function _writeReward({ emp, date, amount, type, reason, note, acc, cat }){
+  const b = { id:uid('bon'), date, amount, type, reason, note, pay:'cash', accountId:acc.id, categoryId:cat ? cat.id : null,
+    recordedBy:actorName(), createdAt:new Date().toISOString() };
+  (emp.bonuses = emp.bonuses || []).push(b);
+  const fm = addFinMove(acc.id, 'out', amount, 'reward', 'مكافأة ('+type+'): '+emp.name+(reason?' — '+reason:''));
+  const ex = { id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'reward', ...staffCatFields(cat, 'مكافأة موظف'),
+    description:type+' — '+emp.name+(reason?' — '+reason:''), amount, date:expDayISO(date),
+    payAccount:acc.name, accountId:acc.id, employeeId:emp.id, bonusId:b.id, bonusType:type,
+    at:new Date().toISOString(), finMoveId:fm.id, notes:note||'', recordedBy:actorName(), system:true };
+  DB.expenses.push(ex);
+  b.expenseId = ex.id;
+  await Promise.all([saveKey('employees'), saveKey('finMoves'), saveKey('expenses', DB.expenses)]);
+  await logAction('🎁 مكافأة ('+type+') '+money(amount)+' — '+emp.name+' — 💵 اتصرفت من '+acc.name+(cat ? ' · '+cat.name : '')+(reason?' — '+reason:''));
+}
+/* م251: مكافأة قديمة (اتسجلت قبل م251 — على المرتب) اتصرفت كاش قبل كده بره السيستم ⇐ ماتتضافش على المرتب (من غير حركة فلوس).
+   زي سهرة أحمد محمد إسماعيل 200 يوم 27/10 (قرار سيف: اتصرفت) */
+function openBonusPaidOutside(empId, bonusId){
+  if(!can('hr.payroll')){ toast('ده لصاحب صلاحية «الرواتب» بس — بيأثر على المرتب', true); return; }
+  const e = DB.employees.find(x=>x.id === empId), b = e && (e.bonuses || []).find(x=>x.id === bonusId);
+  if(!b || b.pay || b.paidOutside) return;   // للمكافآت القديمة بس (قبل م251) — الجديدة بتتحدد كاش ولا مرتب من الأول
+  if(hrLockGuard(e, b.date)) return;
+  askConfirm(`مكافأة <b>${escNote(bonusType(b))} ${money(b.amount)}</b> لـ <b>${escNote(e.name)}</b> (${fmtDate(b.date)}) اتصرفت كاش قبل كده؟<br><span class="muted" style="font-size:12px">مش هتتضاف على مرتبه — ومفيش فلوس هتتحرك من أي حساب.</span>`, ()=>saveBonusPaidOutside(empId, bonusId));
+}
+async function saveBonusPaidOutside(empId, bonusId){
+  if(!can('hr.payroll')){ toast('ده لصاحب صلاحية «الرواتب» بس — بيأثر على المرتب', true); return; }
+  const e = DB.employees.find(x=>x.id === empId), b = e && (e.bonuses || []).find(x=>x.id === bonusId);
+  if(!b || b.pay || b.paidOutside) return;
+  if(hrLockGuard(e, b.date)) return;
+  b.paidOutside = true; b.paidOutsideAt = new Date().toISOString(); b.paidOutsideBy = actorName();
+  await saveKey('employees');
+  await logAction('💵 مكافأة ('+bonusType(b)+') '+money(b.amount)+' — '+e.name+' (بتاريخ '+fmtDate(b.date)+') اتعلّمت «اتصرفت قبل كده» — مش هتتضاف على المرتب');
+  toast('تمام — مش هتتضاف على المرتب'); openEmployeeDetail(empId);
+}
+function bonusOnSalary(b){ return !!b && b.pay !== 'cash' && !b.paidOutside; }
+function bonusPayText(b){
+  if(b.pay === 'cash'){ const a = DB.finAccounts.find(x=>x.id === b.accountId); return '💵 اتصرفت' + (a ? ' من ' + a.name : ''); }
+  return b.paidOutside ? '💵 اتصرفت قبل كده' : '📅 على المرتب';
+}
+/* م251: إجمالي المكافآت متفنّط بالنوع (حافز · سهرة · مأمورية …) — كاش وعلى المرتب مع بعض */
+function bonusTypeTotals(list){
+  const m = {};
+  (list || []).forEach(b=>{ const t = bonusType(b); m[t] = Math.round(((m[t] || 0) + (+b.amount || 0)) * 100) / 100; });
+  return Object.entries(m).sort((a, b)=>b[1] - a[1]);
 }
 async function savePenalty(empId){
   if(!can('hr.penalties')){ toast('مالكش صلاحية تسجيل الجزاءات', true); return; }
@@ -24975,14 +25706,17 @@ function payslipAttRows(e, p){
 }
 /* م215: المكافآت في الكشف متجمعة بالنوع (حافز · سهرة · مأمورية …) — منفصلة عن المرتب الأساسي */
 function payslipBonusRows(e, from, to){
-  const g = {};
-  (e.bonuses || []).filter(b=>inRange(b.date, from, to)).forEach(b=>{ const t = bonusType(b); (g[t] = g[t] || []).push(b); });
-  const keys = Object.keys(g);
-  if(!keys.length) return '';
-  return `<tr><td colspan="3" style="font-weight:800;background:#f3f3f3">المكافآت (منفصلة عن المرتب الأساسي)</td></tr>` + keys.map(t=>{
+  const inP = (e.bonuses || []).filter(b=>inRange(b.date, from, to));
+  const grp = list => { const g = {}; list.forEach(b=>{ const t = bonusType(b); (g[t] = g[t] || []).push(b); }); return g; };
+  const g = grp(inP.filter(bonusOnSalary)), keys = Object.keys(g);
+  /* م251: اللي اتصرفت كاش في نفس الشهر بتظهر للعلم بس — مش داخلة في الصافي */
+  const cash = inP.filter(b=>!bonusOnSalary(b)), cashTot = cash.reduce((a, b)=>a + (+b.amount || 0), 0);
+  const cashRow = cash.length ? `<tr><td colspan="2" style="font-size:11.5px;color:#555">💵 مكافآت اتصرفت كاش في نفس الشهر (للعلم — مش داخلة في الصافي): ${bonusTypeTotals(cash).map(([t, v])=>escNote(t) + ' ' + money(v)).join(' · ')}</td><td style="font-size:11.5px;color:#555">${money(cashTot)}</td></tr>` : '';
+  if(!keys.length) return cashRow;
+  return `<tr><td colspan="3" style="font-weight:800;background:#f3f3f3">المكافآت على المرتب (منفصلة عن المرتب الأساسي)</td></tr>` + keys.map(t=>{
     const tot = g[t].reduce((a,b)=>a + (+b.amount || 0), 0);
     return `<tr><td>${escNote(t)} (${g[t].length})</td><td>${g[t].map(b=>fmtDate(b.date) + (b.reason ? ' — ' + escNote(b.reason) : '') + ' (' + money(b.amount) + ')').join(' · ')}</td><td>+ ${money(tot)}</td></tr>`;
-  }).join('');
+  }).join('') + cashRow;
 }
 /* ============ م222: نموذج استقالة / إخلاء طرف + شهادة إخلاء طرف (ورق — للطباعة والإمضاء) ============
    طلب سيف: الموظف اللي هيمشي (استقالة أو إنهاء خدمة) ورقة بتلف على الجهات تتمضي بالترتيب:
@@ -25648,7 +26382,7 @@ const NOTIF_SEVERITY = {
   cust_deposit:'low', cust_deposit_refund:'high', cust_refund:'high', cust_credit:'high',   /* م207 */ advance_over:'high',   /* م215 */ att_close_submit:'medium', att_close_approve:'low', att_close_stale:'high',   /* م217 */ empc_shortage:'high', empc_settle:'medium', empc_transfer:'medium',
   debt_terms_change:'medium', concurrent_merge:'high', expense_cat_delete:'medium', custody_settle:'medium',
   devtools_open:'high',   // الملاحظة 67: فتح أدوات المطوّر
-  att_import:'low', att_edit:'medium',   // الملاحظة 68: الحضور
+  att_import:'low', att_edit:'medium', att_import_undo:'high', device_new:'high',   // الملاحظة 68: الحضور · م252
   // الملاحظة 64: سيارات العملاء
   car_delete:'critical', car_archive:'medium', car_restore:'low',
   // الملاحظة 63: فواتير الشراء
@@ -28728,6 +29462,13 @@ function renderSettings(){
          <div class="muted" style="font-size:11.5px;margin-top:6px">استخدمها لو الجهاز اتسرق أو اتباع أو موظف مشي وهو ماسكه.</div>`
       : `<button class="btn btn-accent" style="width:100%" onclick="promptDeviceActivation()">🔐 فعّل الجهاز دلوقتي</button>`}
   </div>
+  <div class="card" style="max-width:720px;margin-top:18px">
+    <div class="flex-between" style="gap:8px"><h3 style="margin:0">📱 الأجهزة</h3>
+      <button class="btn btn-sm" onclick="_devList=null;devLoadList()">🔄 تحديث</button></div>
+    <p class="muted" style="font-size:12px;line-height:1.8;margin:6px 0 10px">كل جهاز شغال عليه السيستم (موبايل · كمبيوتر · تابلت) — آخر مين دخل منه وآخر ظهور.
+      لو موظف مشي أو الجهاز مابقاش جهاز المركز: <b>🚫 حظر الجهاز</b> ⇐ يتقفل ومايدخلش منه أي يوزر، ومايرجعش غير بإيميل وكلمة سر المركز. <b>الحظر مابيمسحش أي بيانات.</b></p>
+    <div id="devListBox">${(()=>{ setTimeout(devLoadList, 30); return devListHTML(); })()}</div>
+  </div>
   <div class="card" style="max-width:520px;margin-top:18px">
     <h3 style="margin-top:0">نسخة احتياطية من البيانات</h3>
     <p class="muted" style="font-size:12.5px;margin-top:0">حمّل نسخة كاملة من كل بيانات المركز (عملاء، أوامر شغل، فواتير، مخزون، موظفين، عهد...) بشكل دوري كأمان إضافي، وتقدر تسترجعها في أي وقت.</p>
@@ -29140,12 +29881,12 @@ function setBusy(on){
 }
 (function wrapExecutiveOps(){
   const opNames = ['saveNewCustomer','saveNewCar','saveNewJob','saveServiceRow','saveEditJobItem','saveExtItem',
-    'createInvoiceFromJob','savePayment','saveExpense','saveNewPart','saveEditItem','saveCostReval','saveEditCar','saveStockIn','saveStockOut',
+    'createInvoiceFromJob','savePayment','saveExpense','saveExpPhotos','saveExpDelete','saveNewPart','saveEditItem','saveCostReval','saveEditCar','saveStockIn','saveStockOut',
     'savePaintOut','saveExtOutFromStock','saveNewSupplier','saveSupplierPayment','saveSupplierReturn','savePurchaseInvoice',
     'saveCustomerReturn','saveStockAdjustment','saveScrap','saveTransfer','saveNewWarehouse','saveNewAppointment','apptArrived','apptUndoArrive','saveTechComment','saveCiAdd','saveCiNoteEdit',
     'saveCannedService','saveCountProgress','submitCountForApproval','confirmCancelJob','saveInvoiceInfo','saveTaxWa','savePins','saveCenterName','saveNewStaff','toggleStaff','saveStaffPass','savePerms','saveFinAccount','saveOpeningBalance','saveFinTransfer','saveExternalDeposit','saveCustodySettle','saveExpenseCat',
     'saveNewEmployee','saveEmployeeEdit','saveLeaveRequest','saveAbsence','saveAdvance','saveExpAdvance','savePenalty','savePermit',
-    'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveWorkingDays',
+    'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveBonusPaidOutside','saveExpSetCat','saveAttUndoImport','saveDevBlock','saveDevUnblock','saveDevRename','saveWorkingDays',
     'attCloseSend','attCloseApprove',   /* م217 */
     'saveNewTool','saveToolEdit','saveToolIssue','saveToolReturn',
     'saveDeposit','saveDepositRefund',   /* م127 */
