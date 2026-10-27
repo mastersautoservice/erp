@@ -287,6 +287,13 @@ tr:hover td{background:var(--surface-2);}
 .tc-view img{max-width:100%;max-height:86vh;border-radius:10px}
 .tc-view-x{color:#fff;margin-top:10px;font-weight:800}
 @media (max-width:600px){ .tc-ph{width:84px;height:64px} }
+/* م246: استلام السيارة */
+.ci-box{border-right:3px solid var(--accent);margin-bottom:14px;padding:14px 16px}
+.ci-ph{width:136px;height:102px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:zoom-in;background:var(--surface-2)}
+.ci-cnt{background:var(--accent);color:#16181D;border-radius:20px;padding:1px 9px;font-size:11.5px;font-weight:800}
+.ci-list{margin:6px 0 0;padding:0 18px 0 0;font-size:13.5px;line-height:1.9}
+.ci-mini{padding:1px 7px;font-size:11px;margin-inline-start:4px}
+@media (max-width:600px){ .ci-ph{width:96px;height:72px} }
 .ap-done{opacity:.78}
 .ap-top{display:flex;gap:12px;align-items:flex-start}
 .ap-time{font-size:19px;font-weight:900;color:var(--accent);min-width:78px;text-align:center;line-height:1.3}
@@ -767,7 +774,22 @@ let _loadGen = 0;   /* م179: بيزيد مع كل تحميل كامل — عش�
 
 const _dirtyAfterSave = {};   // م85: مفاتيح اتغيّرت أثناء الرفع ومحتاجة حفظة تانية
 function saveKey(key){
-  window._saveCalls = (window._saveCalls || 0) + 1;   /* م237: عدّاد الحفظ — الحماية من التكرار بتعرف منه إن العملية حفظت فعلاً */
+  window._saveCalls = (window._saveCalls || 0) + 1;
+  /* م248: أول حفظة جوه عملية (قبض عربون، صرف قطعة، تحصيل…) ⇐ كل اللي العملية غيّرته في كل جداولها بيتكتب
+     على الجهاز **مع بعض** قبل ما أي حاجة تتبعت. من غيرها: النور يقطع أثناء حفظ أول جدول ⇐ بعد الفتح يرجع
+     الجدول ده لوحده (العربون على الأمر) والتاني لأ (الفلوس في الخزنة) ⇐ عملية بنص. */
+  const J248 = window._opJournal;
+  if(J248 && !OB_JOURNAL_SKIP.has(key)){
+    /* إشعار أو سطر في سجل العمليات قبل ما العملية تغيّر حاجة مابيتحسبش (اتلقطت في تجربة المتصفح: إشعار
+       «تعذر حجز رقم» كان أول حفظة فاتسجل كل حاجة نضيفة قبل العربون والخزنة) — والجدول اللي لسه مااتغيّرش
+       بيتفحص تاني مع الحفظة الجاية. ولو الطابور مشغول، حفظة الجدول ده هتستنى ⇐ بيتسجل دلوقتي */
+    try{
+      const want = J248.keys.filter(k=>!J248.done.has(k));
+      if((_pendingSaves > 0 || !J248.done.has(key)) && !want.includes(key)) want.push(key);
+      if(want.length){ const r = _obCaptureKeys(want); J248.ids.push(...r.ids); r.dirty.forEach(k=>J248.done.add(k)); }
+      J248.done.add(key);
+    }catch(e){}
+  }   /* م237: عدّاد الحفظ — الحماية من التكرار بتعرف منه إن العملية حفظت فعلاً */
   // حفظ بالفروقات: بيقارن الحالة الحالية بآخر حالة محفوظة ويرسل المتغير فقط
   // + دمج: لو نفس الجدول في الطابور، الحفظة المنتظرة هتشمل التعديل الحالي
   if(_queuedKeys[key]) return _queuedKeys[key];
@@ -818,15 +840,20 @@ async function _persistKey(key){
      ده اللي خلّى صنف يبقى فيه صرف من غير توريد ومن غير رصيد افتتاحي.
      الحل: نبني الظل من نفس اللقطة اللي اتحسبت منها الفروقات. */
   const nextShadow = new Map();
+  const app248 = OB_APPEND_ONLY.has(key);
   cur.forEach(r=>{
     if(!r || !r.id) return;
     curIds.add(r.id);
+    if(app248 && shadow.has(r.id)) return;   /* م248: سطر قديم في سجل العمليات = زي ما هو */
     const s = JSON.stringify(r);
     nextShadow.set(r.id, s);
     if(shadow.get(r.id) !== s) ups.push({ id:r.id, data:r, updated_by:_actor() });
   });
   const dels = [];
   shadow.forEach((v, id)=>{ if(!curIds.has(id)) dels.push(id); });
+  /* م247: قبل ما يتبعت أي حاجة — بيتكتب على الجهاز نفسه، عشان لو النور قطع يرجع يتحفظ لما الجهاز يفتح */
+  const obIds = (ups.length || dels.length) ? await _obRecord(key, ups, dels, shadow) : [];
+  try{
   /* ⚠️ م100: حماية من مسح بنود جهاز تاني.
      الحفظ بيكتب **صف أمر الشغل كامل** فوق اللي في القاعدة. فلو أمين المخزن
      ضاف قطعة على أمر شغل من جهازه، وفي نفس الوقت الاستقبال عنده نسخة أقدم
@@ -839,13 +866,31 @@ async function _persistKey(key){
        • بند في القاعدة ومش عندنا **وموجود في الظل** ⇒ إحنا حذفناه عن قصد ⇒ يفضل محذوف */
   await _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow);
   for(let i=0; i<ups.length; i+=400){
-    const { error } = await sb.from(t).upsert(ups.slice(i, i+400));
+    const chunk = ups.slice(i, i+400);
+    const { error } = await sb.from(t).upsert(chunk);
     if(error) throw error;
+    /* م248: حفظة كبيرة (استيراد بصمات مثلاً) بتتبعت على دفعات — اللي اترفع منها بقى في القاعدة فعلاً.
+       قبل كده لو دفعة في النص فشلت (النت قطع) الظل ماكانش بيعرف إن الدفعات اللي قبلها وصلت، فلو السطور
+       دي اتشالت من الذاكرة بعد كده المسح ماكانش بيروح للقاعدة وبترجع تظهر (اتلقطت في اختبار «النت مش مستقر») */
+    if(ups.length > 400 && _loadGen === gen0){
+      const sh0 = _shadow[key] || (_shadow[key] = new Map());
+      chunk.forEach(u=>{ const v = nextShadow.get(u.id); if(v !== undefined) sh0.set(u.id, v); });
+    }
   }
-  if(dels.length){
-    const { error } = await sb.from(t).delete().in('id', dels);
+  /* م248: المسح على دفعات — آلاف الأرقام في طلب واحد بتعدّي طول العنوان المسموح والسيرفر بيرفض
+     (والحفظة كانت هتفضل معلقة للأبد) */
+  for(let i=0; i<dels.length; i+=200){
+    const part = dels.slice(i, i+200);
+    const { error } = await sb.from(t).delete().in('id', part);
     if(error) throw error;
+    if(dels.length > 200 && _loadGen === gen0 && _shadow[key]) part.forEach(id=>_shadow[key].delete(id));
   }
+  }catch(err){
+    /* رفض حقيقي من القاعدة (صلاحية/قيد) ⇒ الشريط الأحمر — ومايترجعش يتحاول كل مرة الجهاز يفتح */
+    if(obIds.length && !_isTransientErr(err)) await _obDel(obIds);
+    throw err;
+  }
+  if(obIds.length) await _obDel(obIds);   /* م247: وصلت القاعدة ⇒ تتشال من على الجهاز */
   /* م179: لو القاعدة اتحمّلت كاملة أثناء الرفع، الظل اتبنى من الحقيقة خلاص —
      منلمسوش (كان بيتبدل بلقطة قديمة فالحفظة التابعة تمسح سجلات حقيقية) */
   if(_loadGen !== gen0) return true;
@@ -858,7 +903,7 @@ async function _persistKey(key){
   /* لو حصل تغيير في الذاكرة أثناء الرفع، بنعلّم إن فيه حفظة تانية مطلوبة —
      عشان السجل مايستناش لحد ما حد يعمل عملية تانية. */
   const live = DB[key] || [];
-  let dirty = live.some(r=>r && r.id && sh.get(r.id) !== JSON.stringify(r));
+  let dirty = app248 ? live.some(r=>r && r.id && !sh.has(r.id)) : live.some(r=>r && r.id && sh.get(r.id) !== JSON.stringify(r));   /* م248 */
   /* م214: كان بيقارن كل سجل في الظل بكل سجل في الذاكرة (n²) — جدول 7 آلاف حركة مخزن
      كان بياخد نص ثانية في كل حفظة، و25 ألف بصمة 5 ثواني. نفس الفحص بالظبط بس بـSet. */
   if(!dirty){ const liveIds = new Set(); live.forEach(r=>{ if(r && r.id) liveIds.add(r.id); }); for(const id of sh.keys()){ if(!liveIds.has(id)){ dirty = true; break; } } }
@@ -868,7 +913,7 @@ async function _persistKey(key){
 /* ============ م100: دمج ثلاثي يمنع مسح بنود جهاز تاني ============
    الجداول اللي جواها مصفوفات بنود مهمة — أي بند فيها بيتحسب فلوس. */
 const MERGE_SUBARRAYS = {
-  jobs:       ['items','internalCosts','techComments'],   /* م242: التعليقات الفنية من التابلت والاستقبال في نفس الوقت */
+  jobs:       ['items','internalCosts','techComments','ciNotes','ciPhotos'],   /* م242: التعليقات الفنية من التابلت والاستقبال في نفس الوقت · م246: استلام السيارة */
   repairEstimates: ['parts','labor','events'],   /* م230: «وصلت/اتفتحت» من جهاز تاني مايتمسحش بحفظة */
   invoices:   ['payments','items'],
   purchases:  ['items','payments','history'],
@@ -925,12 +970,16 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
   let remoteRows = null;
   try{
     const ids = ups.map(u=>u.id);
-    const res = await sb.from(t).select('id,data').in('id', ids);
-    /* م179: القراءة فشلت (نت) ⇒ ماينفعش نكتب من غير دمج — كان بيكتب فوق تعديل
-       الجهاز التاني (حادثة الكلاكس م100 كانت بترجع مع كل كبوة نت). نرمي الخطأ
-       فالمحاولة تتعاد، ولو النت واقع فعلاً صندوق الصادر بيتولاها */
-    if(res.error) throw res.error;
-    remoteRows = res.data || [];
+    remoteRows = [];
+    /* م248: القراءة على دفعات (150 رقم) — دمج عملاء/أصناف بيعدّل مئات السجلات مرة واحدة والعنوان بيطول عن المسموح */
+    for(let i=0; i<ids.length; i+=150){
+      const res = await sb.from(t).select('id,data').in('id', ids.slice(i, i+150));
+      /* م179: القراءة فشلت (نت) ⇒ ماينفعش نكتب من غير دمج — كان بيكتب فوق تعديل
+         الجهاز التاني (حادثة الكلاكس م100 كانت بترجع مع كل كبوة نت). نرمي الخطأ
+         فالمحاولة تتعاد، ولو النت واقع فعلاً صندوق الصادر بيتولاها */
+      if(res.error) throw res.error;
+      remoteRows = remoteRows.concat(res.data || []);
+    }
   }catch(e){ throw e; }
   const remote = new Map(remoteRows.map(r=>[r.id, r.data]));
   const rescued = [], blocked = [];
@@ -1082,7 +1131,7 @@ function _renderUnsavedBar(){
       w.style.cssText='position:fixed;top:0;right:0;left:0;background:#c77700;color:#fff;text-align:center;padding:8px;font-size:13px;font-weight:700;z-index:299';
       document.body.appendChild(w);
     }
-    w.textContent = '⏳ فيه '+_unsavedKeys.size+' عملية بتتحفظ في الخلفية — النت بطيء أو واقع. اتسجلت على الجهاز وهتتحفظ لوحدها أول ما النت يرجع. متقفلش الصفحة.';
+    w.textContent = '⏳ فيه '+_unsavedKeys.size+' عملية بتتحفظ في الخلفية — النت بطيء أو واقع. اتسجلت على الجهاز وهتتحفظ لوحدها أول ما النت يرجع — حتى لو الجهاز اتقفل أو النور قطع.';   /* م247 */
     _renderSyncStatus();
   }catch(e){}
 }
@@ -1101,12 +1150,16 @@ function _scheduleUnsavedRetry(ms){
 async function _retryUnsaved(){
   if(!_unsavedKeys.size) return;
   const keys = [..._unsavedKeys];
-  for(const k of keys){
-    try{
-      const r = await saveKey(k);
-      if(r !== 'queued') _unsavedKeys.delete(k);
-    }catch(e){ _unsavedKeys.delete(k); }   // خطأ غير مؤقت — الشريط الأحمر ظهر بسببه
-  }
+  window._obProbe = true;   /* م248ج: المحاولة في الخلفية بتجرّب النت فعلاً حتى لو متعلّم «واقع» */
+  try{
+    for(const k of keys){
+      try{
+        const r = await saveKey(k);
+        if(r !== 'queued') _unsavedKeys.delete(k);
+      }catch(e){ _unsavedKeys.delete(k); }   // خطأ غير مؤقت — الشريط الأحمر ظهر بسببه
+      if(_unsavedKeys.has(k)) break;   // النت لسه واقع ⇐ مانجرّبش الباقي واحد واحد (كل واحد 15 ثانية)
+    }
+  } finally { window._obProbe = false; }
   _renderUnsavedBar();
   if(_unsavedKeys.size){
     _unsavedTries++;
@@ -1119,17 +1172,40 @@ async function _retryUnsaved(){
 try{ window.addEventListener('beforeunload', function(e){
   if(_pendingSaves > 0 || _unsavedKeys.size){ e.preventDefault(); e.returnValue = ''; }
 }); }catch(e){}
+/* م248ج: «النت واقع» — بعد قطع النور الراوتر بياخد دقايق يرجع، وكل حفظة كانت بتستنى 3 محاولات × 15–30 ثانية
+   (حوالي دقيقة ونص) والزرار متجمّد و«في عملية لسه بتتحفظ» — ده «السيستم بيهنج» اللي الموظفين قالوا عليه.
+   دلوقتي: أول ما نتأكد إن النت واقع (حفظة فشلت كل محاولاتها، أو طلب خلص وقته) ⇐ لمدة 30 ثانية أي حفظة
+   بتتسجل على الجهاز علطول (صندوق الصادر) وتكمّل من غير انتظار، والمحاولة في الخلفية كل شوية بتحفظها
+   أول ما النت يرجع. */
+window._netDownAt = 0;
+function _netDownNow(){
+  try{ if(typeof navigator !== 'undefined' && navigator && navigator.onLine === false) return true; }catch(e){}
+  return !!window._netDownAt && (Date.now() - window._netDownAt) < 30000;
+}
+function _isTimeoutErr(e){
+  const m = String((e && ((e.name || '') + ' ' + (e.message || '') + ' ' + (e.details || ''))) || e || '');
+  return /timed? ?out|timeout|AbortError/i.test(m);
+}
 async function _withRetry(fn, label){
+  const isSave = /^save:/.test(label);
+  if(isSave && !window._obProbe && _netDownNow()){
+    const k = label.slice(5);
+    try{ if(TABLE_MAP[k] && !KV_KEYS.includes(k)) _obCaptureKeys([k]); }catch(e){}   // على الجهاز الأول
+    _markUnsaved(k);
+    return 'queued';
+  }
   let lastErr = null;
   const waits = [700, 1500];
-  for(let a=0; a<3; a++){
-    try{ const r = await fn(); hideStorageWarning(); if(/^save:/.test(label)) _clearUnsaved(label.slice(5)); return r; }
-    catch(e){ lastErr = e; }
-    if(a<2) await new Promise(r=>setTimeout(r, waits[a]));
+  const tries = window._obProbe ? 1 : 3;   // المحاولة في الخلفية: مرة واحدة كل دورة
+  for(let a=0; a<tries; a++){
+    try{ const r = await fn(); hideStorageWarning(); window._netDownAt = 0; if(isSave) _clearUnsaved(label.slice(5)); return r; }
+    catch(e){ lastErr = e; if(_isTransientErr(e) && _isTimeoutErr(e)) break; }   // طلب خلص وقته ⇐ مانعيدوش 3 مرات
+    if(a<tries-1) await new Promise(r=>setTimeout(r, waits[a]));
   }
   const reason = (lastErr && (lastErr.message || lastErr.hint || lastErr.details || lastErr.code)) || 'خطأ غير معروف';
   console.error('فشل بعد كل المحاولات:', label, JSON.stringify({code:lastErr&&lastErr.code, message:lastErr&&lastErr.message, details:lastErr&&lastErr.details, hint:lastErr&&lastErr.hint}));
   if(/^save:/.test(label) && _isTransientErr(lastErr)){
+    window._netDownAt = Date.now();   /* م248ج */
     _markUnsaved(label.slice(5));
     return 'queued';
   }
@@ -1148,6 +1224,198 @@ function showStorageWarning(reason){
 }
 function hideStorageWarning(){ const w=document.getElementById('storageWarnBar'); if(w) w.remove(); }
 
+/* ============ م247: صندوق الصادر **على الجهاز** — العملية ماتضيعش لو النور قطع ============
+   حادثة 26/10: الكهربا بتقطع وترجع والأجهزة بتتقفل وتفتح. قبل كده أي عملية لسه ماوصلتش القاعدة
+   (النت واقع أو الرفع لسه شغال) كانت في **ذاكرة الجهاز بس** — والشريط البرتقالي بيقول «اتسجلت على
+   الجهاز» وهي مش متسجلة. الجهاز يتقفل ⇐ العملية تضيع.
+   دلوقتي: قبل ما أي سجل يتبعت للقاعدة، بيتكتب على الجهاز نفسه (IndexedDB — بيتحفظ على الهارد علطول)
+   ومعاه «آخر نسخة شفناها من القاعدة» (الظل). أول ما القاعدة تأكد ⇐ بيتشال من على الجهاز.
+   الجهاز اتقفل قبل التأكيد ⇐ أول ما السيستم يفتح تاني (بعد تحميل البيانات) بيلاقيه:
+     • القاعدة فيها نفس النسخة بالظبط ⇐ كانت وصلت ⇐ بيتشال وخلاص.
+     • القاعدة لسه على النسخة القديمة ⇐ ماوصلتش ⇐ بترجع للذاكرة وتتحفظ.
+     • القاعدة اتغيّرت من جهاز تاني ⇐ بترجع بنفس حماية الدمج (م100/م203) اللي بتحمي الحفظ العادي
+       — مابتمسحش بند ضافه جهاز تاني، ومابترجّعش بند اتشال عن قصد.
+     • سجل جديد بتاعنا لقيناه في القاعدة متعدّل ⇐ يبقى كان وصل واتعدّل بعدها ⇐ مانكتبش فوقه.
+     • مسح سجل والقاعدة اتغيّرت بعدها ⇐ مانمسحش.
+   إعدادات المركز (kv) برّه الصندوق ده (من غير نسخة أساس نقارن بيها). */
+const OB_TTL_MS = 30 * 86400000;   // أي حاجة أقدم من شهر مابترجعش
+let _obDbP = null, _obWarned = false;
+window._obReplayed = 0;
+function _obName(){ return 'mers_outbox_' + String(SUPABASE_URL || '').replace(/^https?:\/\//, '').split('.')[0]; }
+function _obTimed(p, ms){ return Promise.race([p, new Promise(r=>setTimeout(()=>r('timeout'), ms))]); }
+function _obIdb(){
+  if(_obDbP) return _obDbP;
+  _obDbP = new Promise(res=>{
+    try{
+      if(typeof indexedDB === 'undefined' || !indexedDB || !indexedDB.open) return res(null);
+      const rq = indexedDB.open(_obName(), 1);
+      rq.onupgradeneeded = ()=>{ try{ rq.result.createObjectStore('pending', { keyPath:'id' }); }catch(e){} };
+      rq.onsuccess = ()=>res(rq.result);
+      rq.onerror = ()=>res(null);
+      rq.onblocked = ()=>res(null);
+    }catch(e){ res(null); }
+  });
+  return _obDbP;
+}
+function _obTx(db, mode, fn){
+  return new Promise(res=>{
+    try{
+      let tx;
+      try{ tx = db.transaction('pending', mode, { durability:'strict' }); }catch(e){ tx = db.transaction('pending', mode); }
+      const st = tx.objectStore('pending');
+      const out = fn(st);
+      tx.oncomplete = ()=>res(out && out.result !== undefined ? out.result : true);
+      tx.onerror = tx.onabort = ()=>res(null);
+    }catch(e){ res(null); }
+  });
+}
+/* بديل لو المتصفح مافيهوش IndexedDB (ومحاكي الاختبار) */
+const _OB_LS = 'mers_outbox_ls';
+function _obLsGet(){ try{ return JSON.parse(localStorage.getItem(_OB_LS) || '{}') || {}; }catch(e){ return {}; } }
+function _obLsSet(m){ try{ localStorage.setItem(_OB_LS, JSON.stringify(m)); return true; }catch(e){ return false; } }
+async function _obPut(entries){
+  if(!entries.length) return;
+  const db = await _obTimed(_obIdb(), 1500);
+  if(db && db !== 'timeout'){
+    const r = await _obTimed(_obTx(db, 'readwrite', st=>{ entries.forEach(e=>st.put(e)); }), 2500);
+    if(r && r !== 'timeout') return;
+  }
+  const m = _obLsGet();
+  entries.forEach(e=>{ m[e.id] = e; });
+  if(!_obLsSet(m) && !_obWarned){ _obWarned = true; console.warn('م247: مساحة الجهاز مش كفاية لصندوق الصادر'); }
+}
+async function _obDel(ids){
+  if(!ids || !ids.length) return;
+  const db = await _obTimed(_obIdb(), 1500);
+  if(db && db !== 'timeout') await _obTimed(_obTx(db, 'readwrite', st=>{ ids.forEach(id=>st.delete(id)); }), 2500);
+  const m = _obLsGet(); let ch = false;
+  ids.forEach(id=>{ if(m[id]){ delete m[id]; ch = true; } });
+  if(ch) _obLsSet(m);
+}
+async function _obAll(){
+  let out = [];
+  const db = await _obTimed(_obIdb(), 1500);
+  if(db && db !== 'timeout'){
+    const r = await _obTimed(_obTx(db, 'readonly', st=>st.getAll()), 2500);
+    if(Array.isArray(r)) out = r;
+  }
+  const m = _obLsGet();
+  Object.keys(m).forEach(id=>{ if(!out.some(e=>e && e.id === id)) out.push(m[id]); });
+  return out.filter(e=>e && e.id && e.key);
+}
+/* بيتنده من _persistKey قبل ما أي حاجة تتبعت للقاعدة */
+async function _obRecord(key, ups, dels, shadow){
+  try{
+    const at = new Date().toISOString(), by = _actor();
+    const entries = ups.map(u=>({ id:key + '|' + u.id, key, rowId:u.id, data:JSON.parse(JSON.stringify(u.data)), base:shadow.get(u.id) || null, at, by }))
+      .concat(dels.map(id=>({ id:key + '|' + id, key, rowId:id, del:true, base:shadow.get(id) || null, at, by })));
+    await _obPut(entries);
+    return entries.map(e=>e.id);
+  }catch(e){ return []; }
+}
+/* م248: الجداول اللي سطورها مابتتعدّلش بعد ما تتكتب (إضافة ومسح بس) */
+const OB_APPEND_ONLY = new Set(['activityLog']);
+/* السجلات (سجل العمليات والإشعارات) مش جزء من تماسك العملية — بتتحفظ لوحدها زي ما هي */
+const OB_JOURNAL_SKIP = new Set(['activityLog', 'notifications']);
+/* الجداول اللي العملية بتحفظها: من كود الدالة نفسها + كل الدوال اللي بتندهها لحد 4 مستويات
+   (صرف المحجوز ⇐ _issueReservedCore ⇐ issuePartToJob ⇐ أوامر الشغل + المخزون + حركة المخزن). بتتحسب مرة واحدة. */
+const _fnKeyMemo = new Map();
+/* الشاشات والطباعة والرسايل مش جزء من العملية — مانمشيش وراها (بتوصّل لكل حاجة في السيستم) */
+const OB_FN_SKIP = /^(render|refresh|open|show|print|download|goTab|close|ask|toast|notify|logAction|money|fmt|esc|_joEsc|estInbox|estPaint|estAlert|tcInbox|tcPaint|tcShow|tcAlert|apptPaint|setBusy|startRealtime|startSilentSync|silentSync|loadAllData|syncSince|_tryRt|_scheduleRt|estEd|estPad|estModeHint|jobDetail|ticketCard)/;
+function _fnKeysDeep(f, depth, origs, stack){
+  const memo = _fnKeyMemo.get(f);
+  if(memo && memo.depth >= depth) return memo.keys;
+  const out = new Set();
+  let src = ''; try{ src = Function.prototype.toString.call(f); }catch(e){ return out; }
+  for(const m of src.matchAll(/saveKey\(\s*'([A-Za-z]+)'/g)) out.add(m[1]);
+  if(depth > 0 && !/\[native code\]/.test(src)){
+    stack.add(f);
+    const names = new Set(); for(const m of src.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)) names.add(m[1]);
+    names.forEach(n=>{
+      if(OB_FN_SKIP.test(n)) return;
+      const g = (origs && origs[n]) || window[n];
+      if(typeof g !== 'function' || stack.has(g)) return;
+      _fnKeysDeep(g, depth - 1, origs, stack).forEach(k=>out.add(k));
+    });
+    stack.delete(f);
+  }
+  _fnKeyMemo.set(f, { depth, keys:out });
+  return out;
+}
+function _opKeysOf(fn, origs){
+  return [..._fnKeysDeep(fn, 4, origs, new Set())].filter(k=>TABLE_MAP[k] && !KV_KEYS.includes(k) && !OB_JOURNAL_SKIP.has(k));
+}
+/* بيتنده من saveKey (من غير انتظار): السطور المتغيّرة في الجداول دي بتتكتب على الجهاز علطول */
+function _obCaptureKeys(keys){
+  const at = new Date().toISOString(), by = _actor(), entries = [], dirty = new Set();
+  [...new Set(keys)].forEach(key=>{
+    if(!TABLE_MAP[key] || KV_KEYS.includes(key) || OB_JOURNAL_SKIP.has(key)) return;
+    const shadow = _shadow[key] || new Map(), ids = new Set();
+    (DB[key] || []).forEach(r=>{
+      if(!r || !r.id) return;
+      ids.add(r.id);
+      const s0 = shadow.get(r.id);
+      const s1 = JSON.stringify(r);
+      if(s0 !== s1){ entries.push({ id:key + '|' + r.id, key, rowId:r.id, data:JSON.parse(s1), base:s0 || null, at, by }); dirty.add(key); }
+    });
+    shadow.forEach((v, id)=>{ if(!ids.has(id)){ entries.push({ id:key + '|' + id, key, rowId:id, del:true, base:v, at, by }); dirty.add(key); } });
+  });
+  if(entries.length) _obPut(entries).catch(()=>{});
+  return { ids:entries.map(e=>e.id), dirty };
+}
+/* آخر العملية: اللي اترجّع في الذاكرة (العملية فشلت واترجعت) يتشال من الجهاز — عشان مايرجعش بعد الفتح */
+async function _obReconcile(ids){
+  const stale = [];
+  ids.forEach(id=>{
+    const i = id.indexOf('|'), key = id.slice(0, i), rowId = id.slice(i + 1);
+    const sh = _shadow[key] || new Map(), row = (DB[key] || []).find(r=>r && r.id === rowId);
+    const dirty = row ? sh.get(rowId) !== JSON.stringify(row) : sh.has(rowId);
+    if(!dirty) stale.push(id);
+  });
+  if(stale.length) await _obDel(stale);
+}
+/* بعد ما الجهاز يفتح وتتحمّل البيانات: اللي كان لسه ماوصلش القاعدة يرجع ويتحفظ */
+async function outboxReplay(){
+  let all = [];
+  try{ all = await _obAll(); }catch(e){ return 0; }
+  if(!all.length) return 0;
+  const now = Date.now(), drop = [], keys = new Set();
+  let n = 0;
+  all.forEach(e=>{
+    if(!TABLE_MAP[e.key] || !DATA_KEYS.includes(e.key) || (now - new Date(e.at || 0).getTime()) > OB_TTL_MS){ drop.push(e.id); return; }
+    const arr = DB[e.key] || (DB[e.key] = []);
+    const i = arr.findIndex(r=>r && r.id === e.rowId);
+    const srv = i >= 0 ? arr[i] : null;
+    const cSrv = srv ? _mergeCanon(srv) : null;
+    let cBase = null; try{ cBase = e.base ? _mergeCanon(JSON.parse(e.base)) : null; }catch(x){}
+    const sh = _shadow[e.key] || (_shadow[e.key] = new Map());
+    if(e.del){
+      if(!srv || cSrv !== cBase){ drop.push(e.id); return; }   // اتمسح خلاص · أو اتعدّل من جهاز تاني بعدها ⇒ مانمسحش
+      arr.splice(i, 1);
+    } else {
+      if(cSrv === _mergeCanon(e.data)){ drop.push(e.id); return; }   // كانت وصلت القاعدة قبل ما الجهاز يقفل
+      if(srv && !e.base){ drop.push(e.id); return; }                 // سجل جديد بتاعنا وصل واتعدّل بعدها
+      if(i >= 0) arr[i] = e.data; else arr.push(e.data);
+      if(e.base) sh.set(e.rowId, e.base); else sh.delete(e.rowId);  // الظل = آخر نسخة شفناها ⇒ الدمج بيحمي شغل الأجهزة التانية
+    }
+    keys.add(e.key); n++;
+  });
+  await _obDel(drop);
+  if(!n) return 0;
+  window._obReplayed += n;
+  bumpHayGen();
+  const by = [...new Set(all.filter(e=>!drop.includes(e.id)).map(e=>e.by).filter(Boolean))].join('، ');
+  keys.forEach(k=>{ saveKey(k).catch(()=>{}); });   // اسم اللي عمل العملية متسجل في سجل العمليات تحت
+  setTimeout(()=>{
+    try{
+      toast('♻️ لقيت ' + n + ' عملية ماكانتش اتحفظت قبل ما الجهاز يقفل (النور/النت قطع) — بتتحفظ دلوقتي');
+      logAction('♻️ استرجاع ' + n + ' عملية ماكانتش وصلت القاعدة قبل ما الجهاز يقفل (انقطاع كهربا أو نت)'
+        + auditDetails([['الجداول', [...keys].join(' · ')], ['اتعملت بواسطة', by || '—']])).catch(()=>{});
+    }catch(e){}
+  }, 0);
+  return n;
+}
+
 /* ======================= APP STATE ======================= */
 const DB = { customers:[], cars:[], jobs:[], inventory:[], stockMoves:[], invoices:[], expenses:[], suppliers:[], purchases:[], supplierReturns:[], inventoryCounts:[], warehouses:[], staff:[], finAccounts:[], finMoves:[], appointments:[], cannedServices:[], activityLog:[], attendance:[], wipSnapshots:[], empCustody:[], csCases:[], repairEstimates:[], users:null, settings:null };
 let session = null; // {role, name}
@@ -1155,7 +1423,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v266';
+const APP_VERSION = 'v269';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1191,6 +1459,9 @@ const ACTION_GROUPS = [
     ['jobs.edit','تعديل الأمر وإضافة خدمات وقطع'],
     ['jobs.status','تغيير حالة أمر الشغل'],
     ['jobs.item_delete','حذف بنود من أمر الشغل'],
+    /* م246: استلام السيارة — التعديل والحذف بصلاحية (سيف بيديها لمدير المركز/مشرف الورشة) */
+    ['jobs.ci_edit','تعديل ملاحظات استلام السيارة'],
+    ['jobs.ci_delete','حذف ملاحظات وصور استلام السيارة'],
     ['jobs.print','طباعة وتحميل أمر الشغل'],
     ['jobs.cancel','إلغاء أمر شغل'],
     ['jobs.reopen','إعادة فتح أمر شغل متفوتر'],
@@ -1344,6 +1615,8 @@ const PERM_INFO = {
   'jobs.item_delete':'حذف بنود (خدمات أو قطع) من أمر الشغل. مايسمحش بإضافة أو تعديل بنود.',
   'jobs.print':'طباعة أمر الشغل وتحميله كملف. عرض فقط — مفيش أي تعديل.',
   'jobs.cancel':'إلغاء أمر شغل بسبب موثق. الأوامر اللي عليها معاملات مالية/مخزنية إلغاؤها لصاحب المركز فقط.',
+  'jobs.ci_edit':'تعديل كلام ملاحظات «استلام السيارة» (حالة العربية وهي داخلة) بعد ما اتحفظت — الكلام القديم بيتسجل في سجل العمليات. الإضافة مش محتاجة الصلاحية دي.',
+  'jobs.ci_delete':'حذف ملاحظة أو صورة من «استلام السيارة» — الحذف بيتسجل في سجل العمليات باسمك. حساسة: ده دليل حالة العربية قدام العميل.',
   'jobs.reopen':'إعادة فتح أمر شغل متفوتر عشان تعدّل بنوده — بيلغي الفاتورة الحالية ويرجّع الأمر للشغل، وبعدها تصدر فاتورة جديدة.',
   'jobs.deposit':'تسجيل عربون (دفعة مقدمة) من العميل على أمر الشغل — الفلوس بتدخل الحساب المختار فوراً وبيتطبع إيصال رسمي. العربون بيتخصم تلقائياً من الفاتورة النهائية.',
   'jobs.deposit_refund':'استرداد عربون مدفوع للعميل — فلوس بتخرج من الخزنة بإذن صرف رسمي وسبب إلزامي. حساسة.',
@@ -1603,13 +1876,16 @@ function nextNo(list, field){
    لو الاتصال وقع: بنرجع للطريقة المحلية القديمة (مش أسوأ من قبل م164)
    وكاشف التكرار (alertDupNos تحت) هو صمام الأمان اللي بينبّه فوراً. */
 async function reserveNoRaw(counter, floor){
-  /* م179: 3 محاولات قبل الرجوع للترقيم المحلي — وإشعار سيستم لو اضطرينا */
-  for(let a=0; a<3; a++){
+  /* م179: 3 محاولات قبل الرجوع للترقيم المحلي — وإشعار سيستم لو اضطرينا.
+     م248ج: النت متأكد إنه واقع ⇐ مانستناش 3 × 15 ثانية والموظف واقف بأمر الشغل — الترقيم المحلي علطول
+     (وفحص التكرار بيلقط أي رقم اتكرر) */
+  for(let a=0; a<3 && !_netDownNow(); a++){
     try{
       const { data, error } = await sb.rpc('next_no', { p_name: counter, p_floor: floor });
       const n = parseInt(data,10);
-      if(!error && !isNaN(n) && n>0) return n;
-    }catch(e){}
+      if(!error && !isNaN(n) && n>0){ window._netDownAt = 0; return n; }
+      if(error && _isTransientErr(error) && _isTimeoutErr(error)){ window._netDownAt = Date.now(); break; }
+    }catch(e){ if(_isTimeoutErr(e)){ window._netDownAt = Date.now(); break; } }
     if(a<2) await new Promise(r=>setTimeout(r, 400*(a+1)));
   }
   try{ notify('dup_number', '⚠️ تعذر حجز رقم «'+counter+'» من القاعدة (النت) — اتستخدم الترقيم المحلي مؤقتاً، راجع التكرار', { category:'system', system:true }); }catch(e){}
@@ -1974,6 +2250,8 @@ async function _loadAllDataCore(guarded){
      الانتظار — كان بيتأكد قبل الطلب بس، فأمر جديد اتعمل في الثواني دي كان
      بيتمسح من الذاكرة ثم من القاعدة بالحفظة التابعة */
   if(guarded && (window._opBusy || _pendingSaves > 0 || _unsavedKeys.size || document.getElementById('modalOverlay'))) return false;
+  /* م248: شبكة أمان — تحميل كامل (مش الإقلاع) وفيه عمليات معلقة ماوصلتش القاعدة ⇒ مانبدّلش الذاكرة (كانت بتضيع) */
+  if(!guarded && loaded && _unsavedKeys.size) return false;
   /* ⚠️ م77: "أول تشغيل" لازم يتحدد بيقين — مش بمجرد إن القاعدة رجعت فاضية.
      لو الجهاز مش مفعّل، حماية القاعدة (RLS) بترجّع فاضي بدون رسالة خطأ،
      فالسيستم كان بيفتكر إنها قاعدة جديدة ويكتب فوقها الإعدادات والأرقام
@@ -2044,7 +2322,7 @@ async function _serverStamp(){
   }catch(e){ return null; }
 }
 /* بيرجّع: true = اتطبّق · false = اتأجل (شغل جاري) · 'full' = محتاج تحميل كامل */
-async function syncSince(){
+async function syncSince(opts){
   if(_noLoadSince || !_syncCursor) return 'full';
   if(_diffInFlight) return await _diffInFlight;
   const p = (async ()=>{
@@ -2054,8 +2332,10 @@ async function syncSince(){
       throw error;
     }
     if(!data || data.full_required) return 'full';
-    /* نفس حراسة التحميل الكامل: بعد ما الرد يوصل، لو بدأ شغل أو حفظ نأجّل */
-    if(window._opBusy || _pendingSaves > 0 || _unsavedKeys.size || document.getElementById('modalOverlay')) return false;
+    /* نفس حراسة التحميل الكامل: بعد ما الرد يوصل، لو بدأ شغل أو حفظ نأجّل.
+       م248ب: النافذة المفتوحة مش سبب نأجّل الفرق — ده نفس اللي المزامنة اللحظية بتعمله وفيه نافذة مفتوحة
+       (تحديث في نفس السجل + الظل)، والشاشة بتترسم بعد ما النافذة تتقفل */
+    if(window._opBusy || _pendingSaves > 0 || _unsavedKeys.size || (!(opts && opts.allowModal) && document.getElementById('modalOverlay'))) return false;
     const ch = data.changed || {}, dl = data.deleted || {};
     let n = 0;
     DATA_KEYS.forEach(k=>{ n += _applyDiff(k, ch[k], dl[k]); });
@@ -2157,7 +2437,7 @@ function _setRtConnected(v){
 }
 function _catchUpSync(n){
   if(n > 12) return;
-  if(typeof _syncSafeNow === 'function' && _syncSafeNow()){ silentSyncTick(true); return; }
+  if(typeof _syncSafeNow === 'function' && (_syncSafeNow() || _diffSafeNow())){ silentSyncTick(true); return; }   /* م248ب */
   setTimeout(()=>_catchUpSync(n+1), 5000);
 }
 /* م179: حارس المزامنة اللحظية — لو فصلت أكتر من 20 ثانية بنعيد بناء القناة بنفسنا */
@@ -2367,6 +2647,8 @@ async function initApp(){
     return;
   }
   loaded = true;
+  /* م247: عمليات ماكانتش وصلت القاعدة قبل ما الجهاز يقفل (النور قطع) ⇐ ترجع وتتحفظ */
+  try{ await _obTimed(outboxReplay(), 6000); }catch(e){ console.error('outbox replay failed', e); }
   render();
   startRealtime();
   startUpdateChecker();
@@ -2417,10 +2699,21 @@ function _syncSafeNow(){
   if(currentTab==='newPurchase' || currentTab==='inventoryCount') return false;
   return true;
 }
+/* م248ب: الفرق (اللي اتغيّر بس) بيتطبّق حتى لو الموظف فاتح نافذة أو بيكتب — بس مش وقت حفظ أو عملية شغالة */
+function _diffSafeNow(){
+  return !!session && loaded && !window._opBusy && _pendingSaves === 0 && !_unsavedKeys.size;
+}
 async function silentSyncTick(force){
   try{
     if(!force && !_pageVisible()) return;      // الجهاز مسيّب ⇒ مفيش تحميل
-    if(!_syncSafeNow()) return;
+    if(!_syncSafeNow()){
+      /* م248ب: قبل كده كان بيرجع علطول — والاستقبال طول اليوم جوه نوافذ، فاللي فاته وقت ما النت كان فاصل
+         ماكانش بيوصله (رسالة طلب #0052 وصلت فوزي بعد 12 دقيقة) */
+      if(!_diffSafeNow()) return;
+      const d248 = await syncSince({ allowModal:true });
+      if(d248 === true){ _lastSyncAt = Date.now(); _scheduleRtRefresh(); estInboxSoon(); }
+      return;
+    }
     /* م185ب: الفرق الأول — كام كيلوبايت بدل 8.9 ميجا */
     const diff185 = await syncSince();
     if(diff185 === true){ _lastSyncAt = Date.now(); refreshContent(); return; }
@@ -2571,6 +2864,7 @@ function openModal(html, wide){
 }
 function closeModal(){
   const ov=document.getElementById('modalOverlay'); if(ov) ov.remove();
+  if((_estAlertLater && _estAlertLater.length) || (_tcAlertLater && _tcAlertLater.length)) setTimeout(()=>{ try{ estAlertResume(); tcAlertResume(); }catch(e){} }, 60);   /* م247 */
   if(_rtRefreshPending) _scheduleRtRefresh();
   /* م187: قفلت شاشة تحصيل فاتورة لسه متقفلة؟ نسأل عن إذن الخروج دلوقتي */
   const pend187 = window._pendingExitPermitInv;
@@ -3285,6 +3579,18 @@ function shellHTML(){
   </div>`;
 }
 async function refreshData(){
+  /* م248: الموظف بيدوس «تحديث البيانات» بالذات لما النت يقع — والتحميل الكامل كان بيبدّل الذاكرة بنسخة القاعدة
+     فالعمليات اللي لسه ماوصلتش كانت بتختفي من الشاشة (ومن الحفظ). دلوقتي: نبعتها الأول، ولو النت لسه واقع
+     مانحمّلش من جديد ونقوله */
+  if(_unsavedKeys.size){
+    toast('⏳ فيه عمليات لسه ماتحفظتش — بنبعتها الأول...');
+    try{ await _retryUnsaved(); }catch(e){}
+    if(_unsavedKeys.size){
+      toast('النت لسه واقع — فيه ' + _unsavedKeys.size + ' عملية متسجلة على الجهاز وهتتحفظ لوحدها أول ما النت يرجع. التحديث الكامل هيستنى لحد ما تتحفظ (مفيش حاجة هتضيع)', true);
+      refreshContent();
+      return;
+    }
+  }
   toast('جاري تحديث البيانات...');
   let done185 = false;
   try{ done185 = (await syncSince()) === true; }catch(e){}   /* م185ب: الفرق الأول */
@@ -4405,6 +4711,7 @@ function ticketCard(job){
             : (job.status!=='ملغاة' ? ' · بالمركز منذ: '+durationText(job.receivedAt) : '')}
         </div>
         ${tcTicketChipHTML(job)}
+        ${ciTicketChipHTML(job)}
       </div>
       <span class="tag ${STATUS_TAGCLASS[job.status]}">${job.status}</span>
     </div>
@@ -4586,16 +4893,18 @@ function toolTechTag(mv){
 function itemTechLabel(it, job){ return techLabelOf(techKeyOf(it, job)); }
 function openNewJobModal(carId){
   const car = DB.cars.find(c=>c.id===carId);
+  _ciEd = { carId, plate:car.plate || '', photos:[] };   /* م246 */
   openModal(`
     <h3>أمر شغل جديد — ${car.plate}</h3>
     <div class="form-row"><label class="f-label">وصف الأعطال / المطلوب</label><textarea class="f" id="jobNotes" rows="3" placeholder="مثال: تغيير زيت + فحص فرامل"></textarea></div>
+    ${ciNewJobFieldHTML(car)}
     <div class="form-row"><label class="f-label">قراءة العداد الحالية (كم)</label><input class="f" id="jobOdo" type="number" min="0" value="${car.currentOdometer||''}"></div>
     <div class="muted" style="font-size:12px;margin-bottom:10px">👨‍🔧 الفني بيتحدد مع كل <b>خدمة/مصنعية</b> على حدة جوه الأمر — مش هنا، عشان كل خدمة ممكن يعملها فني مختلف.</div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">الصيانة القادمة عند كم (اختياري)</label><input class="f" id="jobNextKm" type="number" min="0" value="${car.nextServiceKm||''}"></div>
       <div class="form-row"><label class="f-label">أو تاريخ الصيانة القادمة (اختياري)</label><input class="f" id="jobNextDate" type="date" value="${car.nextServiceDate||''}"></div>
     </div>
-    <button class="btn btn-accent" style="width:100%" onclick="saveNewJob('${carId}')">إنشاء أمر الشغل</button>
+    <button class="btn btn-accent" id="jobSaveBtn" style="width:100%" onclick="saveNewJob('${carId}')">إنشاء أمر الشغل</button>
   `);
 }
 async function saveNewJob(carId){
@@ -4611,6 +4920,16 @@ async function saveNewJob(carId){
   const odo = parseFloat(document.getElementById('jobOdo').value)||null;
   const nextKm = parseFloat(document.getElementById('jobNextKm').value)||null;
   const nextDate = document.getElementById('jobNextDate').value || null;
+  /* م246: استلام السيارة — الصور بتترفع الأول؛ لو النت فصل أمر الشغل مايتعملش والشاشة فاضلة بالكلام والصور */
+  const ciLines = ciSplitLines((document.getElementById('jobCiNotes') || {}).value);
+  const ciEd = (_ciEd && _ciEd.carId === carId) ? _ciEd : null;
+  const jobId = (ciEd && ciEd.newJobId) || uid('job');
+  let ciPhotos = [];
+  if(ciEd && ciEd.photos.length){
+    ciEd.newJobId = jobId;
+    try{ ciPhotos = await ciUploadAll(jobId, document.getElementById('jobSaveBtn'), 'إنشاء أمر الشغل'); }
+    catch(err){ const b = document.getElementById('jobSaveBtn'); if(b){ b.disabled = false; b.textContent = 'إنشاء أمر الشغل'; } toast(tcUploadErrText(err) + ' — أمر الشغل مااتعملش', true); return; }
+  }
   if(odo!==null) car.currentOdometer = odo;
   if(nextKm!==null) car.nextServiceKm = nextKm;
   if(nextDate) car.nextServiceDate = nextDate;
@@ -4619,20 +4938,27 @@ async function saveNewJob(carId){
   /* م179ج: بعد الانتظار على الشبكة — جهاز تاني فتح أمر لنفس العربية في نفس اللحظة؟ */
   if(DB.jobs.some(j=>j.carId===carId && !isJobClosed(j))){ toast('اتفتح أمر شغل لنفس السيارة من جهاز تاني حالاً', true); closeModal(); refreshContent(); return; }
   const job = {
-    id: uid('job'), jobNo: jobNo179,
+    id: jobId, jobNo: jobNo179,
     carId, customerId: car.customerId, status:'مستلمة',
     receivedAt: new Date().toISOString(), notes, odometer: odo,
     items: [], deliveredAt:null, customerApproved:false
   };
+  if(ciLines.length || ciPhotos.length){   /* م246 */
+    const who = ciAuthor();
+    job.ciNotes = ciLines.map(t=>Object.assign({ id:uid('cin'), text:t, at:job.receivedAt }, who));
+    job.ciPhotos = ciPhotos;
+  }
   DB.jobs.push(job);
   await saveKey('jobs', DB.jobs);
-  await logAction('إنشاء أمر شغل #'+job.jobNo+' — '+car.plate);
+  await logAction('إنشاء أمر شغل #'+job.jobNo+' — '+car.plate + (ciLines.length || ciPhotos.length ? ' · 🚗 استلام: ' + ciCountTxt(ciLines.length, 'ملاحظة', 'ملاحظات') + ' · ' + ciCountTxt(ciPhotos.length, 'صورة', 'صور') : ''));
+  _ciEd = null;
   closeModal(); toast('تم إنشاء أمر الشغل #'+job.jobNo);
   currentTab='jobs'; render();
 }
 
 function openJobDetail(jobId){
   openModal(jobDetailHTML(jobId));
+  try{ tcSeenJob(jobId); }catch(e){}   /* م247 */
 }
 /* ============ م201: تاريخ ووقت كل بند في أمر الشغل ============
    طلب سيف: عربيات بتقعد تلات أيام ومحدش عارف القطعة اتصرفت امتى — وفيه
@@ -4760,6 +5086,7 @@ function jobDetailHTML(jobId){
   </div>` : ''}
 
   ${job.notes ? `<div class="form-row"><label class="f-label">الملاحظات</label><div style="font-size:13.5px">${job.notes}</div></div>` : ''}
+  ${ciSectionHTML(job)}
 
   ${jobReservedBoxHTML(job)}
   ${jobCarryCardHTML(job)}
@@ -5031,7 +5358,7 @@ function tcRand(){
   catch(e){ return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + Date.now().toString(36); }
 }
 /* الصورة بتتصغّر على الجهاز قبل الرفع — صورة التابلت 3–4 ميجا بتبقى ≈ 200 كيلو */
-function tcCompress(file){
+function tcCompress(file, stamp){   /* م246: stamp = «اللوحة · التاريخ · الساعة» بيتطبع في شريط تحت الصورة */
   return new Promise((resolve, reject)=>{
     if(!file || (file.type && !/^image\//.test(file.type))) return reject(new Error('not image'));
     const src = URL.createObjectURL(file);
@@ -5041,7 +5368,16 @@ function tcCompress(file){
         const k = Math.min(1, 1280 / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
         const w = Math.max(1, Math.round((img.naturalWidth || 1) * k)), h = Math.max(1, Math.round((img.naturalHeight || 1) * k));
         const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        const g = cv.getContext('2d');
+        g.drawImage(img, 0, 0, w, h);
+        if(stamp){
+          const bh = Math.max(26, Math.round(h * 0.065));
+          g.fillStyle = 'rgba(0,0,0,.62)'; g.fillRect(0, h - bh, w, bh);
+          g.fillStyle = '#F2D410'; g.font = 'bold ' + Math.round(bh * 0.52) + 'px Tajawal, Arial, sans-serif';
+          g.textAlign = 'center'; g.textBaseline = 'middle';
+          try{ g.direction = 'rtl'; }catch(e){}
+          g.fillText(String(stamp), w / 2, h - bh / 2, w - 16);
+        }
         cv.toBlob(b=>{ URL.revokeObjectURL(src); if(!b) return reject(new Error('blob')); resolve({ blob:b, preview:URL.createObjectURL(b) }); }, 'image/jpeg', 0.72);
       }catch(e){ URL.revokeObjectURL(src); reject(e); }
     };
@@ -5312,15 +5648,27 @@ function tcInboxCheck(){
     const me = noteAuthorKey(), pend = tcPending();
     let seen = tcSeenGet();
     if(!seen){ seen = {}; pend.forEach(x=>{ seen[x.c.id] = 1; }); tcSeenSave(seen); return; }   // أول مرة على الجهاز ⇐ القديم مايطلعش كتنبيه
-    const fresh = pend.filter(x=>!seen[x.c.id] && x.c.by !== me);
-    if(!fresh.length) return;
+    /* م247: «اتشافت» بس لما الموظف يدوس «افتح أمر الشغل»/«بعدين» أو يفتح الأمر — مش لحظة ما الرسالة تظهر */
     const keep = {};
-    pend.forEach(x=>{ keep[x.c.id] = 1; });
+    pend.forEach(x=>{ if(seen[x.c.id]) keep[x.c.id] = 1; });
     tcSeenSave(keep);
+    const fresh = pend.filter(x=>!seen[x.c.id] && x.c.by !== me && !_tcShown[me + '|' + x.c.id] && !_tcAlertLater.includes(x.c.id));
+    if(!fresh.length) return;
+    fresh.forEach(x=>{ _tcShown[me + '|' + x.c.id] = 1; });
+    window._tcAlertMe = me;   /* م248 */
     tcShowAlert(fresh);
   }catch(err){ console.error('tcInbox', err); }
 }
+const _tcShown = {};
+var _tcAlertLater = [];
+window._tcAlertList = [];
 function tcShowAlert(fresh){
+  /* م247: الرسالة بتتجمع (تعليق جديد وصل والرسالة القديمة لسه ظاهرة ⇐ الاتنين يفضلوا) */
+  const ids = fresh.map(x=>x.c.id);
+  window._tcAlertList = (window._tcAlertList || []).filter(id=>!ids.includes(id)).concat(ids);
+  const byId = new Map(tcPending().map(x=>[x.c.id, x]));
+  fresh = window._tcAlertList.map(id=>byId.get(id)).filter(Boolean);
+  if(!fresh.length){ tcAlertClose(); return; }
   let el = document.getElementById('tcAlert');
   if(!el){ el = document.createElement('div'); el.id = 'tcAlert'; el.className = 'est-alert'; document.body.appendChild(el); }
   const jobs = [...new Map(fresh.map(x=>[x.job.id, x.job])).values()];
@@ -5332,18 +5680,58 @@ function tcShowAlert(fresh){
         ${its.slice(0, 3).map(x=>`<div style="margin-top:4px">• ${escNote(String(x.c.text || 'صورة').slice(0, 90))}${(x.c.photos || []).length ? ' 📷' + x.c.photos.length : ''} <span class="muted">— ${escNote(x.c.byName || '')}</span></div>`).join('')}
         <div style="margin-top:6px"><button class="btn btn-sm btn-accent" onclick="tcAlertOpen('${j.id}')">افتح أمر الشغل</button></div></div>`;
     }).join('')}
-    <div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="flex:1" onclick="tcAlertClose()">بعدين</button></div>
+    <div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="flex:1" onclick="tcAlertLater()">بعدين</button></div>
     <div class="muted" style="font-size:11px;margin-top:8px">العداد الأحمر جنب «أوامر الشغل» بيفضل لحد ما التعليقات تتبعت للعميل</div>
   </div>`;
   estChime();
 }
-function tcAlertClose(){ const el = document.getElementById('tcAlert'); if(el) el.remove(); }
+function tcAlertClose(){
+  const me = window._tcAlertMe || noteAuthorKey();   /* م248: زي estAlertClose — القفل من السيستم مش «اتشافت» */
+  (window._tcAlertList || []).forEach(id=>{ delete _tcShown[me + '|' + id]; });
+  window._tcAlertList = []; const el = document.getElementById('tcAlert'); if(el) el.remove();
+}
+function tcSeenMark(ids){
+  if(!ids || !ids.length) return;
+  const m = tcSeenGet();
+  if(!m) return;   // أول مرة على الجهاز — أول فحص بيعلّم القديم كله «اتشاف» لوحده
+  ids.forEach(id=>{ m[id] = 1; });
+  tcSeenSave(m);
+}
+/* «بعدين» = اتشافت (العداد الأحمر فاضل) */
+function tcAlertLater(){ tcSeenMark(window._tcAlertList || []); _tcAlertLater = []; tcAlertClose(); }
+/* فتح أمر الشغل (من الرسالة أو من أي مكان) = تعليقاته اتشافت */
+function tcSeenJob(jobId){
+  const job = DB.jobs.find(j=>j.id === jobId);
+  if(!job || !session || isOwnerSession()) return;
+  const ids = tcUnsent(job).map(c=>c.id);
+  if(!ids.length) return;
+  tcSeenMark(ids);
+  _tcAlertLater = _tcAlertLater.filter(id=>!ids.includes(id));
+  if((window._tcAlertList || []).some(id=>ids.includes(id))){
+    const left = window._tcAlertList.filter(id=>!ids.includes(id));
+    tcAlertClose();
+    if(left.length){ const byId = new Map(tcPending().map(x=>[x.c.id, x])); const fr = left.map(id=>byId.get(id)).filter(Boolean); if(fr.length) tcShowAlert(fr); }
+  }
+}
+function tcAlertResume(){
+  if(!_tcAlertLater.length || document.getElementById('modalOverlay')) return;
+  const seen = tcSeenGet() || {}, byId = new Map(tcPending().map(x=>[x.c.id, x]));
+  const fr = _tcAlertLater.filter(id=>!seen[id]).map(id=>byId.get(id)).filter(Boolean);
+  _tcAlertLater = [];
+  if(fr.length) tcShowAlert(fr);
+}
 function tcAlertOpen(jobId){
+  const all247 = (window._tcAlertList || []).slice();
   tcAlertClose();
   if(document.getElementById('modalOverlay')){
-    if(document.getElementById('tcText') || document.getElementById('estEd')){ toast('عندك نافذة مفتوحة — احفظها أو اقفلها الأول، والتعليق مستنيك في أمر الشغل', true); return; }
+    if(document.getElementById('tcText') || document.getElementById('estEd')){
+      _tcAlertLater = all247.concat(_tcAlertLater.filter(id=>!all247.includes(id)));   /* م247: ترجع تظهر لما النافذة تتقفل */
+      toast('عندك نافذة مفتوحة — احفظها أو اقفلها الأول، والتعليق مستنيك في أمر الشغل', true); return;
+    }
     closeModal();
   }
+  const job = DB.jobs.find(j=>j.id === jobId), mine = new Set(job ? tcUnsent(job).map(c=>c.id) : []);
+  _tcAlertLater = all247.filter(id=>!mine.has(id)).concat(_tcAlertLater.filter(id=>!all247.includes(id)));   /* م247: تعليقات الأوامر التانية بترجع بعد ما تقفل */
   openJobDetail(jobId);
 }
 /* الملاحظة 40: الموظف المسؤول عن أمر الشغل — بحث ذكي في كل موظفي المركز (مش الفنيين بس) */
@@ -5452,6 +5840,250 @@ function printJobTicket(jobId){
   if(!can('jobs.print')){ toast('مالكش صلاحية طباعة أوامر الشغل', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   printHTML(`<style>${brandedInvoiceCSS()}</style>`+brandedJobHTML(job));
+}
+/* ============ م246: 🚗 استلام السيارة — حالة العربية وهي داخلة المركز ============
+   طلب سيف: مهندس الاستقبال وهو بيفتح أمر الشغل يسجّل حالة العربية (حكة في الباب · خدش في الرفرف ·
+   الفانوس مكسور · التكييف لا يعمل) ويصوّرها (العداد والبنزين · رقم الشاسيه · أي خدش أو كسر) —
+   عشان العربية تخرج زي ما دخلت، ولو عميل اشتكى نرجع لأمر الشغل ونشوف كانت عاملة إزاي.
+   قرارات سيف:
+   • اختياري (مش كل العربيات محتاجة تتصوّر) — لحد 6 صور للأمر كله.
+   • التاريخ والساعة ورقم اللوحة بيتطبعوا على الصورة نفسها.
+   • الإضافة لاحقاً (نسي حاجة / التابلت ماكانش معاه): اللي بيعمل أو بيعدّل أوامر شغل، طول ما العربية لسه ماتسلّمتش.
+   • التعديل والحذف بصلاحيتين منفصلتين: jobs.ci_edit · jobs.ci_delete (صاحب المركز معاه الاتنين) — وكله في سجل العمليات.
+   • واتساب للعميل بالحالة والصور (الموظف بيدوس إرسال) + الملاحظات بتتكتب في «ملاحظات معاينة السيارة» في أمر الشغل المطبوع.
+   البيانات: job.ciNotes[] · job.ciPhotos[] (مصفوفتين بيتدمجوا بين الأجهزة زي بنود الأمر) — الصور في نفس
+   مخزن صور التعليقات الفنية (job-photos) ⇒ مفيش SQL جديد. */
+const CI_MAX_PHOTOS = 6;
+var _ciEd = null;   // { carId | jobId, plate, photos:[{ blob, preview, at } | { id, url, path, at }] }
+function ciNotesLive(job){ return ((job && job.ciNotes) || []).filter(n=>n && !n.deleted); }
+function ciPhotosLive(job){ return ((job && job.ciPhotos) || []).filter(p=>p && !p.deleted); }
+function ciHas(job){ return ciNotesLive(job).length + ciPhotosLive(job).length > 0; }
+function ciCanAdd(job){ return !!job && (can('jobs.create') || can('jobs.edit')) && job.status !== 'تم التسليم' && !isJobClosed(job); }
+function canCiEdit(){ return can('jobs.ci_edit'); }
+function canCiDelete(){ return can('jobs.ci_delete'); }
+/* كل سطر = ملاحظة — والترقيم اللي الموظف كتبه بإيده («1- » · «2) ») بيتشال عشان مايتكررش */
+function ciSplitLines(text){
+  return String(text || '').split(/\r?\n/).map(s=>s.replace(/^\s*(?:[0-9٠-٩]{1,2}\s*[-.)ـ:]|[-•*])\s*/, '').trim()).filter(Boolean);
+}
+function ciStampText(plate){
+  const now = new Date();
+  return [plate, fmtDate(now.toISOString()), now.toLocaleTimeString(NUM_LOCALE, { hour:'2-digit', minute:'2-digit' })].filter(Boolean).join(' · ');
+}
+function ciCountTxt(n, one, many){ return n + ' ' + (n === 1 ? one : many); }
+function ciAuthor(){ return { by:noteAuthorKey(), byName:(session.staffName || ROLE_LABEL[session.role] || '—'), dept:ROLE_LABEL[session.role] || session.role }; }
+
+/* ---------- خانة الصور (في «أمر شغل جديد» وفي «➕ ضيف صورة / ملاحظة») ---------- */
+function ciRoom(){
+  if(!_ciEd) return 0;
+  const job = _ciEd.jobId ? DB.jobs.find(j=>j.id === _ciEd.jobId) : null;
+  return CI_MAX_PHOTOS - (job ? ciPhotosLive(job).length : 0) - _ciEd.photos.length;
+}
+function ciPhotosHTML(){
+  const room = ciRoom(), have = _ciEd ? _ciEd.photos.length : 0;
+  const grid = have ? `<div class="tc-phs">${_ciEd.photos.map((p, i)=>`<div class="tc-ph-w"><img class="tc-ph" src="${escAttr(p.preview || p.url)}" alt="صورة"><button class="tc-ph-x" title="شيل الصورة" onclick="ciRemovePhoto(${i})">✕</button></div>`).join('')}</div>`
+    : '<div class="muted" style="font-size:12px">مفيش صور لسه — صوّر العداد والبنزين ورقم الشاسيه وأي خدش أو كسر</div>';
+  const btns = room > 0 ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <label class="btn" style="cursor:pointer">📷 صوّر<input type="file" accept="image/*" capture="environment" style="display:none" onchange="ciPickFiles(this)"></label>
+      <label class="btn" style="cursor:pointer">🖼 من المعرض / الكمبيوتر<input type="file" accept="image/*" multiple style="display:none" onchange="ciPickFiles(this)"></label>
+    </div>` : `<div class="muted" style="font-size:11.5px;margin-top:8px">✅ اكتملوا ${CI_MAX_PHOTOS} صور — لو عايز تغيّر صورة شيلها الأول</div>`;
+  return grid + btns;
+}
+function ciPhotosRedraw(){
+  const el = document.getElementById('ciPhotos'); if(el) el.innerHTML = ciPhotosHTML();
+  const c = document.getElementById('ciCnt'); if(c) c.textContent = ciCntText();
+}
+function ciCntText(){ return (CI_MAX_PHOTOS - ciRoom()) + ' من ' + CI_MAX_PHOTOS; }
+async function ciPickFiles(input){
+  if(!_ciEd) return;
+  const files = [...((input && input.files) || [])];
+  if(input) input.value = '';
+  for(const f of files){
+    if(ciRoom() <= 0){ toast('أقصى حاجة ' + CI_MAX_PHOTOS + ' صور لاستلام العربية', true); break; }
+    try{ const p = await tcCompress(f, ciStampText(_ciEd.plate)); p.at = new Date().toISOString(); _ciEd.photos.push(p); ciPhotosRedraw(); }
+    catch(e){ toast('الصورة دي مااتقرتش — جرّب صورة تانية', true); }
+  }
+}
+function ciRemovePhoto(i){ if(_ciEd){ _ciEd.photos.splice(i, 1); ciPhotosRedraw(); } }
+/* الرفع: اللي اترفع بيتحفظ مكانه — لو النت فصل في النص وجرّبت تاني مابيترفعش مرتين */
+async function ciUploadAll(jobId, btn, label){
+  const fresh = _ciEd.photos.filter(p=>p.blob).length, who = ciAuthor();
+  let k = 0;
+  for(let i = 0; i < _ciEd.photos.length; i++){
+    const p = _ciEd.photos[i];
+    if(!p.blob) continue;
+    k++;
+    if(btn){ btn.disabled = true; btn.textContent = '⏳ بيرفع الصورة ' + k + ' من ' + fresh + '…'; }
+    const id = uid('cip');
+    const up = await tcUpload(jobId, 'ci_' + id, p.blob);
+    _ciEd.photos[i] = { id, url:up.url, path:up.path, at:p.at || new Date().toISOString(), by:who.by, byName:who.byName, dept:who.dept, preview:p.preview };
+  }
+  if(btn){ btn.disabled = false; btn.textContent = label; }
+  return _ciEd.photos.map(p=>({ id:p.id, url:p.url, path:p.path, at:p.at, by:p.by, byName:p.byName, dept:p.dept }));
+}
+function ciNewJobFieldHTML(car){
+  return `<div class="card ci-box">
+      <label class="f-label" style="margin:0;color:var(--accent)">🚗 استلام السيارة</label>
+      <div class="muted" style="font-size:11.5px;margin:3px 0 8px">حالة العربية وهي داخلة المركز — كل ملاحظة في سطر (اختياري). صوّر العداد والبنزين ورقم الشاسيه وأي خدش أو كسر.</div>
+      <textarea class="f" id="jobCiNotes" rows="4" placeholder="مثال:&#10;حكة في الباب الخلفي الشمال&#10;الفانوس الخلفي الشمال مكسور"></textarea>
+      <div class="f-label" style="margin-top:10px">📷 صور الاستلام <span class="ci-cnt" id="ciCnt">${ciCntText()}</span></div>
+      <div id="ciPhotos">${ciPhotosHTML()}</div>
+    </div>`;
+}
+
+/* ---------- جوه أمر الشغل ---------- */
+function ciSectionHTML(job, ro){
+  const notes = ciNotesLive(job), photos = ciPhotosLive(job);
+  const add = !ro && ciCanAdd(job), has = notes.length + photos.length > 0;
+  if(!has && !add) return '';
+  const cust = DB.customers.find(c=>c.id === job.customerId) || {};
+  const ed = !ro && canCiEdit(), del = !ro && canCiDelete();
+  const send = !ro && has && (can('jobs.create') || can('jobs.edit')) && !!cust.phone;
+  const first = notes.concat(photos).slice().sort((a, b)=>String(a.at).localeCompare(String(b.at)))[0];
+  const late = x => job.receivedAt && x.at && (new Date(x.at) - new Date(job.receivedAt)) > 15 * 60000;   // اتضافت بعد فتح الأمر
+  const d1 = first && first.at ? new Date(first.at) : null;
+  return `<div class="card ci-box">
+    <div class="flex-between" style="gap:8px;flex-wrap:wrap">
+      <label class="f-label" style="margin:0;color:var(--accent)">🚗 حالة العربية وقت الاستلام</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${add ? `<button class="btn btn-sm" onclick="openCiModal('${job.id}')">➕ ضيف صورة / ملاحظة</button>` : ''}
+        ${send ? `<button class="btn btn-sm" onclick="ciSendWhatsApp('${job.id}')">📱 ابعت للعميل واتساب</button>` : ''}
+      </div>
+    </div>
+    ${has ? `<div class="muted" style="font-size:12px;margin-top:4px">اتستلمت: <b style="color:var(--text)">${d1 ? (AR_DAYS188[d1.getDay()] || '') + ' ' + fmtDateTime(first.at) : '—'}</b> · ${escNote(first.byName || '—')}${first.dept ? ' (' + escNote(first.dept) + ')' : ''}${job.ciSentAt ? ` · <span style="color:var(--success)">📱 اتبعتت للعميل ${fmtDateTime(job.ciSentAt)}</span>` : ''}</div>`
+      : `<div class="muted" style="font-size:12.5px;margin-top:4px">مفيش استلام متسجّل للعربية دي — لو عايز تسجّل حالتها دوس «➕ ضيف صورة / ملاحظة»</div>`}
+    ${notes.length ? `<ol class="ci-list">${notes.map(n=>`<li>${escNote(n.text)}${late(n) ? ` <span class="muted" style="font-size:11px">(اتضافت ${fmtDateTime(n.at)} · ${escNote(n.byName || '')})</span>` : ''}${n.editedAt ? ' <span class="muted" style="font-size:11px">✎ اتعدّلت</span>' : ''}${ed ? ` <button class="btn btn-sm ci-mini" title="تعديل" onclick="ciEditNote('${job.id}','${n.id}')">✏️</button>` : ''}${del ? `<button class="btn btn-sm btn-danger ci-mini" title="حذف" onclick="ciDeleteItem('${job.id}','note','${n.id}')">🗑</button>` : ''}</li>`).join('')}</ol>` : ''}
+    ${photos.length ? `<div class="tc-phs">${photos.map(p=>`<div class="tc-ph-w"><img class="ci-ph" src="${escAttr(p.url)}" loading="lazy" alt="صورة الاستلام" onclick="event.stopPropagation();tcViewPhoto('${escAttr(p.url)}')">${del ? `<button class="tc-ph-x" title="امسح الصورة" onclick="event.stopPropagation();ciDeleteItem('${job.id}','photo','${p.id}')">✕</button>` : ''}</div>`).join('')}</div>` : ''}
+    ${photos.length ? '<div class="muted" style="font-size:11px;margin-top:8px">🔒 دوسة على الصورة بتكبّرها · التاريخ والساعة مطبوعين على كل صورة</div>' : ''}
+  </div>`;
+}
+/* علامة على كارت أمر الشغل في القايمة (من غير أحمر — مش كل العربيات محتاجة تتصوّر) */
+function ciTicketChipHTML(job){
+  if(!ciHas(job)) return '';
+  const n = ciNotesLive(job).length, p = ciPhotosLive(job).length;
+  return `<div class="ticket-car" style="margin-top:3px;font-weight:700">🚗 استلام: ${n ? ciCountTxt(n, 'ملاحظة', 'ملاحظات') : 'مفيش ملاحظات'} · ${p ? ciCountTxt(p, 'صورة', 'صور') : 'مفيش صور'}</div>`;
+}
+
+/* ---------- ➕ إضافة بعد فتح الأمر ---------- */
+function openCiModal(jobId){
+  const job = DB.jobs.find(j=>j.id === jobId);
+  if(!job) return;
+  if(!ciCanAdd(job)){ toast(can('jobs.create') || can('jobs.edit') ? 'العربية اتسلّمت أو الأمر اتقفل — مينفعش تضيف للاستلام دلوقتي' : 'مالكش صلاحية تضيف لاستلام السيارة', true); return; }
+  const car = DB.cars.find(c=>c.id === job.carId) || {};
+  _ciEd = { jobId, plate:car.plate || '', photos:[] };
+  openModal(`<h3>🚗 استلام السيارة — أمر شغل #${escNote(job.jobNo)}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:8px">🚗 ${escNote(carLabel(car) || '')} — ${escNote(car.plate || '')} · اللي هتضيفه بيتسجل بوقته واسمك</div>
+    <div class="form-row"><label class="f-label">ملاحظات جديدة (كل ملاحظة في سطر)</label><textarea class="f" id="ciText" rows="3" placeholder="مثال: خدش في الرفرف الأمامي اليمين"></textarea></div>
+    <div class="f-label">📷 صور الاستلام <span class="ci-cnt" id="ciCnt">${ciCntText()}</span></div>
+    <div id="ciPhotos">${ciPhotosHTML()}</div>
+    <button class="btn btn-accent" id="ciSaveBtn" style="width:100%;margin-top:14px" onclick="saveCiAdd()">💾 حفظ</button>`);
+}
+async function saveCiAdd(){
+  if(!_ciEd || !_ciEd.jobId) return;
+  const jobId = _ciEd.jobId;
+  let job = DB.jobs.find(j=>j.id === jobId);
+  if(!ciCanAdd(job)){ toast('مالكش صلاحية تضيف لاستلام السيارة دي', true); return; }
+  const lines = ciSplitLines((document.getElementById('ciText') || {}).value);
+  if(!lines.length && !_ciEd.photos.length){ toast('اكتب ملاحظة أو صوّر الأول', true); return; }
+  if(ciRoom() < 0){ toast('أقصى حاجة ' + CI_MAX_PHOTOS + ' صور لاستلام العربية — شيل صورة', true); return; }
+  let photos = [];
+  try{ photos = await ciUploadAll(jobId, document.getElementById('ciSaveBtn'), '💾 حفظ'); }
+  catch(err){ const b = document.getElementById('ciSaveBtn'); if(b){ b.disabled = false; b.textContent = '💾 حفظ'; } toast(tcUploadErrText(err), true); return; }
+  job = DB.jobs.find(j=>j.id === jobId) || job;   // بعد الرفع — نسخة الذاكرة الحالية
+  const now = new Date().toISOString(), who = ciAuthor();
+  job.ciNotes = job.ciNotes || []; job.ciPhotos = job.ciPhotos || [];
+  lines.forEach(t=>job.ciNotes.push(Object.assign({ id:uid('cin'), text:t, at:now }, who)));
+  photos.forEach(p=>job.ciPhotos.push(p));
+  await saveKey('jobs', DB.jobs);
+  await logAction('🚗 إضافة لاستلام السيارة — أمر الشغل #' + job.jobNo + ': ' + [lines.length ? ciCountTxt(lines.length, 'ملاحظة', 'ملاحظات') + ' («' + lines.join(' · ').slice(0, 80) + '»)' : '', photos.length ? ciCountTxt(photos.length, 'صورة', 'صور') : ''].filter(Boolean).join(' + '));
+  _ciEd = null;
+  closeModal(); toast('✅ اتضافت لاستلام السيارة');
+  openJobDetail(jobId);
+}
+
+/* ---------- ✏️ تعديل ملاحظة · 🗑 حذف ملاحظة أو صورة (بصلاحية) ---------- */
+function ciEditNote(jobId, nid){
+  if(!canCiEdit()){ toast('مالكش صلاحية «تعديل ملاحظات استلام السيارة» — كلّم صاحب المركز', true); return; }
+  const job = DB.jobs.find(j=>j.id === jobId);
+  const n = job && ciNotesLive(job).find(x=>x.id === nid);
+  if(!n) return;
+  openModal(`<h3>✏️ تعديل ملاحظة استلام السيارة — أمر شغل #${escNote(job.jobNo)}</h3>
+    <div class="form-row"><label class="f-label">الملاحظة</label><input class="f" id="ciEditText" value="${escAttr(n.text)}"></div>
+    <div class="muted" style="font-size:11.5px;margin-bottom:10px">الكلام القديم بيتسجل في سجل العمليات.</div>
+    <button class="btn btn-accent" style="width:100%" onclick="saveCiNoteEdit('${job.id}','${n.id}')">💾 حفظ التعديل</button>`);
+}
+async function saveCiNoteEdit(jobId, nid){
+  if(!canCiEdit()){ toast('مالكش صلاحية «تعديل ملاحظات استلام السيارة»', true); return; }
+  const job = DB.jobs.find(j=>j.id === jobId);
+  const n = job && ciNotesLive(job).find(x=>x.id === nid);
+  if(!n){ toast('الملاحظة دي اتمسحت — اعمل تحديث للبيانات', true); return; }
+  const text = String((document.getElementById('ciEditText') || {}).value || '').trim();
+  if(!text){ toast('الملاحظة فاضية — لو عايز تشيلها استخدم 🗑 حذف', true); return; }
+  if(text === n.text){ closeModal(); openJobDetail(jobId); return; }
+  const old = n.text;
+  Object.assign(n, { text, prevText:old, editedAt:new Date().toISOString(), editedBy:actorName() });
+  await saveKey('jobs', DB.jobs);
+  await logAction('✏️ تعديل ملاحظة استلام السيارة — أمر الشغل #' + job.jobNo + ': «' + old.slice(0, 60) + '» ← «' + text.slice(0, 60) + '»');
+  closeModal(); toast('✅ اتعدّلت الملاحظة');
+  openJobDetail(jobId);
+}
+function ciDeleteItem(jobId, kind, id){
+  if(!canCiDelete()){ toast('مالكش صلاحية «حذف ملاحظات وصور استلام السيارة» — كلّم صاحب المركز', true); return; }
+  const job = DB.jobs.find(j=>j.id === jobId);
+  const list = kind === 'photo' ? ciPhotosLive(job) : ciNotesLive(job);
+  const x = list.find(r=>r.id === id);
+  if(!x) return;
+  askConfirm((kind === 'photo' ? 'تمسح الصورة دي من استلام السيارة؟' : 'تمسح الملاحظة دي من استلام السيارة؟<br>«' + escNote(String(x.text).slice(0, 80)) + '»')
+    + '<br><span class="muted" style="font-size:12px">هتتشال من أمر الشغل — والحذف بيتسجل في سجل العمليات باسمك.</span>', async ()=>{
+    if(!canCiDelete()) return;
+    const j = DB.jobs.find(r=>r.id === jobId);
+    const r = j && (kind === 'photo' ? ciPhotosLive(j) : ciNotesLive(j)).find(v=>v.id === id);
+    if(!r) return;
+    Object.assign(r, { deleted:true, deletedAt:new Date().toISOString(), deletedBy:actorName() });
+    await saveKey('jobs', DB.jobs);
+    await logAction('🗑 حذف ' + (kind === 'photo' ? 'صورة' : 'ملاحظة') + ' من استلام السيارة — أمر الشغل #' + j.jobNo + (kind === 'photo' ? ' (اتصورت ' + fmtDateTime(r.at) + ' · ' + (r.byName || '') + ')' : ': كانت «' + String(r.text).slice(0, 80) + '»'));
+    toast(kind === 'photo' ? 'اتمسحت الصورة' : 'اتمسحت الملاحظة'); openJobDetail(jobId);
+  });
+}
+
+/* ---------- 📱 للعميل واتساب: «عربيتك اتستلمت بالحالة دي» ---------- */
+function ciWaMsg(job){
+  const car = DB.cars.find(x=>x.id === job.carId) || {}, cust = DB.customers.find(x=>x.id === job.customerId) || {};
+  const center = (DB.settings && DB.settings.centerName) || 'Masters Auto Service', tel = (DB.settings && DB.settings.phone) || '';
+  const notes = ciNotesLive(job), photos = ciPhotosLive(job);
+  return (new Date().getHours() < 12 ? 'صباح الخير' : 'مساء الخير') + ' يا ' + (cust.name || '') + ' 🌟\n'
+    + 'مع حضرتك ' + center + ' — عربيتك ' + [carLabel(car), car.plate].filter(Boolean).join(' — ') + ' اتستلمت عندنا يوم ' + fmtDate(job.receivedAt || new Date().toISOString()) + ' في أمر شغل رقم #' + job.jobNo + '.\n'
+    + 'دي حالة العربية وقت الاستلام:\n'
+    + (notes.length ? notes.map((n, i)=>(i + 1) + ') ' + n.text).join('\n') : 'مفيش ملاحظات')
+    + (photos.length ? '\n\n📷 صور العربية وقت الاستلام:\n' + photos.map(p=>p.url).join('\n') : '')
+    + '\n\nلو عند حضرتك أي ملاحظة على الكلام ده ياريت تبلغنا' + (tel ? ' على ' + tel : '') + '.\nشكراً لحضرتك 🚗';
+}
+async function ciSendWhatsApp(jobId){
+  if(!(can('jobs.create') || can('jobs.edit'))){ toast('مالكش صلاحية تبعت استلام السيارة للعميل', true); return; }
+  const job = DB.jobs.find(j=>j.id === jobId);
+  if(!job || !ciHas(job)) return;
+  const cust = DB.customers.find(x=>x.id === job.customerId) || {};
+  let ph = String(cust.phone || '').replace(/\D/g, '');
+  if(ph.startsWith('00')) ph = ph.slice(2);
+  if(ph.startsWith('0')) ph = '2' + ph;
+  if(ph.length < 11){ toast('العميل مالوش رقم موبايل صحيح — سجّله في بيانات العميل الأول', true); return; }
+  /* الفتح لازم يحصل مع الدوسة نفسها قبل أي انتظار وإلا المتصفح بيمنعه */
+  const a = document.createElement('a');
+  a.href = 'https://wa.me/' + ph + '?text=' + encodeURIComponent(ciWaMsg(job)); a.target = '_blank'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+  job.ciSentAt = new Date().toISOString(); job.ciSentBy = actorName();
+  await saveKey('jobs', DB.jobs);
+  logAction('📱 إرسال استلام السيارة للعميل واتساب — أمر الشغل #' + job.jobNo + ' (' + ciCountTxt(ciNotesLive(job).length, 'ملاحظة', 'ملاحظات') + ' · ' + ciCountTxt(ciPhotosLive(job).length, 'صورة', 'صور') + ') — ' + (cust.name || '')).catch(()=>{});
+  openJobDetail(jobId);
+}
+/* ---------- 🖨 في أمر الشغل المطبوع: «ملاحظات معاينة السيارة» (العميل بيمضي عليها) ---------- */
+function ciJobOrderLinesHTML(job){
+  const notes = ciNotesLive(job).map((n, i)=>(i + 1) + ') ' + n.text);
+  const rows = 4, per = Math.max(1, Math.ceil(notes.length / rows));
+  return Array.from({ length:rows }, (_, i)=>`<div class="jo-ln">${_joEsc(notes.slice(i * per, i * per + per).join('   ·   '))}</div>`).join('');
+}
+function ciJobOrderPhotosTag(job){
+  const p = ciPhotosLive(job).length;
+  return p ? ` <span style="font-weight:600">(📷 ${ciCountTxt(p, 'صورة', 'صور')} للاستلام محفوظة على السيستم)</span>` : '';
 }
 /* ============ م197: أمر الشغل الفاضي — بيتكتب بخط إيد مهندس الاستقبال ============
    طلب سيف: أول ما العربية تدخل ويتفتحلها أمر شغل على السيستم، المهندس يطبع
@@ -5635,8 +6267,8 @@ function jobOrderFormHTML(job){
           <div class="jo-legend"><span><b>✕</b>خدش</span><span><b>○</b>خبطة</span><span><b>●</b>كسر</span><span><b>~</b>دهان</span></div>
         </div>
         <div class="jo-nt">
-          <div class="jo-sub">ملاحظات معاينة السيارة:</div>
-          <div class="jo-ln"></div><div class="jo-ln"></div><div class="jo-ln"></div><div class="jo-ln"></div>
+          <div class="jo-sub">ملاحظات معاينة السيارة:${ciJobOrderPhotosTag(job)}</div>
+          ${ciJobOrderLinesHTML(job)}
           <div class="jo-sub">لمبات التابلوه المنورة:</div><div class="jo-ln"></div>
           <div class="jo-sub">متعلقات أخرى / شخصية:</div><div class="jo-ln"></div>
         </div>
@@ -5899,14 +6531,14 @@ const EST_ST230 = {
   pricing:  { label:'عند المخزن للتسعير', short:'عند المخزن للتسعير', icon:'🏷️', cls:'tag-inspect' },
   priced:   { label:'اتسعرت — مستنية موافقة العميل', short:'اتسعرت — مستنية العميل', icon:'📋', cls:'tag-working' },
   approved: { label:'معتمدة — المخزن بيجهّز القطع', short:'معتمدة — بتتجهز', icon:'📦', cls:'tag-inspect' },
-  ready:    { label:'قطع الغيار جاهزة في المخزن', short:'القطع جاهزة', icon:'🟢', cls:'tag-ready' },
+  ready:    { label:'خلصت — القطع اتجهزت', short:'خلصت', icon:'✅', cls:'tag-delivered' },   /* م247: «اتجهز» القديمة = خلصت */
   done:     { label:'خلصت', short:'خلصت', icon:'✅', cls:'tag-delivered' },
   rejected: { label:'العميل رفض المقايسة', short:'العميل رفضها', icon:'❌', cls:'tag-cancel' },
   cancelled:{ label:'اتلغت', short:'اتلغت', icon:'🚫', cls:'tag-cancel' }
 };
 const EST_OPEN230 = ['draft','pricing','priced'];                       // لسه بتتكتب/بتتسعر/مستنية العميل
-/* طلب سيف: أول ما المخزن يخلّص التجهيز («القطع جاهزة») المقايسة تتشال من «الجارية» وتروح «خلصت».
-   الاستقبال بيفضل يوصله الإشعار والعداد لحد ما يفتحها (وقتها بتتسجل «اتبلغ») */
+/* م247 (قرار سيف 2026-10-27): أول ما المخزن يدوس «✅ تم التجهيز» الطلب/المقايسة بتخلص علطول وتروح «خلصت» —
+   مفيش «عليك الدور» ولا تأكيد من الاستقبال. السجلات القديمة اللي حالتها «اتجهز» (ready) بتتعامل كإنها خلصت. */
 const EST_LIVE230 = ['draft','pricing','priced','approved'];    // لسه فيها شغل عند حد
 const EST_EV230 = {
   created:'✍️ اتكتبت', sent:'📤 اتبعتت للمخزن للتسعير', nopricing:'⏭️ مفيش قطع غيار — جاهزة للعميل علطول',
@@ -5959,7 +6591,7 @@ function estProgText(e){
 function estStShort(e){
   const st = EST_ST230[e.status] || {};
   if(estIsReq(e)){
-    return { draft:'مسودة — لسه مااتبعتش', approved:'عند المخزن بيتجهز', ready:'اتجهز — مستني الاستقبال يتبلغ',
+    return { draft:'مسودة — لسه مااتبعتش', approved:'عند المخزن بيتجهز', ready:'خلص',
       done:'خلص', cancelled:'المسودة اتلغت' }[e.status] || st.short || e.status;
   }
   if(e.status === 'done' && e.convertedNo) return 'اتعتمدت ⇐ اتحولت لطلب صرف #' + e.convertedNo;
@@ -6108,7 +6740,6 @@ function estNeeds(e){
     case 'pricing': return ['est.price'];
     case 'priced': return ['est.write','est.approve'];
     case 'approved': return ['est.prepare'];
-    case 'ready': return estIsReq(e) ? ['est.request','est.write','est.approve'] : ['est.write','est.approve'];
   }
   return [];
 }
@@ -6230,6 +6861,12 @@ function estPaintBadges(n){
 }
 let _estInboxT = null;
 function estInboxSoon(){ clearTimeout(_estInboxT); _estInboxT = setTimeout(estInboxCheck, 300); }
+/* م247: الرسالة كانت بتتعلّم «اتشافت» على الجهاز لحظة ما تظهر — فلو النور قطع أو الجهاز اتقفل والرسالة لسه
+   على الشاشة (أو الموظف فتح واحدة من كذا رسالة) الباقي ماكانش بيرجع يظهر تاني أبداً (حادثة 26/10: 7 طلبات).
+   دلوقتي: «ظهرت» في الجلسة دي بتتحفظ في الذاكرة بس (_estShown) — و«اتشافت» على الجهاز بس لما الموظف يدوس
+   «افتح» أو «بعدين» أو يفتحها من أي مكان. الجهاز اتقفل/اتعمله تحديث ⇐ اللي ماتشافتش بترجع تظهر. */
+const _estShown = {};
+var _estAlertLater = [];   // رسايل اتأجلت لحد ما النافذة المفتوحة تتقفل (فتح واحدة من كذا رسالة)
 function estInboxCheck(){
   try{ tcInboxCheck(); }catch(e){}   /* م242 */
   try{ estEdLiveSync(); }catch(e){}   /* م237 */
@@ -6247,8 +6884,8 @@ function estInboxCheck(){
         (e.events = e.events || []).push({ id:uid('ev'), type:'delivered', at:now, by:actorName(), byId:me, seq:e.stageSeq, text:deviceInfo() });
         wrote = true;
       }
-      keep[e.id] = e.stageSeq;
-      if(seen[e.id] !== e.stageSeq) fresh.push(e);
+      if(seen[e.id] === e.stageSeq){ keep[e.id] = e.stageSeq; return; }   // الموظف اتصرف فيها قبل كده
+      if(_estShown[me + '|' + e.id] !== e.stageSeq && !_estAlertLater.includes(e.id)) fresh.push(e);
     });
     estSeenSave(keep);
     if(wrote) saveKey('repairEstimates').catch(()=>{});
@@ -6265,11 +6902,6 @@ function estAlertTitle(e){
       return '📋 مقايسة اتسعرت — اطبعها للعميل' + (it.length ? ' — ⚠️ اتغيّر سعر: ' + it.slice(0, 3).map(x=>x[0] + ' ' + estFmtP(x[1]) + ' ← ' + estFmtP(x[2])).join('، ') + (it.length > 3 ? ' و' + (it.length - 3) + ' كمان' : '') : '');
     }
     case 'approved': return estIsReq(e) ? '📦 طلب صرف قطع غيار جديد — جهّزه' + (e.fromEstNo ? ' (مقايسة #' + e.fromEstNo + ' — العميل اعتمدها)' : ' (العميل موافق)') : '📦 مقايسة معتمدة — جهّز قطع الغيار';
-    case 'ready': {
-      const na = estPrepNA(e), g = estPrepProg(e);   /* م231: «جاهزة ما عدا …» · م237: «اتجهز 3 من 5» */
-      return (estIsReq(e) ? '🟢 طلب صرف قطع الغيار اتجهز' : '🟢 قطع غيار المقايسة جاهزة في المخزن') + ' — ' + g.ok + ' من ' + g.n + ' جاهزة'
-        + (na.length ? ' — ما عدا: ' + na.map(p=>p.name).join('، ') + ' (مش متوفرة)' : '');
-    }
   }
   return '📋 مقايسة';
 }
@@ -6289,6 +6921,9 @@ function estChime(){
   try{ if(navigator.vibrate) navigator.vibrate([90, 60, 90]); }catch(e){}
 }
 function estShowAlert(list){
+  const me = estMyId();
+  window._estAlertMe = me;   /* م248: صاحب الرسالة — وقت الخروج السيستم مابيبقاش عارف مين */
+  list.forEach(e=>{ _estShown[me + '|' + e.id] = e.stageSeq; });
   const ids = list.map(e=>e.id);
   window._estAlertList = (window._estAlertList || []).filter(id=>!ids.includes(id)).concat(ids);
   let el = document.getElementById('estAlert');
@@ -6313,25 +6948,46 @@ function estAlertHTML(){
     }).join('')}
     ${items.length > 5 ? `<div class="muted" style="margin-top:6px">و${items.length - 5} كمان في «📋 المقايسات»</div>` : ''}
     <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn" style="flex:1" onclick="estAlertClose()">بعدين</button>
-      ${many ? `<button class="btn btn-accent" style="flex:1" onclick="estAlertClose();goTab('estimates')">📋 افتح المقايسات</button>` : ''}
+      <button class="btn" style="flex:1" onclick="estAlertLater()">بعدين</button>
+      ${many ? `<button class="btn btn-accent" style="flex:1" onclick="estAlertLater();goTab('estimates')">📋 افتح المقايسات</button>` : ''}
     </div>
     <div class="muted" style="font-size:11px;margin-top:8px">لو دوست «بعدين» العداد الأحمر بيفضل جنب «📋 المقايسات» لحد ما تخلّصها</div>
   </div>`;
 }
 function estAlertClose(){
+  /* م248: القفل من السيستم نفسه (خروج/دخول، فتح واحدة) مش «الموظف شافها» ⇐ ترجع تظهر في نفس الجلسة.
+     «اتشافت» بتتسجل بس من «افتح» و«بعدين» وفتح المقايسة */
+  const me = window._estAlertMe || estMyId();
+  (window._estAlertList || []).forEach(id=>{ delete _estShown[me + '|' + id]; });
   window._estAlertList = [];
   const el = document.getElementById('estAlert');
   if(el) el.remove();
+}
+/* «بعدين» = الموظف شافها واختار يأجّلها (العداد الأحمر فاضل) ⇐ مابترجعش تظهر */
+function estAlertMarkSeen(id){ const e = estById(id); if(e) estSeenSet(e.id, e.stageSeq); }
+function estAlertLater(){
+  (window._estAlertList || []).forEach(estAlertMarkSeen);
+  _estAlertLater = [];
+  estAlertClose();
+}
+/* بعد ما النافذة تتقفل: الرسايل اللي اتأجلت (كانت مع اللي اتفتحت) بترجع تظهر */
+function estAlertResume(){
+  if(!_estAlertLater.length || document.getElementById('modalOverlay')) return;
+  const seen = estSeenGet();
+  const list = _estAlertLater.map(estById).filter(e=>e && estIsMyTurn(e) && seen[e.id] !== e.stageSeq);
+  _estAlertLater = [];
+  if(list.length) estShowAlert(list);
 }
 function estAlertOpen(id){
   /* م237 (مراجعة سيف): الرسالة كانت بتغطي الشاشة و«افتح» بيقول «اقفل النافذة الأول» — ومش عارف يقفلها.
      ورقة مقايسة/طلب مفتوحة من غير كتابة ماتحفظتش ⇐ بتتقفل وتتفتح اللي في الرسالة علطول.
      نافذة تانية (فاتورة/صرف…) أو كتابة ماتحفظتش ⇐ مانضيّعهاش: الرسالة بتقفل عشان يقدر يكمّل/يقفل، والعداد الأحمر فاضل. */
+  const rest247 = (window._estAlertList || []).filter(x=>x !== id);
   if(document.getElementById('modalOverlay')){
     const ed = !!document.getElementById('estEd');
     if(!ed || estEdDirty()){
       const e = estById(id);
+      _estAlertLater = [id].concat(rest247.filter(x=>!_estAlertLater.includes(x)), _estAlertLater.filter(x=>x !== id && !rest247.includes(x)));   /* م247 */
       estAlertClose();
       toast((ed ? 'عندك كتابة لسه ماتحفظتش في الورقة المفتوحة — احفظها أو اقفلها' : 'اقفل النافذة اللي مفتوحة الأول')
         + ' — ' + (e && estIsReq(e) ? 'الطلب' : 'المقايسة') + ' مستنياك في «📋 المقايسات» (العداد الأحمر)', true);
@@ -6340,6 +6996,8 @@ function estAlertOpen(id){
     closeModal();
   }
   estAlertClose();
+  estAlertMarkSeen(id);
+  _estAlertLater = rest247.concat(_estAlertLater.filter(x=>x !== id && !rest247.includes(x)));   /* م247 */
   openEstEditor(id);
 }
 
@@ -6392,7 +7050,7 @@ function estRowHTML(e){
   const st = EST_ST230[e.status] || {};
   const { car, cust } = estJobCar(e);
   const t = estTotals(e);
-  const live = EST_LIVE230.includes(e.status) || e.status === 'ready';   // «القطع جاهزة من 5 دقايق»
+  const live = EST_LIVE230.includes(e.status);
   const mine = !isOwnerSession() && estIsMyTurn(e);
   return `<div class="card est-row${mine ? ' est-row-mine' : ''}" onclick="openEstEditor('${e.id}')">
     <div style="flex:1;min-width:0">
@@ -6420,13 +7078,13 @@ function jobEstimatesBoxHTML(job){
   if(!list.length && !canNew && !canReq) return '';
   const row = e=>{
     const st = EST_ST230[e.status] || {}, t = estTotals(e), prog = estProgText(e);
-    const live = EST_LIVE230.includes(e.status) || e.status === 'ready';
+    const live = EST_LIVE230.includes(e.status);
     return `<div class="est-mini" onclick="openEstEditor('${e.id}')"><span>${estIsReq(e) ? '📦' : (e.convertedTo ? '🔁' : (st.icon || ''))} <b>${_joEsc(estTitle(e))}</b> · ${_joEsc(estStShort(e))}${prog ? ' · <b>' + prog + '</b>' : ''}${e.fromEstNo ? ' <span class="muted">(من مقايسة #' + _joEsc(e.fromEstNo) + ')</span>' : ''}${live ? ` · <span class="muted" data-est-since="${escAttr(e.stageAt || '')}">${estAgo(e.stageAt)}</span>` : ''}</span><span>${!estIsReq(e) && t.all ? estMoneyRange(t.all, t.allMax) : ''}</span></div>`;
   };
   const lastE = ests[ests.length - 1];
   const estSum = !ests.length ? '' : (ests.length === 1 ? 'يوجد 1 مقايسة — ' + estStShort(lastE) : 'يوجد ' + ests.length + ' مقايسة — آخر واحدة: ' + estStShort(lastE));
   const cnt = st=>reqs.filter(e=>e.status === st).length;
-  const parts = [[cnt('draft'), 'مسودة'], [cnt('approved'), 'بيتجهز'], [cnt('ready'), 'اتجهز'], [cnt('done'), 'خلص']].filter(x=>x[0]).map(x=>x[0] + ' ' + x[1]);
+  const parts = [[cnt('draft'), 'مسودة'], [cnt('approved'), 'بيتجهز'], [cnt('ready') + cnt('done'), 'خلص']].filter(x=>x[0]).map(x=>x[0] + ' ' + x[1]);
   const reqSum = !reqs.length ? '' : 'يوجد ' + reqs.length + ' طلب' + (parts.length ? ' — ' + parts.join(' · ') : '');
   const det = (icon, lbl, sum, arr)=>arr.length
     ? `<details class="est-det"><summary><span>${icon} ${lbl}: <b>${_joEsc(sum)}</b></span><span class="est-det-btn">تفاصيل</span></summary>${arr.map(row).join('')}</details>`
@@ -6535,6 +7193,15 @@ function openEstEditor(id){
   if(!e){ toast('المقايسة دي مش موجودة — اعمل تحديث للبيانات', true); return; }
   if(!estAnyPerm()){ toast('مالكش صلاحية على المقايسات', true); return; }
   estMarkOpened(e);
+  if(session && !isOwnerSession()){   /* م247: اتفتحت = اتشافت — تتشال من الرسالة لو كانت فيها */
+    estSeenSet(e.id, e.stageSeq || 0);
+    _estAlertLater = _estAlertLater.filter(x=>x !== e.id);
+    if((window._estAlertList || []).includes(e.id)){
+      window._estAlertList = window._estAlertList.filter(x=>x !== e.id);
+      const el = document.getElementById('estAlert');
+      if(el){ if(window._estAlertList.length) el.innerHTML = estAlertHTML(); else el.remove(); }
+    }
+  }
   _estEd = { id:e.id, rev:e.rev || 0, isNew:false, base:JSON.parse(JSON.stringify(e)), work:estPad(JSON.parse(JSON.stringify(e))) };
   estEdOpen();
 }
@@ -6546,24 +7213,14 @@ function estSetStage(e, status, now, who){
   e.status = status; e.stageSeq = (e.stageSeq || 0) + 1; e.stageAt = now;
   e.stageById = who ? who.id : estMyId(); e.stageByName = who ? who.name : actorName();
 }
-/* «اتفتحت إمتى ومين فتحها» — أول واحد عليه الدور يفتحها. والاستقبال لما يفتح «القطع جاهزة» ⇐ خلصت */
+/* «اتفتحت إمتى ومين فتحها» — أول واحد عليه الدور يفتحها */
 function estMarkOpened(e){
   try{
     if(!session || isOwnerSession() || !estTableOk()) return;
-    if(!['pricing','priced','approved','ready'].includes(e.status)) return;
+    if(!['pricing','priced','approved'].includes(e.status)) return;
     if(!estNeeds(e).some(a=>can(a)) || e.stageById === estMyId()) return;
     const now = new Date().toISOString(), me = estMyId();
     e.events = e.events || [];
-    if(e.status === 'ready'){
-      e.events.push({ id:uid('ev'), type:'ack', at:now, by:actorName(), byId:me, seq:e.stageSeq, text:'' });
-      estSetStage(e, 'done', now);
-      e.rev = (e.rev || 0) + 1;
-      estSeenSet(e.id, e.stageSeq);
-      saveKey('repairEstimates').catch(()=>{});
-      logAction('📋 ' + estTitle(e) + ' — أمر #' + e.jobNo + ': الاستقبال اتبلغ إن قطع الغيار جاهزة').catch(()=>{});
-      estInboxSoon();
-      return;
-    }
     if(e.events.some(v=>v && v.type==='opened' && v.seq===e.stageSeq)) return;
     e.events.push({ id:uid('ev'), type:'opened', at:now, by:actorName(), byId:me, seq:e.stageSeq, text:'' });
     saveKey('repairEstimates').catch(()=>{});
@@ -6577,7 +7234,7 @@ function estModeHint(mode, w){
     }[mode];
     if(hr) return `<div class="est-hint">${hr}</div>`;
     const pg = estProgText(w), na = estPrepNA(w);
-    const vr = { draft:'✍️ الطلب لسه مسودة عند اللي بيكتبه — مااتبعتش للمخزن.', approved:'📦 الطلب عند المخزن بيجهّزه' + (pg ? ' (' + pg + ')' : '') + ' — هيوصلك إشعار أول ما يخلص. <b>طلب الصرف مابيتلغيش</b> — لو حاجة اتغيرت اعمل طلب صرف جديد، واللي زيادة المخزن يرجّعه بمرتجع.',
+    const vr = { draft:'✍️ الطلب لسه مسودة عند اللي بيكتبه — مااتبعتش للمخزن.', approved:'📦 الطلب عند المخزن بيجهّزه' + (pg ? ' (' + pg + ')' : '') + ' — أول ما يخلص بيتنقل لـ«خلصت» لوحده. <b>طلب الصرف مابيتلغيش</b> — لو حاجة اتغيرت اعمل طلب صرف جديد، واللي زيادة المخزن يرجّعه بمرتجع.',
       ready:'🟢 الطلب اتجهز — ' + estPrepProg(w).ok + ' من ' + estPrepProg(w).n + ' جاهزة' + (na.length ? ' — <b>مش متوفرة: ' + _joEsc(na.map(p=>p.name).join('، ')) + '</b>' : '') + ' — اصرف الجاهز على الأمر بالطريقة العادية.',
       done:'✅ الطلب خلص' + (pg ? ' (' + pg + ')' : '') + '.',
       cancelled:'🚫 المسودة اتلغت' + (w.cancelReason ? ' — السبب: ' + _joEsc(w.cancelReason) : '') + '.' }[w.status];
@@ -6594,7 +7251,7 @@ function estModeHint(mode, w){
     draft:'✍️ المقايسة لسه مسودة عند اللي بيكتبها.',
     pricing:'⏳ المقايسة عند المخزن بيسعّرها — هيوصلك إشعار أول ما يخلص.',
     priced:'📋 المقايسة اتسعرت ومستنية موافقة العميل عند الاستقبال.',
-    approved:'📦 العميل وافق — المخزن بيجهّز القطع المعتمدة، وهيوصلك إشعار أول ما يخلص.',
+    approved:'📦 العميل وافق — المخزن بيجهّز القطع المعتمدة، وأول ما يخلص بتتنقل لـ«خلصت» لوحدها.',
     ready:'🟢 قطع الغيار جاهزة في المخزن — اصرفها على الأمر بالطريقة العادية.',
     done:w.convertedNo ? '✅ المقايسة اتعتمدت <b>واتحوّلت لـ«📦 طلب صرف قطع غيار #' + _joEsc(w.convertedNo) + '»</b> عند المخزن — التجهيز والمتابعة من الطلب.' : '✅ المقايسة خلصت.', rejected:'❌ العميل رفض المقايسة.', cancelled:'🚫 المقايسة اتلغت' + (w.cancelReason ? ' — السبب: ' + _joEsc(w.cancelReason) : '') + '.'
   }[w.status];
@@ -7045,7 +7702,7 @@ async function estSendRequest(){
     events:[{ type:'reqsent', text:parts.length + ' قطعة: ' + parts.slice(0, 6).map(p=>p.name + ' ×' + (estNum(p.qty) || 1)).join('، ') }] });
   if(!r) return;
   closeModal();
-  toast('📦 الطلب اتبعت للمخزن يجهّزه — هيوصلك إشعار أول ما يخلص');
+  toast('📦 الطلب اتبعت للمخزن يجهّزه — أول ما يخلص بيتنقل لـ«خلصت» لوحده');
   logAction('📦 ' + estTitle(r) + ' — أمر #' + r.jobNo + ': اتبعت للمخزن يجهّزه علطول (' + parts.length + ' قطعة · العميل موافق)').catch(()=>{});
   refreshContent();
 }
@@ -7214,8 +7871,8 @@ function estMarkReady(){
   if(left.length){ toast('فيه ' + left.length + ' قطعة لسه ماتعلّمش عليها (' + estNames(left) + ') — علّم «✓ اتجهزت» أو اختار «مش متوفرة» الأول', true); return; }
   estAskInline(`<b>✅ ${req ? 'تم تجهيز طلب الصرف' : 'تم تجهيز المقايسة'}</b>
     <div style="margin:6px 0;line-height:1.9">اتجهز <b>${g.ok} من ${g.n}</b> قطعة.
-    ${na.length ? '<br>⚠️ <b>' + na.length + ' مش متوفرة:</b> ' + na.map(p=>_joEsc(p.name)).join('، ') + ' — الاستقبال هيتبلغ بيها.' : ''}<br>
-    الاستقبال هيوصله إشعار. <b>الصرف على الأمر بيفضل بالطريقة العادية.</b></div>
+    ${na.length ? '<br>⚠️ <b>' + na.length + ' مش متوفرة:</b> ' + na.map(p=>_joEsc(p.name)).join('، ') + ' — بتفضل مكتوبة في الطلب.' : ''}<br>
+    ${req ? 'الطلب' : 'المقايسة'} هيتنقل لـ«خلصت» علطول. <b>الصرف على الأمر بيفضل بالطريقة العادية.</b></div>
     <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="flex:1" onclick="estAskInline('')">رجوع</button>
       <button class="btn btn-accent" style="flex:1" onclick="estMarkReadyDo()">✅ تأكيد</button></div>`);
 }
@@ -7225,12 +7882,12 @@ async function estMarkReadyDo(){
   const left = estPrepLeft(_estEd.work);
   if(left.length){ estAskInline(''); toast('فيه ' + left.length + ' قطعة لسه ماتعلّمش عليها (' + estNames(left) + ') — علّم «✓ اتجهزت» أو اختار «مش متوفرة» الأول', true); return; }
   const na = estPrepNA(_estEd.work), g = estPrepProg(_estEd.work);
-  const r = await estPersist({ status:'ready', noDiff:true,
+  const r = await estPersist({ status:'done', noDiff:true,   /* م247: خلص علطول — مفيش «مستني الاستقبال» */
     mutate:(real)=>{ real.parts.forEach(p=>{ if(p.src === 'na') p.ready = false; }); },
     events:[{ type:'ready', text:'اتجهز ' + g.ok + ' من ' + g.n + (na.length ? ' · مش متوفرة: ' + na.map(p=>p.name).join('، ') : '') }] });
   if(!r) return;
   closeModal();
-  toast('🟢 اتبلغ الاستقبال: اتجهز ' + g.ok + ' من ' + g.n + (na.length ? ' (و' + na.length + ' مش متوفرة)' : ''));
+  toast('✅ خلص — اتجهز ' + g.ok + ' من ' + g.n + (na.length ? ' (و' + na.length + ' مش متوفرة)' : '') + ' واتنقل لـ«خلصت»');
   logAction('🟢 ' + estTitle(r) + ' — أمر #' + r.jobNo + ': المخزن جهّز ' + g.ok + ' من ' + g.n + ' قطعة' + (na.length ? ' · مش متوفرة: ' + na.map(p=>p.name).join('، ') : '')).catch(()=>{});
   refreshContent();
 }
@@ -11649,6 +12306,7 @@ function workOrderReportHTML(jobId, opts){
       ${liveInternalNotes(job).map(n=>`<div style="font-size:12.5px"><b>${n.byName||'—'}</b> <span class="muted">· ${n.dept||'—'} · ${fmtDateTime(n.date)}</span><div style="white-space:pre-wrap">${n.text}</div></div>`).join('')}
     </div>
   </div>`:''}
+  ${ciHas(job) ? `<div style="margin-top:12px">${ciSectionHTML(job, true)}</div>` : ''}
   ${canTcView() && tcLive(job).length ? `<div style="margin-top:12px">${tcSectionHTML(job)}</div>` : ''}
   `;
   }
@@ -11723,6 +12381,7 @@ function workOrderReportHTML(jobId, opts){
       ${liveInternalNotes(job).map(n=>`<div style="font-size:12.5px"><b>${n.byName||'—'}</b> <span class="muted">· ${n.dept||'—'} · ${fmtDateTime(n.date)}</span><div style="white-space:pre-wrap">${n.text}</div></div>`).join('')}
     </div>
   </div>`:''}
+  ${ciHas(job) ? `<div style="margin-top:12px">${ciSectionHTML(job, true)}</div>` : ''}
   ${canTcView() && tcLive(job).length ? `<div style="margin-top:12px">${tcSectionHTML(job)}</div>` : ''}
   <button class="btn" style="width:100%;margin-top:16px" onclick="printJobTicket('${job.id}')">🖨 طباعة صورة من أمر الشغل</button>
   `;
@@ -28483,7 +29142,7 @@ function setBusy(on){
   const opNames = ['saveNewCustomer','saveNewCar','saveNewJob','saveServiceRow','saveEditJobItem','saveExtItem',
     'createInvoiceFromJob','savePayment','saveExpense','saveNewPart','saveEditItem','saveCostReval','saveEditCar','saveStockIn','saveStockOut',
     'savePaintOut','saveExtOutFromStock','saveNewSupplier','saveSupplierPayment','saveSupplierReturn','savePurchaseInvoice',
-    'saveCustomerReturn','saveStockAdjustment','saveScrap','saveTransfer','saveNewWarehouse','saveNewAppointment','apptArrived','apptUndoArrive','saveTechComment',
+    'saveCustomerReturn','saveStockAdjustment','saveScrap','saveTransfer','saveNewWarehouse','saveNewAppointment','apptArrived','apptUndoArrive','saveTechComment','saveCiAdd','saveCiNoteEdit',
     'saveCannedService','saveCountProgress','submitCountForApproval','confirmCancelJob','saveInvoiceInfo','saveTaxWa','savePins','saveCenterName','saveNewStaff','toggleStaff','saveStaffPass','savePerms','saveFinAccount','saveOpeningBalance','saveFinTransfer','saveExternalDeposit','saveCustodySettle','saveExpenseCat',
     'saveNewEmployee','saveEmployeeEdit','saveLeaveRequest','saveAbsence','saveAdvance','saveExpAdvance','savePenalty','savePermit',
     'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveWorkingDays',
@@ -28509,9 +29168,12 @@ function setBusy(on){
     'estApproveDo','estRejectAllDo','estMarkReadyDo','estCancelDo','estPrint',   /* م230 */
     'estSendRequest','estSavePrep',   /* م231 */
     'saveSalaryPay'];   /* م238 */
+  const origs248 = {}; opNames.forEach(n=>{ origs248[n] = window[n]; });
   opNames.forEach(name=>{
     const orig = window[name];
     if(typeof orig !== 'function') return;
+    const keys248 = _opKeysOf(orig, origs248);   /* م248: الجداول اللي العملية دي بتحفظها (من كودها ومن الدوال اللي بتندهها) */
+    (window.__opKeys = window.__opKeys || {})[name] = keys248;
     window[name] = async function(...args){
       /* منع التنفيذ المتزامن (ضغطة تانية والأولى لسه شغالة).
          ⚠️ م108: قبل كده كان بيرجع **من غير أي رسالة** — فلو عملية اتأخرت
@@ -28546,6 +29208,8 @@ function setBusy(on){
          فلو صلّح الخانة وداس تاني خلال 4 ثواني: «اتجاهلت المحاولة المكررة» ومفيش حاجة اتحفظت.
          دلوقتي: لو العملية ماحفظتش أي حاجة، مابتتحسبش — الضغطة الجاية بتشتغل عادي. */
       const sv0 = window._saveCalls || 0;
+      const own248 = !window._opJournal;
+      if(own248) window._opJournal = { op:name, keys:keys248, done:new Set(), ids:[] };
       try{
         /* م179: الدالة اللي بتفتح نافذة تأكيد بس (بترجع فوراً من غير promise) —
            القفل بيتفك على طول، والشغل الحقيقي بيتم في رد التأكيد */
@@ -28557,6 +29221,7 @@ function setBusy(on){
         if(window._perfLog.length > 100) window._perfLog = window._perfLog.slice(-100);
         window._opBusy = false; window._opBusyAt = 0; setBusy(false);
         if((window._saveCalls || 0) === sv0 && window._lastOpSig === sig) window._lastOpSig = null;   /* م237 */
+        if(own248){ const j = window._opJournal; window._opJournal = null; if(j && j.ids && j.ids.length) _obReconcile(j.ids).catch(()=>{}); }   /* م248 */
       }
     };
   });
