@@ -771,8 +771,13 @@ async function deactivateDevice(){
    • الأجهزة الجديدة بتشتغل عادي (اللي بيفعّلها سيف نفسه بإيميله) — بس بيوصله إشعار «📱 جهاز جديد».
    • ملف SQL م253 لسه ماتنفذش ⇐ السيستم شغال عادي بالظبط زي الأول (والشاشة بتقول نفّذ الملف). */
 const DEV_ID_KEY = 'mers_device_id', DEV_BLOCK_FLAG = 'mers_device_blocked';
-const DEV_PING_MS = 5 * 60000, DEV_ONLINE_MS = 12 * 60000;
-var _devState = { ok:null, row:null, timer:null, ch:null };   // ok: null لسه · true الجدول شغال · false ملف SQL لسه ماتنفذش
+const DEV_PING_MS = 5 * 60000;
+var _devState = { ok:null, row:null, timer:null, ch:null, pch:null };   // ok: null لسه · true الجدول شغال · false ملف SQL لسه ماتنفذش
+/* م253ب: «🟢 فاتح دلوقتي» لحظي — كان «بعت إشارة في آخر 12 دقيقة»: سيف قفل السيستم على الآيفون ولقاه لسه «شغال».
+   دلوقتي كل جهاز فاتح السيستم بيعلن نفسه على قناة «حضور» (Realtime Presence — نفس الاتصال المباشر اللي بيوصّل
+   التعديلات) ⇐ السيستم يتقفل أو الموبايل يقفل الاتصال ⇐ الجهاز بيختفي في أقل من دقيقة. ومعاه مين داخل عليه دلوقتي
+   أو «على شاشة الدخول» بعد تسجيل الخروج. الاتصال مش شغال ⇐ مانقولش «فاتح» خالص — «آخر ظهور» بس. */
+var _devPresence = null;   // null = مش عارفين دلوقتي · { devId: { staff, at } }
 function devId(){
   try{
     let id = localStorage.getItem(DEV_ID_KEY);
@@ -825,6 +830,7 @@ function devLockNow(){
   session = null;
   try{ if(_devState.timer) clearInterval(_devState.timer); }catch(e){}
   try{ if(_devState.ch && sb.removeChannel) sb.removeChannel(_devState.ch); }catch(e){}
+  try{ if(_devState.pch && sb.removeChannel) sb.removeChannel(_devState.pch); }catch(e){}
   try{ if(typeof _rtChannel !== 'undefined' && _rtChannel && sb.removeChannel) sb.removeChannel(_rtChannel); }catch(e){}
   try{ const ov = document.getElementById('modalOverlay'); if(ov) ov.remove(); }catch(e){}
   try{ const p = sb.auth.signOut({ scope:'local' }); if(p && p.catch) p.catch(()=>{}); }catch(e){}
@@ -848,8 +854,52 @@ async function devBootGuard(){
 }
 /* المزامنة اللحظية لسطر الجهاز ده بس (قناة لوحدها — لو الجدول مش موجود ماتوقعش قناة البيانات) + نبضة كل 5 دقايق */
 function devOnRemote(p){ const d = p && p.new && p.new.data; if(d && d.blocked) devLockNow(); }
+function devPresenceSet(state){
+  const m = {};
+  Object.entries(state || {}).forEach(([k, metas])=>{ const a = Array.isArray(metas) ? metas : []; const x = a[a.length - 1] || {}; m[k] = { staff:x.staff || null, at:x.at || null }; });
+  _devPresence = m;
+  devRepaintList();
+}
+function devRepaintList(){ const box = document.getElementById('devListBox'); if(box && _devList) box.innerHTML = devListHTML(); }
+function devPresenceMeta(){ return { staff: session ? actorName() : null, at:new Date().toISOString() }; }
+/* بعد الدخول/الخروج ⇐ «مين داخل دلوقتي» يتحدّث عند صاحب المركز في نفس اللحظة */
+function devPresenceTrack(){
+  try{ const ch = _devState.pch; if(ch && ch._joined && typeof ch.track === 'function'){ const p = ch.track(devPresenceMeta()); if(p && p.catch) p.catch(()=>{}); } }catch(e){}
+}
+function devStartPresence(){
+  if(window._devLocked || !sb || typeof sb.channel !== 'function') return;
+  try{
+    const id = devId(); if(!id) return;
+    const ch = sb.channel('mers-devices-presence', { config:{ presence:{ key:id } } });
+    if(!ch || typeof ch.track !== 'function' || typeof ch.presenceState !== 'function') return;
+    _devState.pch = ch;
+    ch.on('presence', { event:'sync' }, ()=>{ try{ devPresenceSet(ch.presenceState()); }catch(e){} });
+    ch.subscribe(status=>{
+      const st = String(status).toUpperCase();
+      if(st === 'SUBSCRIBED'){ ch._joined = true; devPresenceTrack(); }
+      else if(/CLOSED|ERROR|TIMED/.test(st)){ ch._joined = false; _devPresence = null; devRepaintList(); }
+    });
+  }catch(e){}
+}
+/* «آخر ظهور» بالكلام: من شوية · من 5 دقايق · من ساعتين · امبارح الساعة … */
+function devAgo(ts){
+  if(!ts) return '—';
+  const t = new Date(ts).getTime(); if(isNaN(t)) return '—';
+  const ms = Date.now() - t;
+  const n = (k, one, two, few, many) => k === 1 ? one : k === 2 ? two : (k <= 10 ? k + ' ' + few : k + ' ' + many);
+  if(ms < 90000) return 'من شوية';
+  const min = Math.round(ms / 60000);
+  if(min < 60) return 'من ' + n(min, 'دقيقة', 'دقيقتين', 'دقايق', 'دقيقة');
+  const h = Math.round(min / 60);
+  if(h < 24) return 'من ' + n(h, 'ساعة', 'ساعتين', 'ساعات', 'ساعة');
+  const d = new Date(t), y = new Date(); y.setDate(y.getDate() - 1);
+  const time = d.toLocaleTimeString(NUM_LOCALE, { hour:'2-digit', minute:'2-digit' });
+  if(d.toDateString() === y.toDateString()) return 'امبارح الساعة ' + time;
+  return fmtDate(d.toISOString()) + ' الساعة ' + time;
+}
 function devStartWatch(){
   if(_devState.ok !== true || window._devLocked) return;
+  devStartPresence();   /* م253ب */
   try{ _devState.timer = setInterval(()=>{ devPing({}); }, DEV_PING_MS); if(_devState.timer && _devState.timer.unref) _devState.timer.unref(); }catch(e){}
   try{
     const id = devId();
@@ -860,6 +910,7 @@ function devStartWatch(){
 async function devAfterLogin(){
   const r = await devPing({ lastStaff:actorName(), lastLoginAt:new Date().toISOString() });
   if(!r || r.blocked) return;
+  devPresenceTrack();   /* م253ب */
   if(r.isNew || window._devNew){
     window._devNew = false;
     notify('device_new', '📱 جهاز جديد اتسجل على السيستم: ' + devAutoLabel(r) + ' (' + (r.browser || '') + (r.app ? ' — تطبيق' : '') + ') — أول دخول منه: ' + actorName(), { category:'system' });
@@ -884,17 +935,19 @@ function devListHTML(){
       return `<div style="border:1px solid var(--danger);border-radius:8px;padding:10px;font-size:12.5px;line-height:1.9">⚠️ قايمة الأجهزة لسه مش شغالة — نفّذ ملف <b>db/تحديث-م253-الأجهزة.sql</b> مرة واحدة في Supabase (SQL Editor ← الصق الملف كله ← Run).<br><span class="muted">السيستم شغال عادي لحد ما تنفّذه.</span></div>`;
     return `<div class="muted" style="font-size:12.5px">الأجهزة مااتحمّلتش (${escNote(m.slice(0, 80))}) — <a href="#" style="color:var(--accent)" onclick="_devList=null;devLoadList();return false;">جرّب تاني</a></div>`;
   }
-  const me = devId(), now = Date.now();
-  const rows = _devList.rows.slice().sort((a, b)=>(!!a.blocked - !!b.blocked) || String(b.lastSeen || '').localeCompare(String(a.lastSeen || '')));
+  const me = devId(), pres = _devPresence;
+  const live = d => (pres && !d.blocked) ? (pres[d.id] || null) : null;
+  const rows = _devList.rows.slice().sort((a, b)=>(!!a.blocked - !!b.blocked) || (!!live(b) - !!live(a)) || String(b.lastSeen || '').localeCompare(String(a.lastSeen || '')));
   if(!rows.length) return '<div class="muted" style="font-size:12.5px">لسه مفيش أجهزة اتسجلت — كل جهاز بيظهر هنا أول ما يفتح السيستم.</div>';
-  const on = d => d.lastSeen && (now - new Date(d.lastSeen).getTime()) < DEV_ONLINE_MS;
-  return `<div class="muted" style="font-size:12px;margin-bottom:8px">${rows.length} جهاز · 🟢 ${rows.filter(d=>on(d) && !d.blocked).length} شغالين دلوقتي${rows.some(d=>d.blocked) ? ' · 🚫 ' + rows.filter(d=>d.blocked).length + ' محظور' : ''}</div>`
+  const nLive = rows.filter(d=>live(d)).length;
+  const liveTag = d => { const p = live(d); if(!p) return ''; return p.staff ? ' <span style="font-size:11.5px">🟢 فاتح دلوقتي — داخل: <b>' + escNote(p.staff) + '</b></span>' : ' <span style="font-size:11.5px">🟡 فاتح على شاشة الدخول</span>'; };
+  return `<div class="muted" style="font-size:12px;margin-bottom:8px">${rows.length} جهاز${pres ? ' · 🟢 ' + nLive + ' فاتحين دلوقتي' : ''}${rows.some(d=>d.blocked) ? ' · 🚫 ' + rows.filter(d=>d.blocked).length + ' محظور' : ''}</div>`
     + rows.map(d=>`<div class="card" style="padding:10px 12px;margin-bottom:8px${d.blocked ? ';border:1px solid var(--danger);opacity:.85' : ''}">
       <div class="flex-between" style="gap:8px;flex-wrap:wrap">
         <div style="min-width:0">
-          <div style="font-weight:800">${escNote(devLabel(d))}${d.id === me ? ' <span class="tag tag-paid" style="font-size:10.5px">الجهاز ده</span>' : ''}${d.blocked ? ' <span class="tag tag-unpaid" style="font-size:10.5px">🚫 محظور</span>' : on(d) ? ' <span style="font-size:11.5px">🟢 شغال دلوقتي</span>' : ''}</div>
+          <div style="font-weight:800">${escNote(devLabel(d))}${d.id === me ? ' <span class="tag tag-paid" style="font-size:10.5px">الجهاز ده</span>' : ''}${d.blocked ? ' <span class="tag tag-unpaid" style="font-size:10.5px">🚫 محظور</span>' : liveTag(d)}</div>
           <div class="muted" style="font-size:11.5px;line-height:1.8">${escNote([d.name ? devAutoLabel(d) : '', d.browser, d.app ? 'تطبيق' : 'متصفح', d.screen].filter(Boolean).join(' · '))}
-            <br>آخر دخول: <b>${escNote(d.lastStaff || '—')}</b>${d.lastLoginAt ? ' (' + fmtDateTime(d.lastLoginAt) + ')' : ''} · آخر ظهور: ${d.lastSeen ? fmtDateTime(d.lastSeen) : '—'} · اتسجل: ${d.firstSeen ? fmtDate(d.firstSeen) : '—'}
+            <br>آخر دخول: <b>${escNote(d.lastStaff || '—')}</b>${d.lastLoginAt ? ' (' + fmtDateTime(d.lastLoginAt) + ')' : ''} ${live(d) ? '' : ' · آخر ظهور: <b>' + devAgo(d.lastSeen) + '</b>'} · اتسجل: ${d.firstSeen ? fmtDate(d.firstSeen) : '—'}
             ${d.blocked ? '<br><span style="color:var(--danger)">اتحظر ' + (d.blockedAt ? fmtDateTime(d.blockedAt) : '') + ' — ' + escNote(d.blockReason || '') + '</span>' : ''}</div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -1627,7 +1680,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v274';
+const APP_VERSION = 'v275';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -3296,6 +3349,7 @@ function logout(){
   try{ if(session) logAction('🚪 تسجيل خروج').catch(()=>{}); }catch(e){}
   try{ _navStack234.length = 0; }catch(e){}   /* م234: اللي هيدخل بعده مايرجعش لشاشات حد تاني */   /* م179ب */
   session=null; pickedRole=null; render();
+  try{ devPresenceTrack(); }catch(e){}   /* م253ب: «🟡 على شاشة الدخول» عند صاحب المركز */
 }
 
 /* ======================= SHELL ======================= */
