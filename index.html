@@ -1254,7 +1254,7 @@ const MERGE_SUBARRAYS = {
   invoices:   ['payments','items'],
   purchases:  ['items','payments','history'],
   customers:  ['attachments'],
-  employees:  ['salaryPays','advances','bonuses','penalties','absences'],
+  employees:  ['salaryPays','advances','bonuses','penalties','absences','docs'],   /* م257: «📎 المستندات» — مستند اترفع من جهاز مايضيعش بحفظة من جهاز تاني، والمستند اللي صاحب المركز مسحه مايرجعش */
   suppliers:  ['recons'],   /* م241: مطابقات كشف المورد من جهازين مايمسحوش بعض */   /* م239: الصرف والسلف والجزاءات من أجهزة مختلفة مايمسحوش بعض */
   expenses:   ['photos'],   /* م249: «📎 ضيف صورة» لنفس المصروف من جهازين في نفس الوقت */
 };
@@ -1760,7 +1760,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v278';
+const APP_VERSION = 'v279';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -5708,14 +5708,14 @@ function tcRand(){
   catch(e){ return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + Date.now().toString(36); }
 }
 /* الصورة بتتصغّر على الجهاز قبل الرفع — صورة التابلت 3–4 ميجا بتبقى ≈ 200 كيلو */
-function tcCompress(file, stamp){   /* م246: stamp = «اللوحة · التاريخ · الساعة» بيتطبع في شريط تحت الصورة */
+function tcCompress(file, stamp, maxSide){   /* م246: stamp = «اللوحة · التاريخ · الساعة» بيتطبع في شريط تحت الصورة · م257: maxSide = أكبر ضلع بالبكسل (الافتراضي 1280 — مستندات الموظفين 2000 عشان الكتابة الصغيرة تتقرا) */
   return new Promise((resolve, reject)=>{
     if(!file || (file.type && !/^image\//.test(file.type))) return reject(new Error('not image'));
     const src = URL.createObjectURL(file);
     const img = new Image();
     img.onload = ()=>{
       try{
-        const k = Math.min(1, 1280 / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+        const k = Math.min(1, (maxSide > 0 ? Math.min(+maxSide, 4096) : 1280) / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
         const w = Math.max(1, Math.round((img.naturalWidth || 1) * k)), h = Math.max(1, Math.round((img.naturalHeight || 1) * k));
         const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
         const g = cv.getContext('2d');
@@ -21778,10 +21778,41 @@ function repTabs(){
 function setRepView(v){ repView = v; refreshContent(); }
 function setRepPreset(p){ repPeriod.preset = p; repCmp = ''; refreshContent(); }   /* م256: تغيير الفترة بيرجّع المقارنة «تلقائي» */
 function setRepDate(which, val){ repPeriod[which==='to' ? 'to' : 'from'] = String(val||''); repPeriod.preset = 'custom'; repCmp = ''; refreshContent(); }
-function setRepCmp(v){ v = String(v||''); repCmp = (v==='custom' || /^\d{4}-\d{2}$/.test(v)) ? v : ''; refreshContent(); }
+function setRepCmp(v){ v = String(v||''); repCmp = (v==='custom' || /^\d{4}-(0[1-9]|1[0-2])$/.test(v)) ? v : ''; refreshContent(); }   /* م257: الشهر لازم 01–12 */
 function setRepCmpDate(which, val){ if(which==='to') repCmpTo = String(val||''); else repCmpFrom = String(val||''); repCmp = 'custom'; refreshContent(); }
-/* م256: الشهور اللي ينفع نقارن بيها — من أول شهر فيه فاتورة أو مصروف لحد الشهر الحالي، الأحدث الأول */
-function repCmpMonths(now){
+/* م257: «قارن بـ» شهر بعينه بيتاح بس للفترة اللي جوه شهر واحد، أو القصيرة (7 أيام أو أقل — أسبوع مثلاً) اللي بتعدّي آخر الشهر.
+   الفترة المفتوحة من الأول («الكل» · مخصصة من غير «من») أو الأطول من كده (هذه السنة · الربع · أكتر من شهر) ⇒ false:
+   الشهور بتتخفي ومفيش غير «تلقائي» و«فترة مخصصة…» (شهر واحد ماينفعش يتقارن بأكتر من شهر) */
+function repCmpMonthsAllowed(range){
+  if(!range || !range.from || !range.to) return false;
+  const f = new Date(range.from), t = new Date(range.to);
+  if(isNaN(f) || isNaN(t) || f.getFullYear() <= 2000) return false;
+  if(_repSOD(t) < _repSOD(f)) return false;
+  if(f.getFullYear() === t.getFullYear() && f.getMonth() === t.getMonth()) return true;
+  return _repDaysBetween(_repNearSOD(f), t) + 1 <= 7;
+}
+/* م257: نافذة شهر بعينه مقابل الفترة المعروضة:
+   • الفترة شهر كامل ⇒ الشهر المختار كله
+   • فترة جوه شهر واحد (مش كاملة) ⇒ نفس الأيام: من نفس رقم اليوم وبنفس العدد، ولو الشهر المختار أقصر بيقف عند آخره (25–31 أكتوبر مقابل فبراير ⇒ 25–28 فبراير) — اللي سيف وافق عليه في م256
+   • فترة قصيرة (7 أيام أو أقل) بتعدّي آخر الشهر ⇒ نفس عدد الأيام جوه الشهر المختار: بيتزحزح لورا عشان العدد يفضل زي ما هو
+     (28 أكتوبر ← 3 نوفمبر مقابل فبراير ⇒ 22–28 فبراير) — عشان تتقارن بـ7 أيام مش بيوم واحد.
+   الـfrom بيتقرّب لأقرب منتصف ليل (توقيت الصيف) زي repCompareRange */
+function _repCmpMonthWin(ym, range){
+  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(ym || '');
+  if(!m || !range) return null;
+  const y = +m[1], mo = +m[2] - 1, last = _repDim(y, mo);
+  const f = _repNearSOD(range.from), t = new Date(range.to);
+  const sameMonth = f.getFullYear() === t.getFullYear() && f.getMonth() === t.getMonth();
+  const whole = sameMonth && f.getDate() === 1 && t.getDate() === _repDim(t.getFullYear(), t.getMonth()) && t.getHours() === 23 && t.getMinutes() === 59;
+  if(whole) return { from:new Date(y, mo, 1), to:_repEOD(new Date(y, mo, last)) };
+  const days = Math.max(1, Math.round((_repSOD(t) - f) / 86400000) + 1);
+  const d1 = sameMonth ? Math.min(f.getDate(), last) : Math.max(1, Math.min(f.getDate(), last - days + 1));
+  return { from:new Date(y, mo, d1), to:_repEOD(new Date(y, mo, Math.min(d1 + days - 1, last))) };
+}
+function _repOverlaps(w, range){ return w.from.getTime() <= new Date(range.to).getTime() && w.to.getTime() >= new Date(range.from).getTime(); }
+/* م256: الشهور اللي ينفع نقارن بيها — من أول شهر فيه فاتورة أو مصروف لحد الشهر الحالي، الأحدث الأول.
+   م257: لو اتبعتت range: فاضية للفترة اللي مابتسمحش بمقارنة شهر بعينه، ومن غير أي شهر نافذته بتساوي الفترة المعروضة أو بتتداخل معاها (الشهر الحالي وانت على «هذا الشهر») */
+function repCmpMonths(now, range){
   now = now ? new Date(now) : new Date();
   let first = null;
   const see = d => { const x = new Date(d); if(!isNaN(x) && (!first || x < first)) first = x; };
@@ -21794,33 +21825,47 @@ function repCmpMonths(now){
     out.push(y + '-' + String(m + 1).padStart(2, '0'));
     if(out.length > 120) break;
   }
-  return out;
+  if(range === undefined) return out;
+  if(!repCmpMonthsAllowed(range)) return [];
+  return out.filter(ym=>{ const w = _repCmpMonthWin(ym, range); return !!w && !_repOverlaps(w, range); });
+}
+/* م257: اسم نافذة المقارنة — لو السنة مش مكتوبة في الاسم («1–29 أكتوبر») والنافذة في سنة غير سنة الفترة المعروضة ⇒ نضيف السنة */
+function _repCmpLabel(pf, pt, range){
+  let lb = repRangeLabel(pf, pt);
+  if(!/\d{4}/.test(lb) && range){
+    const f = new Date(range.from), t = new Date(range.to);
+    const refY = (f.getFullYear() <= 2000 ? t : f).getFullYear(), y = new Date(pf).getFullYear();
+    if(y !== refY) lb += ' ' + y;
+  }
+  return lb;
 }
 /* م256: فترة المقارنة اللي اتختارت. undefined ⇒ «تلقائي» (repCompareRange).
-   شهر بعينه: لو الفترة المعروضة شهور كاملة ⇒ الشهر كله؛ غير كده ⇒ نفس الأيام (من نفس رقم اليوم وبنفس العدد)، وبيقف عند آخر الشهر */
+   شهر بعينه: شرحه فوق (_repCmpMonthWin). م257: لو الفترة المعروضة مابتسمحش بمقارنة شهر (طويلة/مفتوحة)، أو نافذة الشهر بتتداخل مع الفترة نفسها ⇒ undefined (تلقائي) */
 function repChosenCmp(range){
   if(repCmp === 'custom'){
     const ok = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s||''));
     if(!ok(repCmpFrom) || !ok(repCmpTo)) return undefined;
     const r = repRange({ preset:'custom', from:repCmpFrom, to:repCmpTo });
     if(_repSOD(r.to) < _repSOD(r.from)) return undefined;
-    return { from:r.from, to:r.to, label:repRangeLabel(r.from, r.to) };
+    return { from:r.from, to:r.to, label:_repCmpLabel(r.from, r.to, range) };
   }
-  const m = /^(\d{4})-(\d{2})$/.exec(repCmp || '');
-  if(!m) return undefined;
-  const y = +m[1], mo = +m[2] - 1, last = new Date(y, mo + 1, 0).getDate();
-  const f = new Date(range.from), t = new Date(range.to);
-  const tLast = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
-  const whole = f.getFullYear() <= 2000 || (f.getDate() === 1 && f.getHours() === 0 && f.getMinutes() === 0
-    && t.getDate() === tLast && t.getHours() === 23 && t.getMinutes() === 59);
-  let pf, pt;
-  if(whole){ pf = new Date(y, mo, 1); pt = _repEOD(new Date(y, mo, last)); }
-  else {
-    const days = Math.max(1, Math.round((_repSOD(t) - _repSOD(f)) / 86400000) + 1);
-    const d1 = Math.min(f.getDate(), last);
-    pf = new Date(y, mo, d1); pt = _repEOD(new Date(y, mo, Math.min(d1 + days - 1, last)));
-  }
-  return { from:pf, to:pt, label:repRangeLabel(pf, pt) };
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(repCmp || '') || !repCmpMonthsAllowed(range)) return undefined;
+  const w = _repCmpMonthWin(repCmp, range);
+  if(!w || _repOverlaps(w, range)) return undefined;
+  return { from:w.from, to:w.to, label:_repCmpLabel(w.from, w.to, range) };
+}
+/* م257: سطر التنبيه جنب التاريخين لما فترة المقارنة المخصصة مش مكتملة: ناقصة ⇒ «اختار التاريخين» · مقلوبة ⇒ «من» بعد «إلى» */
+function repCmpDatesHint(){
+  const ok = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s||''));
+  if(ok(repCmpFrom) && ok(repCmpTo) && repCmpFrom > repCmpTo) return '<span style="font-size:11.5px;font-weight:700;color:var(--danger)">التاريخ «من» بعد «إلى» — اظبط التواريخ</span>';
+  return '<span class="muted" style="font-size:11.5px">اختار التاريخين — لحد كده المقارنة تلقائي</span>';
+}
+/* م257: اسم فترة المقارنة في الجداول والنصوص — تلقائي ⇒ «اللي قبلها»، ولو سيف اختار مقارنة (شهر · فترة مخصصة) ⇒ «المقارنة».
+   than=true ⇒ صيغة الجملة («عن الفترة اللي قبلها» / «عن فترة المقارنة») */
+function repPrevName(than){
+  let chosen = false;
+  try{ chosen = repChosenCmp(repRange(repPeriod)) !== undefined; }catch(e){}
+  return than ? (chosen ? 'عن فترة المقارنة' : 'عن الفترة اللي قبلها') : (chosen ? 'المقارنة' : 'اللي قبلها');
 }
 
 /* سياق الرسم: الفترة وفترة المقارنة وأرقامهم وشهور آخر 12 شهر — بيتحسب مرة واحدة في كل renderReports وبيتشارك بين التابات.
@@ -21849,6 +21894,9 @@ function repPeriodTitle(st, range){
 function repPeriodBar(ctx){
   const dv = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s||'')) ? s : '';
   const inverted = _repSOD(ctx.range.to) < _repSOD(ctx.range.from);
+  /* م257: شهور «قارن بـ» — بتتخفي للفترة الطويلة/المفتوحة، وبتشيل الشهر اللي بيتداخل مع الفترة المعروضة. شهر متخزّن مش في القايمة ⇒ «تلقائي» هو اللي ظاهر */
+  const monthsOK = repCmpMonthsAllowed(ctx.range), monthList = repCmpMonths(ctx.now, ctx.range);
+  const cmpSel = (repCmp==='custom' || monthList.includes(repCmp)) ? repCmp : '';
   const line = 'الفترة المعروضة: '+repPeriodTitle(repPeriod, ctx.range)
     + (ctx.cmp ? ' · مقارنة بـ '+ctx.cmp.label+(ctx.noData ? ' · مفيش بيانات للمقارنة' : '') : ' · من غير مقارنة');
   return `
@@ -21865,15 +21913,16 @@ function repPeriodBar(ctx){
     <div class="emp-period" style="margin:10px 0 0">
       <span style="font-weight:700;font-size:12.5px">⚖️ قارن بـ</span>
       <select class="f" style="width:auto" onchange="setRepCmp(this.value)">
-        <option value="" ${repCmp==='' ? 'selected' : ''}>تلقائي (اللي قبلها بنفس الأيام)</option>
-        ${repCmpMonths(ctx.now).map(ym=>`<option value="${ym}" ${repCmp===ym ? 'selected' : ''}>${AR_MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}</option>`).join('')}
-        <option value="custom" ${repCmp==='custom' ? 'selected' : ''}>فترة مخصصة…</option>
+        <option value="" ${cmpSel==='' ? 'selected' : ''}>تلقائي (اللي قبلها بنفس الأيام)</option>
+        ${monthList.map(ym=>`<option value="${ym}" ${cmpSel===ym ? 'selected' : ''}>${AR_MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}</option>`).join('')}
+        <option value="custom" ${cmpSel==='custom' ? 'selected' : ''}>فترة مخصصة…</option>
       </select>
+      ${!monthsOK && !inverted ? '<span class="muted" style="font-size:11.5px">المقارنة بشهر بعينه بتبقى للفترات اللي جوه شهر واحد</span>' : ''}
       ${repCmp==='custom' ? `<span class="muted" style="font-size:12px">من</span>
       <input class="f" type="date" value="${dv(repCmpFrom)}" onchange="setRepCmpDate('from',this.value)">
       <span class="muted" style="font-size:12px">إلى</span>
       <input class="f" type="date" value="${dv(repCmpTo)}" onchange="setRepCmpDate('to',this.value)">
-      ${repChosenCmp(ctx.range)===undefined ? '<span class="muted" style="font-size:11.5px">اختار التاريخين — لحد كده المقارنة تلقائي</span>' : ''}` : ''}
+      ${repChosenCmp(ctx.range)===undefined ? repCmpDatesHint() : ''}` : ''}
     </div>
   </div>
   <div class="muted" style="font-size:12.5px;margin:0 2px 18px">${line}${inverted ? ' <b style="color:var(--danger)">· التاريخ «من» بعد «إلى» — اظبط التواريخ</b>' : ''}</div>`;
@@ -22254,12 +22303,12 @@ function renderRepPL(ctx){
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-sm" onclick="printRepPL()">🖨 طباعة</button><button class="btn btn-sm" onclick="exportRepPLXLSX()">⬇ Excel</button></div></div>
   <div class="muted" style="font-size:12.5px;margin:-6px 2px 12px">${escNote(cmpLine)} · كل المبالغ من غير ضريبة · اضغط على السهم ▸ جنب المجموعة تشوف بنودها · واضغط على أي اسم بند منقّط تشوف الفواتير أو المصاريف اللي ورا الرقم</div>
   <div class="card" style="padding:6px 8px;margin-bottom:14px"><div class="no-rt" style="overflow-x:auto"><table class="rep-pl" style="min-width:640px">
-    <thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th><th>من المبيعات</th></tr></thead>
+    <thead><tr><th>البند</th><th>الفترة دي</th><th>${repPrevName()}</th><th>الفرق</th><th>من المبيعات</th></tr></thead>
     <tbody>${rows.map(r=>repPLRowHTML(r, cur, prev)).join('')}</tbody></table></div></div>
   ${salaryTxt ? `<div class="rep-alert warn" style="margin-bottom:6px"><span>⚠️</span><span>${escNote(salaryTxt)}</span></div>` : ''}
   <div class="section-head" style="margin-top:26px"><h3>حركة الفلوس (برة حساب الربح)</h3></div>
   <div class="card" style="padding:6px 8px;margin-bottom:8px"><div class="no-rt" style="overflow-x:auto"><table class="rep-pl" style="min-width:520px">
-    <thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th></tr></thead><tbody>${cashTR}</tbody></table></div></div>
+    <thead><tr><th>البند</th><th>الفترة دي</th><th>${repPrevName()}</th><th>الفرق</th></tr></thead><tbody>${cashTR}</tbody></table></div></div>
   <div class="muted" style="font-size:12px;margin:0 2px 8px">الفلوس اللي دخلت بتاريخ الدفعة (مش بتاريخ الفاتورة) · اللي لسه برة محسوب على فواتير الفترة نفسها · الاتنين بالضريبة ومش داخلين في حساب الربح اللي فوق.</div>
   <div class="section-head" style="margin-top:26px"><h3>الشهور جنب بعض</h3></div>
   <div class="muted" style="font-size:12.5px;margin:-6px 2px 10px">آخر 12 شهر لحد النهارده — مش مرتبط بفلتر الفترة${ctx.months.some(m=>m.partial) ? ' · * الشهر لسه ماخلصش' : ''}</div>
@@ -22277,13 +22326,13 @@ function repPLCSV(cur, prev, months, meta){
     if(meta.compare) out.push(['المقارنة', meta.compare]);
     out.push([]);
   }
-  out.push(['البند', 'الفترة دي', 'اللي قبلها', 'الفرق', 'من المبيعات']);
+  out.push(['البند', 'الفترة دي', repPrevName(), 'الفرق', 'من المبيعات']);
   repPLRows(cur, prev).forEach(r=>{
     if(r.kind==='sec'){ out.push([r.label, '', '', '', '']); return; }
     const sh = _repPLShares(r.c, r.p, cur, prev);
     out.push([(r.kind==='cat' ? '    ' : (r.kind==='grp' ? '  ' : ''))+r.label+(r.invest ? ' 💼' : ''), r2(r.c), r.p===null ? '' : r2(r.p), r.p===null ? '' : r2(r.c - r.p), sh.cp===null ? '' : sh.cp]);
   });
-  out.push([], ['حركة الفلوس (برة حساب الربح)', 'الفترة دي', 'اللي قبلها', 'الفرق', '']);
+  out.push([], ['حركة الفلوس (برة حساب الربح)', 'الفترة دي', repPrevName(), 'الفرق', '']);
   repPLCash(cur, prev).forEach(r=>out.push([r.label, r2(r.c), r.p===null ? '' : r2(r.p), r.p===null ? '' : r2(r.c - r.p), '']));
   if(months && months.length){
     out.push([], ['الشهر'].concat(months.map(m=>m.label+(m.partial ? '*' : ''))));
@@ -22313,9 +22362,9 @@ function repPLPrintHTML(ctx){
   return `<style>@page{size:A4 landscape;margin:10mm}</style><div style="padding:10px">
     <h3 style="margin:0 0 4px">💰 قائمة الدخل — ${escNote(title)}</h3>
     <div style="font-size:12px;color:#555;margin-bottom:10px">${escNote((DB.settings && DB.settings.centerName) || 'Masters Auto Service')} — ${escNote(cmpLine)} · بواسطة ${escNote(actorName())}<br>كل المبالغ من غير ضريبة، ما عدا حركة الفلوس (بالضريبة).</div>
-    <table><thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th><th>من المبيعات</th></tr></thead><tbody>${trs}</tbody></table>
+    <table><thead><tr><th>البند</th><th>الفترة دي</th><th>${repPrevName()}</th><th>الفرق</th><th>من المبيعات</th></tr></thead><tbody>${trs}</tbody></table>
     <h4 style="margin:16px 0 0">حركة الفلوس (برة حساب الربح)</h4>
-    <table style="max-width:700px"><thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th></tr></thead><tbody>${cashTR}</tbody></table>
+    <table style="max-width:700px"><thead><tr><th>البند</th><th>الفترة دي</th><th>${repPrevName()}</th><th>الفرق</th></tr></thead><tbody>${cashTR}</tbody></table>
     ${ctx.months.length ? `<h4 style="margin:16px 0 0">الشهور جنب بعض (آخر 12 شهر${ctx.months.some(m=>m.partial) ? ' — * الشهر لسه ماخلصش' : ''})</h4>${repPLMonthsHTML(ctx.months, true)}` : ''}
   </div>`;
 }
@@ -22491,11 +22540,11 @@ function renderRepExpenses(ctx){
     value: top ? `<span style="font-size:18px;line-height:1.6">${escNote(top.label)}${top.invest ? ' 💼' : ''}</span>` : '—', label:'أكتر بند زاد',
     delta: top
       ? `<div class="rep-sub"><span class="rep-delta dn" style="color:var(--danger)">${_repPlus(top.diff)}</span><span class="muted">${top.prev < 0.005 ? 'بند جديد' : 'كان '+money(top.prev)}</span></div>`
-      : (has ? `<div class="rep-sub"><span class="muted">مفيش بند زاد عن الفترة اللي قبلها</span></div>` : `<div class="rep-sub"><span class="muted">من غير مقارنة</span></div>`),
+      : (has ? `<div class="rep-sub"><span class="muted">مفيش بند زاد ${repPrevName(true)}</span></div>` : `<div class="rep-sub"><span class="muted">من غير مقارنة</span></div>`),
     help: { key:'repx_top',
-      meaning:'البند اللي مصروفه زاد بأكبر مبلغ عن الفترة اللي قبلها.',
+      meaning:'البند اللي مصروفه زاد بأكبر مبلغ '+repPrevName(true)+'.',
       source:'بنقارن كل بند (جوه مجموعته) بنفس البند في فترة المقارنة. هو نفس البند اللي بيتكتب في «محتاج تاخد بالك» في الملخص.',
-      formula: top ? escNote(top.label)+': '+money(top.prev)+' ← '+money(top.cur)+' = '+_repPlus(top.diff) : (has ? 'مفيش بند زاد عن الفترة اللي قبلها' : 'الفترة دي من غير مقارنة'),
+      formula: top ? escNote(top.label)+': '+money(top.prev)+' ← '+money(top.cur)+' = '+_repPlus(top.diff) : (has ? 'مفيش بند زاد '+repPrevName(true) : 'الفترة دي من غير مقارنة'),
       note:cmpNote }
   }));
 
@@ -22506,7 +22555,7 @@ function renderRepExpenses(ctx){
     label:'عدد البنود: زادت / قلت / زي ما هي',
     delta: has ? `<div class="rep-sub"><span class="muted">من ${ch.rows.length} بند</span></div>` : `<div class="rep-sub"><span class="muted">من غير مقارنة</span></div>`,
     help: { key:'repx_counts',
-      meaning:'كام بند مصروفه زاد، وكام بند قلّ، وكام فضل زي ما هو عن الفترة اللي قبلها.',
+      meaning:'كام بند مصروفه زاد، وكام بند قلّ، وكام فضل زي ما هو '+repPrevName(true)+'.',
       source:'كل بند بيتقارن بنفسه جوه مجموعته. فرق أقل من نص جنيه بيتعد «زي ما هو».',
       formula: has ? 'زادت '+ch.up+' · قلت '+ch.down+' · زي ما هي '+ch.same+' (من '+ch.rows.length+' بند)' : 'الفترة دي من غير مقارنة',
       note:cmpNote }
@@ -22522,11 +22571,11 @@ function renderRepExpenses(ctx){
         <div class="rep-chg-name">${escNote(r.label)}${r.invest ? ' 💼' : ''}</div>
         <div class="rep-chg-bars">
           <div class="rep-bar-row"><span class="muted">الفترة دي</span><span class="rep-bar-track"><span class="rep-bar" style="width:${bw(r.cur)}%"></span></span><b>${money(r.cur)}</b></div>
-          <div class="rep-bar-row"><span class="muted">اللي قبلها</span><span class="rep-bar-track"><span class="rep-bar prev" style="width:${bw(r.prev)}%"></span></span><span>${money(r.prev)}</span></div>
+          <div class="rep-bar-row"><span class="muted">${repPrevName()}</span><span class="rep-bar-track"><span class="rep-bar prev" style="width:${bw(r.prev)}%"></span></span><span>${money(r.prev)}</span></div>
         </div>
         <div class="rep-chg-diff">${_repExpDiffHTML(r)}</div>
       </div>`).join('')
-      : `<div class="muted" style="font-size:13px;padding:10px 2px">مفيش بند اتغير عن الفترة اللي قبلها.</div>`);
+      : `<div class="muted" style="font-size:13px;padding:10px 2px">مفيش بند اتغير ${repPrevName(true)}.</div>`);
 
   /* جدول كل البنود */
   const total = _repNum(cur.exp.total);
@@ -22545,7 +22594,7 @@ function renderRepExpenses(ctx){
   <div class="muted" style="font-size:12.5px;margin:-6px 2px 14px">${escNote(cmpLine)} · المصاريف الاستثمارية (💼) داخلة في الإجمالي</div>
   <div class="grid g4" style="margin-bottom:24px">${cards.join('')}</div>
   <div class="section-head"><h3>أكتر البنود اللي اتغيرت</h3></div>
-  <div class="muted" style="font-size:12.5px;margin:-6px 2px 10px">أكبر 5 بنود بقيمة الفرق (زيادة أو نقص) عن الفترة اللي قبلها</div>
+  <div class="muted" style="font-size:12.5px;margin:-6px 2px 10px">أكبر 5 بنود بقيمة الفرق (زيادة أو نقص) ${repPrevName(true)}</div>
   <div class="card" style="padding:6px 16px;margin-bottom:24px">${chgHTML}</div>
   <div class="section-head"><h3>رسم المجموعات — آخر 12 شهر</h3></div>
   <div class="muted" style="font-size:12.5px;margin:-6px 2px 10px">مش مرتبط بفلتر الفترة · لون كل مجموعة ثابت · اضغط على اسم مجموعة تشوفها لوحدها</div>
@@ -22553,12 +22602,12 @@ function renderRepExpenses(ctx){
   <div class="section-head"><h3>كل البنود حسب المجموعة</h3></div>
   <div class="muted" style="font-size:12.5px;margin:-6px 2px 10px">اضغط على اسم مجموعة تشوفها لوحدها في الرسم · واضغط على الرقم المنقّط تشوف المصاريف اللي وراه</div>
   <div class="card" style="padding:6px 8px;margin-bottom:24px"><div class="no-rt" style="overflow-x:auto"><table class="rep-pl" style="min-width:620px">
-    <thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th><th>من المصاريف</th></tr></thead>
+    <thead><tr><th>البند</th><th>الفترة دي</th><th>${repPrevName()}</th><th>الفرق</th><th>من المصاريف</th></tr></thead>
     <tbody>${tbody}</tbody></table></div></div>
   <div class="section-head"><h3>فلوس طلعت من الخزنة بس مش مصاريف</h3></div>
   <div class="muted" style="font-size:12.5px;margin:-6px 2px 10px">خرجت من الخزنة بس مش مصاريف: مش داخلة في إجمالي المصاريف فوق ولا في نسبة المصاريف من المبيعات</div>
   <div class="card" style="padding:6px 8px;margin-bottom:24px"><div class="no-rt" style="overflow-x:auto"><table class="rep-pl" style="min-width:520px">
-    <thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th></tr></thead><tbody>${outTR}</tbody></table></div></div>`;
+    <thead><tr><th>البند</th><th>الفترة دي</th><th>${repPrevName()}</th><th>الفرق</th></tr></thead><tbody>${outTR}</tbody></table></div></div>`;
 }
 
 /* CSV للـ Excel (نفس تنسيق قائمة الدخل: أرقام خام من غير «ج.م» · _repCSV): جدول البنود (المجموعات وبنودها + الإجمالي) ثم الفلوس اللي طلعت ومش مصاريف.
@@ -22573,12 +22622,12 @@ function repExpCSV(cur, prev, meta){
     out.push([]);
   }
   const total = _repNum(cur.exp.total), pt = prev ? _repNum(prev.exp.total) : null;
-  out.push(['البند', 'الفترة دي', 'اللي قبلها', 'الفرق', 'من المصاريف']);
+  out.push(['البند', 'الفترة دي', repPrevName(), 'الفرق', 'من المصاريف']);
   repExpTableRows(cur, prev).forEach(r=>{
     out.push([(r.kind==='cat' ? '    ' : '  ')+r.label+(r.invest ? ' 💼' : ''), r2(r.c), r.p===null ? '' : r2(r.p), r.p===null ? '' : r2(r.c - r.p), total > 0 ? r1(r.c/total*100) : '']);
   });
   out.push(['الإجمالي', r2(total), pt===null ? '' : r2(pt), pt===null ? '' : r2(total - pt), total > 0 ? 100 : '']);
-  out.push([], ['فلوس طلعت من الخزنة بس مش مصاريف', 'الفترة دي', 'اللي قبلها', 'الفرق', '']);
+  out.push([], ['فلوس طلعت من الخزنة بس مش مصاريف', 'الفترة دي', repPrevName(), 'الفرق', '']);
   repExpOutflows(cur, prev).forEach(r=>out.push([r.label, r2(r.c), r.p===null ? '' : r2(r.p), r.p===null ? '' : r2(r.c - r.p), '']));
   return _repCSV(out);
 }
@@ -22597,11 +22646,11 @@ function repExpPrintHTML(ctx){
   return `<style>@page{size:A4;margin:12mm}</style><div style="padding:10px">
     <h3 style="margin:0 0 4px">💸 تقرير المصاريف — ${escNote(title)}</h3>
     <div style="font-size:12px;color:#555;margin-bottom:10px">${escNote((DB.settings && DB.settings.centerName) || 'Masters Auto Service')} — ${escNote(cmpLine)} · بواسطة ${escNote(actorName())}<br>إجمالي المصاريف: ${_repM(total)}${has ? ' (كان '+_repM(prev.exp.total)+')' : ''} · المصاريف من المبيعات: ${rc !== null ? _repPct(rc) : '—'} · المصاريف الاستثمارية (💼) داخلة في الإجمالي</div>
-    <table><thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th><th>من المصاريف</th></tr></thead><tbody>${trs || '<tr><td colspan="5">مفيش مصاريف في الفترة دي</td></tr>'}
+    <table><thead><tr><th>البند</th><th>الفترة دي</th><th>${repPrevName()}</th><th>الفرق</th><th>من المصاريف</th></tr></thead><tbody>${trs || '<tr><td colspan="5">مفيش مصاريف في الفترة دي</td></tr>'}
       <tr style="font-weight:bold;background:#eee"><td>الإجمالي</td><td>${_repM(total)}</td><td>${has ? _repM(prev.exp.total) : '—'}</td><td>${has ? _repDeltaTxt(total, prev.exp.total, money) : '—'}</td><td>${total > 0 ? _repPct(100) : '—'}</td></tr></tbody></table>
     <h4 style="margin:16px 0 0">فلوس طلعت من الخزنة بس مش مصاريف</h4>
     <div style="font-size:11px;color:#555;margin-bottom:4px">مش داخلة في إجمالي المصاريف ولا في نسبة المصاريف من المبيعات</div>
-    <table style="max-width:700px"><thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th></tr></thead><tbody>${outTR}</tbody></table>
+    <table style="max-width:700px"><thead><tr><th>البند</th><th>الفترة دي</th><th>${repPrevName()}</th><th>الفرق</th></tr></thead><tbody>${outTR}</tbody></table>
   </div>`;
 }
 /* now اختياري (للاختبار بس) — الزرار بينده من غير باراميتر */
@@ -26407,41 +26456,61 @@ function setEmpDetailPeriod(empId, k, v){
 }
 /* ---------- م256: 📎 مستندات الموظف (بطاقة · شهادات · عقد …) ----------
    الصور في مخزن مقفول «emp-docs» (مش عام) وبتتفتح بلينك مؤقت ساعة. الملف بيشيل المسار بس في e.docs.
-   الإضافة والعرض = صلاحية «تعديل ملف الموظف وإضافة موظف» · المسح = صاحب المركز بس */
+   الإضافة والعرض = صلاحية «تعديل ملف الموظف وإضافة موظف» · المسح = صاحب المركز بس
+   م257: e.docs في MERGE_SUBARRAYS (مستند جهاز مايضيعش بحفظة جهاز تاني · المسح مايرجعش) · السجل بيتحفظ قبل مسح الصورة ·
+   الصورة بتتصغّر لحد 2000 بكسل · الطباعة عليها ختم التاريخ · النوع المختار بيفضل بعد الرفع */
 const ED_BUCKET = 'emp-docs';
 const EMP_DOC_TYPES = ['بطاقة (وش)','بطاقة (ضهر)','شهادة ميلاد','شهادة تجنيد','فيش جنائي','مؤهل دراسي','عقد عمل','تانية'];
 var _edUrls = {};      // path → { url, exp }
 var _edBusy = false;
+var _edLastType = EMP_DOC_TYPES[0];   /* م257: آخر نوع اتختار — بيفضل بعد الرفع (الموظف الواحد بيتصوّر له أكتر من صورة من نفس النوع) */
+const ED_MISS_HTML = '<span class="muted" style="font-size:11px">مش موجودة</span>';
 function canEmpDocs(){ return can('hr.employees'); }
 function empDocs(e){ return ((e && e.docs) || []).filter(d=>d && d.path); }
+/* م257: الرسالة حسب السبب الحقيقي — رسالة «نفّذ ملف SQL» لمشاكل المخزن/الصلاحيات بس (مخزن مش موجود · RLS · policy)،
+   صورة واحدة ناقصة من السيرفر ليها رسالتها، وعميل السيرفر الناقص («no client») غير النت الواقع */
 function edErrText(err){
-  const m = String((err && (err.message || err.error)) || err || '');
-  if(/bucket|not found|row-level security|policy|unauthori|403|404/i.test(m))
+  const m = String((err && (err.message || err.error)) || err || ''), code = String((err && (err.statusCode || err.status)) || '');
+  const all = m + ' ' + code;
+  if(/no client/i.test(m)) return 'السيستم مش متوصل بالسيرفر دلوقتي';
+  if(/bucket|row-level security|\bpolicy\b|unauthori|forbidden|\b403\b/i.test(all))
     return isOwnerSession() ? 'مكان المستندات لسه ماتعملش في Supabase — نفّذ ملف db/تحديث-م256-مستندات-الموظفين.sql مرة واحدة (SQL Editor ← Run)' : 'مكان المستندات لسه ماتجهزش على السيرفر — كلّم صاحب المركز';
+  if(/not found|not_found|\b404\b/i.test(all)) return 'الصورة مش موجودة على السيرفر';
   if(/fetch|network|timeout|aborted|offline/i.test(m)) return 'النت فاصل — جرّب تاني';
   return 'حصلت مشكلة (' + m.slice(0, 80) + ') — جرّب تاني';
 }
-/* لينكات مؤقتة (ساعة) — بتتخزن 50 دقيقة عشان مانطلبهاش كل شوية */
+/* لينكات مؤقتة (ساعة) — بتتخزن 50 دقيقة عشان مانطلبهاش كل شوية.
+   م257: صورة ناقصة من السيرفر (signedUrl فاضي / error على الصورة دي بس) مابتتحطش في الرد — اللي بينده بيعتبرها «مش موجودة» */
 async function empDocUrls(paths){
   const now = Date.now(), need = paths.filter(p=>!(_edUrls[p] && _edUrls[p].exp > now));
   if(need.length){
-    if(!sb || !sb.storage || typeof sb.storage.from !== 'function') throw new Error('bucket not found');
+    if(!sb || !sb.storage || typeof sb.storage.from !== 'function') throw new Error('no client');
     const { data, error } = await sb.storage.from(ED_BUCKET).createSignedUrls(need, 3600);
     if(error) throw error;
-    (data || []).forEach(r=>{ if(r && r.signedUrl && r.path) _edUrls[r.path] = { url:r.signedUrl, exp:now + 50 * 60000 }; });
+    (data || []).forEach(r=>{ if(r && r.signedUrl && r.path && !r.error) _edUrls[r.path] = { url:r.signedUrl, exp:now + 50 * 60000 }; });
   }
   const out = {};
   paths.forEach(p=>{ if(_edUrls[p]) out[p] = _edUrls[p].url; });
   return out;
 }
+/* م257: رفض السيرفر لحفظ السجل (مش مشكلة المخزن) — رسالة منفصلة عشان «نفّذ ملف SQL» ماتتقالش على غلط */
+function edSaveErrText(err){ return String((err && (err.message || err.error)) || err || '').slice(0, 70); }
+function _edLog(text){ try{ Promise.resolve(logAction(text)).catch(()=>{}); }catch(x){} }
+/* م257: نافذة مستندات الموظف ده لسه هي المفتوحة؟ (الرفع والمسح بياخدوا وقت — لو سيف قفلها أو فتح حاجة تانية مانرجّعهاش) */
+function _edDocsOpen(empId){
+  const ov = document.getElementById('modalOverlay');
+  return !!ov && String(ov.innerHTML || '').indexOf('id="edDocsRoot_' + escAttr(empId) + '"') >= 0;
+}
+/* صورة اتعطلت (لينك منتهي · الملف اتمسح) ⇒ «مش موجودة» بدل صورة مكسورة */
+function edThumbErr(im){ try{ const p = im && im.parentNode; if(p) p.innerHTML = ED_MISS_HTML; }catch(x){} }
 function empDocsHTML(e){
   const list = empDocs(e).slice().sort((a, b)=>String(b.at).localeCompare(String(a.at)));
   const own = isOwnerSession();
-  return `<h3 style="margin-top:0">📎 مستندات ${escNote(e.name)} <span class="muted" style="font-size:12px">#${escNote(e.empNo || '—')}</span></h3>
+  return `<h3 id="edDocsRoot_${escAttr(e.id)}" style="margin-top:0">📎 مستندات ${escNote(e.name)} <span class="muted" style="font-size:12px">#${escNote(e.empNo || '—')}</span></h3>
     <div class="card" style="padding:12px;margin-bottom:12px">
       <div class="form-row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
         <div style="flex:1;min-width:140px"><label class="f-label">نوع المستند</label>
-          <select class="f" id="edType">${EMP_DOC_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
+          <select class="f" id="edType" onchange="_edLastType=this.value">${EMP_DOC_TYPES.map(t=>`<option value="${escAttr(t)}"${t===_edLastType ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
         <div style="flex:2;min-width:160px"><label class="f-label">ملاحظة (اختياري)</label><input class="f" id="edNote" maxlength="120"></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
@@ -26453,8 +26522,7 @@ function empDocsHTML(e){
     </div>
     ${list.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px">
       ${list.map(d=>`<div class="card" style="padding:8px;text-align:center">
-        <div style="height:110px;display:flex;align-items:center;justify-content:center;background:var(--surface-2);border-radius:6px;cursor:pointer;overflow:hidden" onclick="empDocView('${e.id}','${d.id}')">
-          <img data-edpath="${escAttr(d.path)}" alt="" style="max-width:100%;max-height:110px;display:none"><span class="muted" style="font-size:11px">⏳</span></div>
+        <div id="edTh_${escAttr(d.id)}" data-edpath="${escAttr(d.path)}" style="height:110px;display:flex;align-items:center;justify-content:center;background:var(--surface-2);border-radius:6px;cursor:pointer;overflow:hidden" onclick="empDocView('${e.id}','${d.id}')"><span class="muted" style="font-size:11px">⏳</span></div>
         <div style="font-weight:700;font-size:12.5px;margin-top:6px">${escNote(d.type || '—')}</div>
         ${d.note ? `<div class="muted" style="font-size:11px">${escNote(d.note)}</div>` : ''}
         <div class="muted" style="font-size:10.5px">${fmtDate(d.at)} · ${escNote(d.by || '')}</div>
@@ -26472,17 +26540,22 @@ function openEmpDocs(empId){
   openModal(empDocsHTML(e));
   empDocsLoadThumbs(e);
 }
+/* م257: كل صورة بتخرج من ⏳ لحاجة: الصورة نفسها، أو «مش موجودة» (الملف ناقص على السيرفر)، أو «تعذّر التحميل» (الطلب كله فشل) */
 async function empDocsLoadThumbs(e){
-  const paths = empDocs(e).map(d=>d.path);
-  if(!paths.length) return;
+  const docs = empDocs(e);
+  if(!docs.length) return;
+  const box = d=>document.getElementById('edTh_' + d.id);
   let urls = {};
-  try{ urls = await empDocUrls(paths); }catch(err){ toast(edErrText(err), true); return; }
-  const imgs = (typeof document.querySelectorAll === 'function') ? [...document.querySelectorAll('img[data-edpath]')] : [];
-  imgs.forEach(im=>{
-    const u = urls[im.getAttribute('data-edpath')];
-    if(!u) return;
-    im.src = u; im.style.display = '';
-    const sp = im.nextElementSibling; if(sp) sp.style.display = 'none';
+  try{ urls = await empDocUrls(docs.map(d=>d.path)); }
+  catch(err){
+    toast(edErrText(err), true);
+    docs.forEach(d=>{ const b = box(d); if(b) b.innerHTML = '<span class="muted" style="font-size:11px">تعذّر التحميل</span>'; });
+    return;
+  }
+  docs.forEach(d=>{
+    const b = box(d); if(!b) return;
+    const u = urls[d.path];
+    b.innerHTML = u ? `<img src="${escAttr(u)}" alt="" style="max-width:100%;max-height:110px" onerror="edThumbErr(this)">` : ED_MISS_HTML;
   });
 }
 function empDocPick(empId, input){
@@ -26493,6 +26566,9 @@ function empDocPick(empId, input){
   const note = ((document.getElementById('edNote') || {}).value || '').trim().slice(0, 120);
   return empDocAddFile(empId, file, type, note);
 }
+/* الترتيب مقصود: (1) الصورة تترفع للمخزن (2) السجل يتضاف في e.docs ويتحفظ.
+   م257: لو الصورة اترفعت والحفظ فشل/اتأجّل، السجل بيفضل في الملف على الجهاز (النت ضعيف ⇒ صندوق الصادر بيحفظه لما النت يرجع، ورفض السيرفر ⇒ بيتحفظ مع أول حفظة جاية لملف الموظف) —
+   مفيش رسالة «جرّب تاني» (كانت بتخلّي الموظف يرفع نفس الصورة تاني ⇒ ملف مكرر)، والمستند ظاهر في القايمة، و_edBusy ماسك لحد ما كل ده يخلص */
 async function empDocAddFile(empId, file, type, note){
   const e = DB.employees.find(x=>x.id===empId);
   if(!e) return false;
@@ -26500,20 +26576,25 @@ async function empDocAddFile(empId, file, type, note){
   if(_edBusy){ toast('استنى — فيه صورة بترفع دلوقتي', true); return false; }
   _edBusy = true;
   try{
+    const t = EMP_DOC_TYPES.includes(type) ? type : 'تانية';
+    _edLastType = t;   /* م257 */
     let blob;
-    try{ blob = (await tcCompress(file)).blob; }catch(err){ toast('الملف ده مش صورة — اختار صورة (JPG / PNG)', true); return false; }
-    if(!sb || !sb.storage || typeof sb.storage.from !== 'function') throw new Error('bucket not found');
+    try{ blob = (await tcCompress(file, '', 2000)).blob; }catch(err){ toast('الملف ده مش صورة — اختار صورة (JPG / PNG)', true); return false; }   /* م257: 2000 بكسل — الكتابة الصغيرة في البطاقة والشهادات تتقرا */
+    if(!sb || !sb.storage || typeof sb.storage.from !== 'function') throw new Error('no client');
     const id = uid('doc'), path = empId + '/' + id + '_' + tcRand() + '.jpg';
     toast('⏳ بيترفع…');
     const { error } = await sb.storage.from(ED_BUCKET).upload(path, blob, { contentType:'image/jpeg', upsert:false });
     if(error) throw error;
+    /* من هنا الصورة على السيرفر — أي فشل بعد كده ماينفعش يرجّع الموظف يرفع تاني */
     if(!Array.isArray(e.docs)) e.docs = [];
-    const t = EMP_DOC_TYPES.includes(type) ? type : 'تانية';
     e.docs.push({ id, type:t, note:String(note || ''), path, at:new Date().toISOString(), by:actorName() });
-    await saveKey('employees');
-    logAction('📎 إضافة مستند «' + t + '» لملف الموظف ' + e.name).catch(()=>{});
-    toast('✅ المستند اتحفظ في ملف ' + e.name);
-    openEmpDocs(empId);
+    let saved = true, saveErr = null;
+    try{ saved = await saveKey('employees'); }catch(errS){ saveErr = errS; }
+    _edLog('📎 إضافة مستند «' + t + '» لملف الموظف ' + e.name);
+    if(saveErr) toast('الصورة اترفعت بس السيرفر رفض يسجّلها في الملف (' + edSaveErrText(saveErr) + ') — هتتسجل مع أول حفظ لملف الموظف، متعيدش رفعها', true);
+    else if(saved === 'queued') toast('✅ اتحفظ على الجهاز وهيترفع لما النت يرجع');
+    else toast('✅ المستند اتحفظ في ملف ' + e.name);
+    if(_edDocsOpen(empId)) openEmpDocs(empId);   /* م257: بس لو نافذة المستندات لسه هي المفتوحة */
     return true;
   }catch(err){ toast(edErrText(err), true); return false; }
   finally{ _edBusy = false; }
@@ -26530,7 +26611,8 @@ async function empDocView(empId, docId){
     <div class="muted" style="font-size:11px;margin-top:6px">${fmtDateTime(d.at)} · ${escNote(d.by || '')}</div>
     <div style="margin-top:12px;display:flex;gap:8px"><button class="btn btn-accent" onclick="empDocPrint('${empId}','${docId}')">🖨 طباعة</button><button class="btn" onclick="openEmpDocs('${empId}')">↩ رجوع للمستندات</button></div>`);
 }
-/* طباعة: كل مستند في ورقة لوحده — الصور لازم تحمّل الأول وإلا بتطلع فاضية */
+/* طباعة: كل مستند في ورقة لوحده — الصور لازم تحمّل الأول وإلا بتطلع فاضية.
+   م257: ختم تاريخ الطباعة (م159) على كل ورقة، وأقصى ارتفاع للصورة 230mm عشان الختم مايزقش الورقة لصفحة زيادة */
 async function empDocPrint(empId, docId){
   const e = DB.employees.find(x=>x.id===empId);
   if(!e || !canEmpDocs()) return;
@@ -26542,7 +26624,8 @@ async function empDocPrint(empId, docId){
   const html = list.map((d, i)=>`<div style="${i < list.length - 1 ? 'page-break-after:always;' : ''}text-align:center;padding:10px 0">
       <div style="font-size:15px;font-weight:700">${escNote(e.name)} — #${escNote(e.empNo || '—')} — ${escNote(d.type || '—')}</div>
       <div style="font-size:11.5px;color:#666;margin-bottom:8px">${center}${d.note ? ' · ' + escNote(d.note) : ''} · ${fmtDate(d.at)}</div>
-      ${urls[d.path] ? `<img src="${escAttr(urls[d.path])}" alt="" style="max-width:100%;max-height:240mm">` : '<div>الصورة مش موجودة</div>'}
+      ${urls[d.path] ? `<img src="${escAttr(urls[d.path])}" alt="" style="max-width:100%;max-height:230mm">` : '<div>الصورة مش موجودة</div>'}
+      ${printStampHTML()}
     </div>`).join('');
   let area = document.getElementById('printArea');
   if(!area){ area = document.createElement('div'); area.id = 'printArea'; document.body.appendChild(area); }
@@ -26553,23 +26636,36 @@ async function empDocPrint(empId, docId){
   let left = imgs.filter(im=>!im.complete).length;
   if(!left) setTimeout(go, 150);
   else { imgs.forEach(im=>{ if(!im.complete){ im.onload = im.onerror = ()=>{ if(--left <= 0) setTimeout(go, 100); }; } }); setTimeout(go, 8000); }
-  logAction('🖨 طباعة ' + (docId ? 'مستند «' + list[0].type + '»' : 'مستندات (' + list.length + ')') + ' — الموظف ' + e.name).catch(()=>{});
+  _edLog('🖨 طباعة ' + (docId ? 'مستند «' + list[0].type + '»' : 'مستندات (' + list.length + ')') + ' — الموظف ' + e.name);
 }
+/* م257: السجل بيتحفظ الأول وبعدين الصورة بتتمسح — لو الحفظ فشل المستند يرجع زي ما كان والصورة ماتتلمسش.
+   صورة يتيمة على السيرفر (المسح فشل أو الحفظ اتأجّل) أحسن بكتير من سجل بيشاور على صورة اتمسحت */
 function empDocDelete(empId, docId){
   const e = DB.employees.find(x=>x.id===empId), d = e && empDocs(e).find(x=>x.id===docId);
   if(!d) return;
   if(!isOwnerSession()){ toast('مسح المستندات لصاحب المركز بس', true); return; }
-  askConfirm('تمسح «' + d.type + '» من ملف ' + e.name + '؟ الصورة هتتمسح نهائي.', async ()=>{
+  askConfirm('تمسح «' + escNote(d.type) + '» من ملف ' + escNote(e.name) + '؟ الصورة هتتمسح نهائي.', async ()=>{
     try{
-      const { error } = await sb.storage.from(ED_BUCKET).remove([d.path]);
-      if(error && !/not found/i.test(String(error.message || ''))) throw error;
-    }catch(err){ toast(edErrText(err), true); return; }
-    e.docs = (e.docs || []).filter(x=>x.id !== docId);
-    delete _edUrls[d.path];
-    await saveKey('employees');
-    logAction('🗑 مسح مستند «' + d.type + '» من ملف الموظف ' + e.name).catch(()=>{});
-    toast('اتمسح');
-    openEmpDocs(empId);
+      const keep = e.docs;
+      let saved;
+      try{
+        e.docs = (e.docs || []).filter(x=>x.id !== docId);
+        saved = await saveKey('employees');
+      }catch(err){ e.docs = keep; toast('ماتمسحش — السيرفر رفض حفظ التغيير (' + edSaveErrText(err) + ')، والمستند لسه زي ما هو', true); return; }
+      delete _edUrls[d.path];
+      _edLog('🗑 مسح مستند «' + d.type + '» من ملف الموظف ' + e.name);
+      let msg = 'اتمسح';
+      if(saved === 'queued') msg = 'اتمسح من الملف (النت ضعيف — هيتسجل لما يرجع). الصورة نفسها هتفضل على السيرفر المقفول';
+      else {
+        try{
+          if(!sb || !sb.storage || typeof sb.storage.from !== 'function') throw new Error('no client');
+          const { error } = await sb.storage.from(ED_BUCKET).remove([d.path]);
+          if(error) throw error;
+        }catch(err){ msg = 'اتمسح من الملف — بس الصورة نفسها لسه على السيرفر المقفول (' + edErrText(err) + ')'; }
+      }
+      toast(msg);
+      if(_edDocsOpen(empId) || !document.getElementById('modalOverlay')) openEmpDocs(empId);
+    }catch(err){ try{ toast(edErrText(err), true); }catch(x){} }
   });
 }
 function openEmployeeDetail(empId){
