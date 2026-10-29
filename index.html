@@ -169,6 +169,42 @@ input,select,textarea{font-family:'Tajawal',sans-serif;}
 .emp-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
 .emp-actions .btn{flex:1;min-width:110px}
 .emp-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+/* م254: شهر المرتب — شريط الشهر + كروت الخطوات الأربعة (✅ خلصت · إنت هنا · ⚪ · 🔒 مش من صلاحياتك) — بتبقى 2×2 على التابلت وعمود على الموبايل */
+.mhead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px;margin-bottom:14px}
+.mhead-nav,.mhead-rep{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mhead-t{font-family:Cairo,Tajawal,sans-serif;font-size:16px;font-weight:900}
+.mstep-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.mstep{display:block;width:100%;text-align:start;font:inherit;color:var(--text);background:var(--surface);border:2px solid var(--border);border-radius:14px;padding:12px 14px;min-height:108px;transition:.15s}
+button.mstep:hover{border-color:var(--accent-dim)}
+.mstep-top{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:12.5px;font-weight:800;color:var(--muted)}
+.mstep-t{font-family:Cairo,Tajawal,sans-serif;font-size:16px;font-weight:900;margin:6px 0 4px}
+.mstep-s{font-size:12px;line-height:1.7;color:var(--muted)}
+.mstep-done{border-color:var(--success)}
+.mstep-done .mstep-top{color:var(--success)}
+.mstep-here{border-color:var(--accent);box-shadow:0 0 0 3px rgba(242,212,16,.12)}
+.mstep-here .mstep-top,.mstep-here-tag{color:var(--accent)}
+.mstep-sel{background:var(--surface-3)}
+.mstep-lock{opacity:.55;cursor:not-allowed;background:var(--surface-2)}
+.mchips{display:flex;flex-wrap:wrap;gap:8px}
+.mchip{display:inline-block;padding:6px 14px;border:1px solid var(--border);border-radius:20px;background:var(--surface-2);font-size:13px}
+@media(max-width:900px){.mstep-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.mstep-row{grid-template-columns:minmax(0,1fr)}.mstep{min-height:0}}
+/* م254: 🏠 النهارده — عمودين: «محتاج منك» (الأعرض، على اليمين) وجنبه (مين مش موجود · ملخص الشهر · تسجيل سريع) — عمود واحد على التابلت والموبايل */
+.htd{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:22px;align-items:start}
+.htd-h{font-family:Cairo,Tajawal,sans-serif;font-size:17px;font-weight:900;margin:0 0 12px}
+.htd-col .card + .htd-h{margin-top:22px}
+.htd-todo{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+.htd-hot{border-color:var(--danger)}
+.htd-ico{font-size:26px;line-height:1;flex-shrink:0}
+.htd-body{flex:1;min-width:0}
+.htd-t{font-family:Cairo,Tajawal,sans-serif;font-size:15.5px;font-weight:900}
+.htd-s{font-size:12.5px;line-height:1.7;color:var(--muted);margin-top:2px}
+.htd-step{display:flex;gap:10px;align-items:baseline;padding:5px 0;font-size:13.5px}
+.htd-here{font-weight:800}
+.htd-lock{opacity:.55}
+.htd-quick{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:900px){.htd{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:480px){.htd-todo{flex-wrap:wrap}.htd-todo .btn{width:100%}}
 .bn-pay{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 12px}.bn-pay .btn{flex:1;min-width:140px}   /* م251 */
 .emp-tile{background:var(--surface-2);border-radius:10px;padding:10px 12px;border-top:3px solid var(--accent)}
 .emp-tile .lbl{font-size:12px;color:var(--muted)}
@@ -183,6 +219,50 @@ input,select,textarea{font-family:'Tajawal',sans-serif;}
 /* م182: عين الشرح */
 .stat-eye{position:absolute;top:5px;left:7px;background:none;border:0;cursor:pointer;font-size:15px;opacity:.5;padding:2px 5px;line-height:1;border-radius:6px}
 .stat-eye:hover{opacity:1;background:var(--surface-2)}
+/* م255: شاشة التقارير — كروت الملخص (قابل للدوس · متعلّم) · سطور الفرق · الخط الصغير · تنبيهات «محتاج تاخد بالك» · «وضعك دلوقتي» */
+.rep-card .num{font-size:26px;overflow-wrap:anywhere}
+.rep-card.clk{cursor:pointer}
+.rep-card.clk:hover{border-color:var(--accent-dim)}
+.rep-card.acc{box-shadow:0 0 0 2px var(--accent)}
+.rep-deltas{margin-top:8px}
+.rep-sub{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline;font-size:12.5px;line-height:1.8}
+.rep-spark{margin-top:8px}
+.rep-snap{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.rep-snap .stat-card .num{font-size:20px}
+.rep-pl td,.rep-pl th{padding:8px 10px;white-space:nowrap}
+.rep-pl td:first-child{white-space:normal;min-width:200px}
+.rep-pl .rep-sub{gap:0 6px;flex-wrap:nowrap}
+/* م255: 💸 المصاريف — دليل الرسم (الدوس على مجموعة) · أكتر البنود اللي اتغيرت (عمودين صغيرين) */
+.rep-lg{display:inline-flex;align-items:center;gap:6px;background:none;border:1px solid var(--border);border-radius:999px;padding:3px 11px;font:inherit;font-size:12.5px;color:var(--text);cursor:pointer}
+span.rep-lg{cursor:default}
+button.rep-lg:hover{background:var(--surface-2)}
+.rep-lg.on{border-color:var(--accent);background:var(--surface-2);font-weight:700}
+.rep-lg.off{opacity:.5}
+.rep-lg i{display:inline-block;width:10px;height:10px;border-radius:2px;flex:none}
+.rep-chg{display:grid;grid-template-columns:minmax(120px,1fr) minmax(220px,2fr) auto;gap:6px 18px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
+.rep-chg:last-child{border-bottom:0}
+.rep-chg-name{font-weight:700;overflow-wrap:anywhere}
+.rep-chg-diff{font-size:13px;white-space:nowrap}
+.rep-bar-row{display:flex;align-items:center;gap:8px;font-size:12px;line-height:1.9}
+.rep-bar-row .muted{width:64px;flex:none}
+.rep-bar-track{display:block;flex:1;height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden}
+.rep-bar{display:block;height:100%;border-radius:4px;background:var(--accent)}
+.rep-bar.prev{background:var(--muted);opacity:.5}
+@media(max-width:640px){.rep-chg{grid-template-columns:1fr}}
+/* م255: التفاصيل اللي ورا الرقم — خلية/اسم قابل للدوس (خط منقّط) · جدول المودال */
+.rep-drill{cursor:pointer;text-decoration:underline dotted var(--muted);text-underline-offset:4px}
+.rep-drill:hover{color:var(--accent)}
+.rep-twist{display:inline-block;min-width:24px;padding:3px 4px;text-align:center;cursor:pointer;border-radius:6px}
+.rep-twist:hover{background:var(--surface-2)}
+.rep-dr th,.rep-dr td{padding:7px 10px;text-align:right}
+.rep-dr tbody tr[onclick]{cursor:pointer}
+.rep-dr tbody tr[onclick]:hover{background:var(--surface-2)}
+.rep-dr tfoot td{background:var(--surface-2);font-weight:800}
+.rep-alert{display:flex;gap:9px;align-items:flex-start;background:var(--surface-2);border-right:3px solid var(--muted);border-radius:9px;padding:9px 12px;font-size:13.5px;line-height:1.8;margin-bottom:8px}
+.rep-alert:last-child{margin-bottom:0}
+.rep-alert.bad{border-right-color:var(--danger)}
+.rep-alert.warn{border-right-color:var(--accent)}
+.rep-alert.good{border-right-color:var(--success)}
 .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
 .section-head h3{margin:0;font-size:16.5px;}
 .btn{background:var(--surface-2);color:var(--text);padding:10px 16px;border-radius:9px;font-size:13.5px;font-weight:700;border:1px solid var(--border);display:inline-flex;align-items:center;gap:6px;}
@@ -1680,7 +1760,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v275';
+const APP_VERSION = 'v278';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -3775,6 +3855,8 @@ try{ if(typeof document !== 'undefined' && document.body) pwaInit(); }catch(e){}
 function goTab(id){
   camClose();
   if(id !== currentTab){ _navStack234.push(currentTab); if(_navStack234.length > 30) _navStack234.shift(); }   /* م234: للرجوع */
+  if(id==='reports') repCmp = '';   /* م256: فتح التقارير من جديد ⇒ «قارن بـ» تلقائي */
+  if(id==='hr') hrView = 'today';   /* م254: فتح الموارد البشرية من أي مكان (القايمة · الإشعارات · كروت الرئيسية) بيبدأ من 🏠 النهارده */
   currentTab = id; render(); mScrollTop();
 }
 
@@ -3952,8 +4034,8 @@ function renderDashboard(){
   if(['accounts','owner'].includes(session.role)) cards += stat(money(outstanding),'مستحقات غير محصلة');
   if(can('rep.profit')){
     const monthProfit = computeProfitStats(periodRange({preset:'this_month'}));
-    cards += stat(money(monthProfit.netProfit),'💰 صافي ربح هذا الشهر (بعد الخصومات)', monthProfit.netProfit<0);
-    cards += stat(monthProfit.netMargin.toFixed(1)+'%','نسبة الربحية هذا الشهر', monthProfit.netMargin<15 && monthProfit.netSales>0);
+    cards += stat(money(monthProfit.netProfit),'💰 ربح الشغل بعد الهالك هذا الشهر (قبل المرتبات والمصاريف)', monthProfit.netProfit<0);
+    cards += stat(monthProfit.netMargin.toFixed(1)+'%','نسبة ربح الشغل بعد الهالك هذا الشهر', monthProfit.netMargin<15 && monthProfit.netSales>0);
   }
   if(['reception','owner'].includes(session.role)) cards += stat(String(DB.customers.length),'إجمالي العملاء');
 
@@ -20018,13 +20100,13 @@ function profitReportHTML(range){
       source:'أوامر الشغل المربوطة بفواتير الفترة: القطع من المخزون بسعر الصرف وقت الصرف + القطع الخارجية والأعمال الخارجية بسعر شرائها + خامات الدهان.',
       formula:'مخزون '+money(ps.inParts)+' + قطع خارجية '+money(ps.extParts)+' + أعمال خارجية '+money(ps.extWork)+' + دهان '+money(ps.paint)+' = '+money(ps.cost),
       tax:'without',
-      note:'المصنعية مالهاش تكلفة هنا — أجور الفنيين بتتحسب في الموارد البشرية مش على كل أمر شغل. والهالك بيتخصم لوحده في «صافي الربح» تحت.' })}
+      note:'المصنعية مالهاش تكلفة هنا — أجور الفنيين بتتحسب في الموارد البشرية مش على كل أمر شغل. والهالك بيتخصم لوحده في «ربح الشغل بعد الهالك» تحت.' })}
     ${statH(money(ps.profit),'ربح الشغل (صافي مبيعات − تكلفة)', ps.profit<0, { key:'pr_profit',
       meaning:'الربح الإجمالي من شغل الفترة قبل المصاريف العامة وأجور الفنيين.',
       source:'صافي المبيعات ناقص تكلفة الشغل.',
       formula:'صافي المبيعات '+money(ps.netSales)+' − تكلفة الشغل '+money(ps.cost)+' = '+money(ps.profit),
       tax:'without',
-      note:'الهالك والتالف ('+money(ps.scrapCost)+') بيتخصم بعد كده في «صافي الربح».' })}
+      note:'الهالك والتالف ('+money(ps.scrapCost)+') بيتخصم بعد كده في «ربح الشغل بعد الهالك».' })}
   </div>
   <div class="grid g2" style="margin-bottom:10px;max-width:620px">
     ${statH(ps.margin.toFixed(1)+'%','نسبة ربح الشغل (على صافي المبيعات)', ps.margin<15 && ps.netSales>0, { key:'pr_margin',
@@ -20042,7 +20124,7 @@ function profitReportHTML(range){
   </div>
   <div class="grid g2" style="margin-bottom:10px">
     ${stat(money(ps.scrapCost),'🗑 خسائر الهالك والتالف', ps.scrapCost>0)}
-    ${stat(money(ps.netProfit),'💰 صافي الربح التشغيلي (بعد خصم الهالك)', ps.netProfit<0)}
+    ${stat(money(ps.netProfit),'💰 ربح الشغل بعد الهالك (قبل المصاريف)', ps.netProfit<0)}
   </div>
   <details style="margin-top:4px">
     <summary style="cursor:pointer;font-size:12.5px;color:var(--muted)">تفصيل التكلفة (اضغط للعرض)</summary>
@@ -21642,6 +21724,7 @@ function renderReports(){
      وأي حد يشوف شاشة التقارير كان يشوف المبيعات والمحصّل والمصروفات وصافي الربح.
      دلوقتي الأرقام المالية متحجوبة فعلاً، والتقارير التشغيلية (أداء الفنيين
      وتحليل الإلغاء) فاضلة ظاهرة لأنها مش أرقام مالية. */
+  _repDrillKeys = [];   /* م255: مفاتيح الدريل داون بتتبني من جديد مع كل رسم */
   if(!can('rep.financial')) return `
     <div class="card" style="padding:22px;text-align:center;margin-bottom:22px">
       <div style="font-size:15px;font-weight:700;margin-bottom:6px">🔒 الأرقام المالية متاحة لأصحاب الصلاحية فقط</div>
@@ -21651,44 +21734,1480 @@ function renderReports(){
     ${renderTechnicianPerformance()}
     <div class="section-head" style="margin-top:26px"><h3>تحليل أوامر الشغل الملغاة</h3></div>
     ${renderCancellationAnalytics()}`;
-  const totalSales = DB.invoices.filter(i=>!i.cancelled).reduce((s,i)=>s+i.total,0);
-  const totalCollected = DB.invoices.filter(i=>!i.cancelled).reduce((s,i)=>s+(i.payments||[]).reduce((a,p)=>a+p.amount,0),0);
-  const outstanding = totalSales - totalCollected;
-  /* م125 (قرار سيف): التشغيلية فقط — سداد الموردين والسلف مش مصروفات تشغيل */
-  const totalExpenses = operatingExpenses().reduce((s,e)=>s+e.amount,0);
-  const scrapLoss = scrapTotals().total;
-  const net = totalCollected - totalExpenses - scrapLoss;
-  const lowStock = activeInventory().filter(p=>p.qty<=p.minQty).length;
-  const inventoryValue = activeInventory().reduce((s,p)=>s+p.qty*p.costPrice,0);
+  const tabs = repTabs();
+  if(!tabs.some(t=>t.id===repView)) repView = tabs[0].id;   /* تاب مش موجود (أو الصلاحية اتغيرت) ⇒ أول تاب متاح */
+  const view = repView;
+  /* شريط الفترة بيتعرض بس للتابات اللي بتشتغل بيه — «التشغيل» الدالتين بتوعه ليهم فلتر فترة خاص بيهم */
+  const ctx = view==='ops' ? null : repCtx();
+  const tabsBar = tabs.length>1
+    ? `<div class="emp-tabs" style="margin-bottom:16px">${tabs.map(t=>`<button class="btn btn-sm ${view===t.id?'btn-accent':''}" onclick="setRepView('${t.id}')">${t.label}</button>`).join('')}</div>`
+    : '';
+  const body = view==='summary' ? renderRepSummary(ctx)
+    : view==='pl' ? renderRepPL(ctx)
+    : view==='expenses' ? renderRepExpenses(ctx)
+    : view==='ops' ? renderRepOps()
+    : '';
+  return `${tabsBar}${ctx ? repPeriodBar(ctx) : ''}${body}`;
+}
+
+/* ============================================================
+   م255 — شاشة التقارير الجديدة: الحالة · التابات · شريط الفترة · 📊 الملخص · 🔧 التشغيل
+   الحالة var (مش let) عشان الاختبارات تشوفها. الشاشة قراءة بس: مفيش saveKey ولا كتابة في DB.
+   كل رقم من دوال النواة (repStats/repMonthly/…) — الملخص مابيعملش معادلات جديدة.
+   من غير rep.profit: مفيش رقم ربح ولا تكلفة يظهر ولا ينفع يتستنتج (كروت · رسم · تنبيهات · 👁).
+   ============================================================ */
+var repPeriod = { preset:'this_month', from:'', to:'' };
+var repView = 'summary';
+/* م256: «قارن بـ» — '' تلقائي (اللي قبلها بنفس الأيام) · 'YYYY-MM' شهر بعينه · 'custom' فترة مخصصة (repCmpFrom/repCmpTo) */
+var repCmp = '';
+var repCmpFrom = '', repCmpTo = '';
+var repExpGroup = '';   /* 💸 المصاريف: المجموعة اللي الرسم بيعرضها لوحدها (بالاسم) — '' = الكل. الـ onclick بيبعت رقم من _repDrillKeys مش الاسم */
+var repOpenGroups = {};   /* 💰 المكسب والخسارة: المجموعات المفتوحة على بنودها — بالاسم (الـ onclick بيبعت رقم من _repDrillKeys مش الاسم) */
+var _repDrillKeys = [];   /* نصوص المستخدم (مجموعة/بند) اللي بتتبعت لـ onclick بتتحط هنا والـ onclick ياخد رقمها بس — بيتصفّر مع كل renderReports */
+function repKey(value){ _repDrillKeys.push(value); return _repDrillKeys.length-1; }
+
+/* التابات المتاحة للمستخدم الحالي بالترتيب: 📊 الملخص · 💰 المكسب والخسارة (rep.financial + rep.profit) · 💸 المصاريف (rep.financial) · 🔧 التشغيل */
+function repTabs(){
+  const t = [];
+  if(can('rep.financial')) t.push({ id:'summary', label:'📊 الملخص' });
+  if(can('rep.financial') && can('rep.profit')) t.push({ id:'pl', label:'💰 المكسب والخسارة' });
+  if(can('rep.financial')) t.push({ id:'expenses', label:'💸 المصاريف' });
+  t.push({ id:'ops', label:'🔧 التشغيل' });
+  return t;
+}
+function setRepView(v){ repView = v; refreshContent(); }
+function setRepPreset(p){ repPeriod.preset = p; repCmp = ''; refreshContent(); }   /* م256: تغيير الفترة بيرجّع المقارنة «تلقائي» */
+function setRepDate(which, val){ repPeriod[which==='to' ? 'to' : 'from'] = String(val||''); repPeriod.preset = 'custom'; repCmp = ''; refreshContent(); }
+function setRepCmp(v){ v = String(v||''); repCmp = (v==='custom' || /^\d{4}-\d{2}$/.test(v)) ? v : ''; refreshContent(); }
+function setRepCmpDate(which, val){ if(which==='to') repCmpTo = String(val||''); else repCmpFrom = String(val||''); repCmp = 'custom'; refreshContent(); }
+/* م256: الشهور اللي ينفع نقارن بيها — من أول شهر فيه فاتورة أو مصروف لحد الشهر الحالي، الأحدث الأول */
+function repCmpMonths(now){
+  now = now ? new Date(now) : new Date();
+  let first = null;
+  const see = d => { const x = new Date(d); if(!isNaN(x) && (!first || x < first)) first = x; };
+  DB.invoices.forEach(i=>{ if(!i.cancelled) see(i.date); });
+  operatingExpenses().forEach(e=>see(e.date));
+  if(!first || first > now) first = now;
+  const out = [];
+  for(let y = now.getFullYear(), m = now.getMonth(); y > first.getFullYear() || (y === first.getFullYear() && m >= first.getMonth()); m--){
+    if(m < 0){ m = 11; y--; if(y < first.getFullYear()) break; }
+    out.push(y + '-' + String(m + 1).padStart(2, '0'));
+    if(out.length > 120) break;
+  }
+  return out;
+}
+/* م256: فترة المقارنة اللي اتختارت. undefined ⇒ «تلقائي» (repCompareRange).
+   شهر بعينه: لو الفترة المعروضة شهور كاملة ⇒ الشهر كله؛ غير كده ⇒ نفس الأيام (من نفس رقم اليوم وبنفس العدد)، وبيقف عند آخر الشهر */
+function repChosenCmp(range){
+  if(repCmp === 'custom'){
+    const ok = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s||''));
+    if(!ok(repCmpFrom) || !ok(repCmpTo)) return undefined;
+    const r = repRange({ preset:'custom', from:repCmpFrom, to:repCmpTo });
+    if(_repSOD(r.to) < _repSOD(r.from)) return undefined;
+    return { from:r.from, to:r.to, label:repRangeLabel(r.from, r.to) };
+  }
+  const m = /^(\d{4})-(\d{2})$/.exec(repCmp || '');
+  if(!m) return undefined;
+  const y = +m[1], mo = +m[2] - 1, last = new Date(y, mo + 1, 0).getDate();
+  const f = new Date(range.from), t = new Date(range.to);
+  const tLast = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  const whole = f.getFullYear() <= 2000 || (f.getDate() === 1 && f.getHours() === 0 && f.getMinutes() === 0
+    && t.getDate() === tLast && t.getHours() === 23 && t.getMinutes() === 59);
+  let pf, pt;
+  if(whole){ pf = new Date(y, mo, 1); pt = _repEOD(new Date(y, mo, last)); }
+  else {
+    const days = Math.max(1, Math.round((_repSOD(t) - _repSOD(f)) / 86400000) + 1);
+    const d1 = Math.min(f.getDate(), last);
+    pf = new Date(y, mo, d1); pt = _repEOD(new Date(y, mo, Math.min(d1 + days - 1, last)));
+  }
+  return { from:pf, to:pt, label:repRangeLabel(pf, pt) };
+}
+
+/* سياق الرسم: الفترة وفترة المقارنة وأرقامهم وشهور آخر 12 شهر — بيتحسب مرة واحدة في كل renderReports وبيتشارك بين التابات.
+   now بيتبعت كباراميتر عشان الاختبار يثبّت التاريخ */
+function repCtx(now){
+  now = now ? new Date(now) : new Date();
+  const range = repRange(repPeriod);
+  const chosen = repChosenCmp(range);   /* م256: «قارن بـ» */
+  const cmp = chosen !== undefined ? chosen : repCompareRange(repPeriod.preset, range);
+  const cur = repStats(range);
+  const prev = cmp ? repStats(cmp) : null;
+  /* فترة المقارنة فاضية خالص (من غير مبيعات ولا مصاريف ولا هالك) */
+  const noData = !!prev && prev.gross===0 && prev.exp.total===0 && prev.scrap===0;
+  return { now, range, cmp, cur, prev, noData, months: repMonthly(12, now) };
+}
+/* نسبة بعلامتها: السالب بياخد LRM قبله عشان في سياق RTL ماينقلبش «25.0%-» */
+function _repPct(n){ const s = _repNum(n).toFixed(1)+'%'; return s.charAt(0)==='-' ? '‎'+s : s; }
+function repPeriodTitle(st, range){
+  const f = new Date(range.from), t = new Date(range.to);
+  if(st.preset==='all') return 'كل الفترات';
+  if(_repSOD(t) < _repSOD(f)) return fmtDate(f)+' → '+fmtDate(t);
+  if(f.getTime() <= new Date(2000,0,1).getTime()) return 'من أول البيانات → '+fmtDate(t);
+  return repRangeLabel(f, t);
+}
+/* شريط الفترة (أزرار PERIOD_PRESETS + تاريخين) وسطر «الفترة المعروضة · مقارنة بـ …» */
+function repPeriodBar(ctx){
+  const dv = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s||'')) ? s : '';
+  const inverted = _repSOD(ctx.range.to) < _repSOD(ctx.range.from);
+  const line = 'الفترة المعروضة: '+repPeriodTitle(repPeriod, ctx.range)
+    + (ctx.cmp ? ' · مقارنة بـ '+ctx.cmp.label+(ctx.noData ? ' · مفيش بيانات للمقارنة' : '') : ' · من غير مقارنة');
+  return `
+  <div class="card" style="margin-bottom:10px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      ${PERIOD_PRESETS.map(([id,lbl])=>`<button class="btn btn-sm ${repPeriod.preset===id?'btn-accent':''}" onclick="setRepPreset('${id}')">${lbl}</button>`).join('')}
+    </div>
+    <div class="emp-period" style="margin-bottom:0">
+      <span class="muted" style="font-size:12px">فترة مخصصة — من</span>
+      <input class="f" type="date" value="${dv(repPeriod.from)}" onchange="setRepDate('from',this.value)">
+      <span class="muted" style="font-size:12px">إلى</span>
+      <input class="f" type="date" value="${dv(repPeriod.to)}" onchange="setRepDate('to',this.value)">
+    </div>
+    <div class="emp-period" style="margin:10px 0 0">
+      <span style="font-weight:700;font-size:12.5px">⚖️ قارن بـ</span>
+      <select class="f" style="width:auto" onchange="setRepCmp(this.value)">
+        <option value="" ${repCmp==='' ? 'selected' : ''}>تلقائي (اللي قبلها بنفس الأيام)</option>
+        ${repCmpMonths(ctx.now).map(ym=>`<option value="${ym}" ${repCmp===ym ? 'selected' : ''}>${AR_MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}</option>`).join('')}
+        <option value="custom" ${repCmp==='custom' ? 'selected' : ''}>فترة مخصصة…</option>
+      </select>
+      ${repCmp==='custom' ? `<span class="muted" style="font-size:12px">من</span>
+      <input class="f" type="date" value="${dv(repCmpFrom)}" onchange="setRepCmpDate('from',this.value)">
+      <span class="muted" style="font-size:12px">إلى</span>
+      <input class="f" type="date" value="${dv(repCmpTo)}" onchange="setRepCmpDate('to',this.value)">
+      ${repChosenCmp(ctx.range)===undefined ? '<span class="muted" style="font-size:11.5px">اختار التاريخين — لحد كده المقارنة تلقائي</span>' : ''}` : ''}
+    </div>
+  </div>
+  <div class="muted" style="font-size:12.5px;margin:0 2px 18px">${line}${inverted ? ' <b style="color:var(--danger)">· التاريخ «من» بعد «إلى» — اظبط التواريخ</b>' : ''}</div>`;
+}
+
+/* 👁 شرح الرقم: بتتسجّل في _statHelp بنفس طريقة statH. الدوس عليها مايفعّلش onclick الكارت */
+function repHelpEye(help, title, value){
+  if(!help || !help.key) return '';
+  _statHelp[help.key] = Object.assign({ title: title, value: value }, help);
+  return `<button class="stat-eye" type="button" onclick="event.stopPropagation();openStatHelp('${help.key}')" title="اضغط لشرح الرقم ده">👁</button>`;
+}
+/* كارت رقم: value · label · delta (HTML: سطور الفرق و«كان») · spark (svgSpark) · help (زي statH) · accent (متعلّم) · danger (الرقم أحمر) · onclick (كارت قابل للدوس) */
+function repCard(o){
+  o = o || {};
+  const cls = 'card stat-card rep-card'+(o.onclick ? ' clk' : '')+(o.accent ? ' acc' : '');
+  return `<div class="${cls}"${o.onclick ? ` onclick="${o.onclick}"` : ''}>${repHelpEye(o.help, o.label, o.value)}<div class="num"${o.danger ? ' style="color:var(--danger)"' : ''}>${o.value}</div><div class="lbl">${o.label}</div>${o.delta ? `<div class="rep-deltas">${o.delta}</div>` : ''}${o.spark ? `<div class="rep-spark">${o.spark}</div>` : ''}</div>`;
+}
+/* سطر فرق في الكارت: [lead] ▲/▼ الفرق (النسبة) «كان X» */
+function _repDeltaRow(lead, cur, prev, goodWhenUp, fmt, wasTxt, points){
+  return `<div class="rep-sub">${lead||''}${repDeltaHTML(cur, prev, goodWhenUp, fmt, points)}<span class="muted">${wasTxt}</span></div>`;
+}
+
+/* «محتاج تاخد بالك»: جمل بتتكتب لوحدها، أقصى 4 بترتيب مواصفات §7 (خسرانة · المصاريف · ربح القطع · الخصومات · المرتبات).
+   cur/prev من repStats (prev=null لو مفيش مقارنة). خسرانة وربح القطع بس مع rep.profit. النص عادي (الشاشة هي اللي بتهرّبه) */
+function repAlerts(cur, prev, range, now){
+  const out = [], prof = can('rep.profit');
+  now = now ? new Date(now) : new Date();
+  const EPS = 1e-6;
+  if(prof && cur.net < -0.005) out.push({ tone:'bad', text:'الفترة دي خسرانة '+money(-cur.net) });
+  if(prev){
+    const pe = prev.exp.total, ce = cur.exp.total;
+    if(pe > 0 && ce - pe >= 1000 - EPS && (ce - pe)*100 >= pe*10 - EPS){
+      /* أكتر بند زاد: نفس البند اللي بيطلع في كارت «أكتر بند زاد» في تاب 💸 المصاريف (repExpChanges: البند جوه مجموعته) */
+      const top = repExpChanges(cur, prev).rows.find(r=>r.diff > 0.005);
+      out.push({ tone:'bad', text:'المصاريف زادت '+((ce - pe)/pe*100).toFixed(1)+'%'+(top ? '. أكتر بند زاد: «'+top.label+'» (+'+money(top.diff)+')' : '') });
+    }
+    if(prof && cur.partsMargin!=null && prev.partsMargin!=null && Math.abs(cur.partsMargin - prev.partsMargin) >= 2 - EPS){
+      out.push({ tone: cur.partsMargin > prev.partsMargin ? 'good' : 'bad', text:'ربح القطع '+cur.partsMargin.toFixed(1)+'% · كان '+prev.partsMargin.toFixed(1)+'%' });
+    }
+    const pd = prev.discounts, cd = cur.discounts;
+    if(pd > 0 && cd - pd >= 1000 - EPS && (cd - pd)*100 >= pd*20 - EPS){
+      out.push({ tone:'warn', text:'الخصومات زادت '+((cd - pd)/pd*100).toFixed(1)+'%' });
+    }
+  }
+  const salaryTxt = repSalaryAlert(range, now, prof);
+  if(salaryTxt) out.push({ tone:'warn', text:salaryTxt });
+  return out.slice(0, 4);
+}
+/* قاعدة تنبيه المرتبات (بتتشارك بين «محتاج تاخد بالك» في الملخص وسطر تحت قائمة الدخل):
+   الفترة فيها الشهر الحالي ومفيش مصروف salary بتاريخ الشهر ده (أي يوم فيه) ⇒ نص التنبيه، غير كده '' */
+function repSalaryAlert(range, now, prof){
+  now = now ? new Date(now) : new Date();
+  if(!(range && new Date(range.to) >= new Date(now.getFullYear(), now.getMonth(), 1) && new Date(range.from) <= now)) return '';
+  const hasSalary = DB.expenses.some(e=>{
+    if(expTxnType(e) !== 'salary') return false;
+    const d = new Date(e.date);
+    return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+  });
+  if(hasSalary) return '';
+  return 'مرتبات الشهر ده لسه ماتصرفتش'+(prof ? '، فصافي الربح هينزل يوم المرتبات' : '، فالمصاريف هتزيد يوم المرتبات');
+}
+
+/* «وضعك دلوقتي» — مش مرتبط بالفترة. نفس معادلات الرئيسية والشاشة القديمة (مع تحويل القيمة الناقصة لصفر عشان مايظهرش NaN) */
+function repSnapshot(){
+  const cash = liveAccounts().reduce((s,a)=>s+_repNum(accBalance(a.id)), 0);
+  /* نفس معادلة «مستحقات غير محصلة» في الرئيسية */
+  const receivable = DB.invoices.filter(i=>!i.cancelled).reduce((s,i)=>{ const paid = (i.payments||[]).reduce((a,p)=>a+_repNum(p.amount), 0); return s + (_repNum(i.total) - paid); }, 0);
+  /* نفس معادلة «مستحق للموردين» في الرئيسية */
+  const payable = activeSuppliers().reduce((s,sup)=>s+_repNum(supplierBalance(sup.id).balance), 0);
+  const inv = activeInventory();
+  return {
+    cash, receivable, payable,
+    stockValue: inv.reduce((s,p)=>s+_repNum(p.qty)*_repNum(p.costPrice), 0),
+    lowStock: inv.filter(p=>p.qty<=p.minQty).length
+  };
+}
+
+/* 📊 الملخص: 6 كروت · رسم آخر 12 شهر · محتاج تاخد بالك · وضعك دلوقتي */
+function renderRepSummary(ctx){
+  ctx = ctx || repCtx();
+  const cur = ctx.cur, prev = ctx.prev, mo = ctx.months, has = !!prev;
+  const prof = can('rep.profit');
+  const sp = f => svgSpark(mo.map(f));
+  const cnt = v => String(Math.round(v));
+  const cmpNote = has ? 'المقارنة بـ '+ctx.cmp.label+'.' : 'الفترة دي من غير مقارنة.';
+  const cards = [];
+
+  cards.push(repCard({
+    value: money(cur.netSales), label:'صافي المبيعات',
+    delta: has ? _repDeltaRow('', cur.netSales, prev.netSales, true, money, 'كان '+money(prev.netSales)) : '',
+    spark: sp(m=>m.netSales),
+    onclick: "openRepDrill('sales','all')",
+    help: { key:'rep_sales',
+      meaning:'إيرادك من فواتير الفترة بعد الخصم.',
+      source:'بنود فواتير الفترة (غير الملغية) بتاريخ الفاتورة'+(prof ? ' — نفس «صافي المبيعات» في تقرير الربحية.' : '.'),
+      formula:'إجمالي البيع '+money(cur.gross)+' − الخصومات '+money(cur.discounts)+' = '+money(cur.netSales),
+      tax:'without', note:cmpNote }
+  }));
+  if(prof) cards.push(repCard({
+    value: money(cur.workProfit), label:'ربح الشغل',
+    delta: (has ? _repDeltaRow('', cur.workProfit, prev.workProfit, true, money, 'كان '+money(prev.workProfit)) : '')
+      + `<div class="rep-sub"><span>النسبة ${_repPct(cur.workMargin)}</span>${has ? repDeltaHTML(cur.workMargin, prev.workMargin, true, v=>v.toFixed(1)+' نقطة', true)+'<span class="muted">كانت '+_repPct(prev.workMargin)+'</span>' : ''}</div>`,
+    spark: sp(m=>m.workProfit),
+    onclick: repTabs().some(t=>t.id==='pl') ? "setRepView('pl')" : '',
+    help: { key:'rep_workProfit',
+      meaning:'اللي فاضل من صافي المبيعات بعد تكلفة القطع والأعمال الخارجية والدهان — <b>قبل</b> المصاريف والمرتبات والهالك.',
+      source:'نفس «ربح الشغل» في تقرير الربحية (حسابه بيتم من بنود أمر الشغل وسعر شراء كل بند).',
+      formula:'صافي المبيعات '+money(cur.netSales)+' − تكلفة الشغل '+money(cur.cost.total)+' = '+money(cur.workProfit)+' ('+_repPct(cur.workMargin)+')',
+      tax:'without',
+      note:'تكلفة الشغل = قطع من المخزون '+money(cur.cost.inParts)+' + قطع خارجية '+money(cur.cost.extParts)+' + أعمال خارجية '+money(cur.cost.extWork)+' + خامات دهان '+money(cur.cost.paint)+'. '+cmpNote }
+  }));
+  const topG = cur.exp.groups[0];
+  cards.push(repCard({
+    value: money(cur.exp.total), label:'المصاريف',
+    delta: has ? _repDeltaRow('', cur.exp.total, prev.exp.total, false, money, 'كان '+money(prev.exp.total)) : '',
+    spark: sp(m=>m.exp),
+    onclick: repTabs().some(t=>t.id==='expenses') ? "setRepView('expenses')" : '',
+    help: { key:'rep_exp',
+      meaning:'كل المصاريف اللي اتسجلت في الفترة (إيجار · مرتبات · كهرباء …). المصاريف الاستثمارية (أصول) جواها.',
+      source:'مصاريف الفترة بتاريخ المصروف. سداد الموردين واسترداد العرابين ورد فلوس العملاء مش مصاريف — بتظهر في مكان تاني.',
+      formula:'مصاريف الفترة = '+money(cur.exp.total)+(topG ? ' (أكبر مجموعة: '+escNote(topG.group)+' '+money(topG.total)+')' : ''),
+      note:'نفس «إجمالي المصروفات» في تقرير المصاريف لنفس الفترة. '+cmpNote }
+  }));
+  if(prof) cards.push(repCard({
+    value: money(cur.net), label:'صافي الربح', accent:true, danger: cur.net < -0.005,
+    delta: (has ? _repDeltaRow('', cur.net, prev.net, true, money, 'كان '+money(prev.net)) : '')
+      + `<div class="rep-sub"><span>نسبة الصافي ${_repPct(cur.netMargin)}</span>${has ? repDeltaHTML(cur.netMargin, prev.netMargin, true, v=>v.toFixed(1)+' نقطة', true)+'<span class="muted">كانت '+_repPct(prev.netMargin)+'</span>' : ''}</div>`,
+    spark: sp(m=>m.net),
+    onclick: repTabs().some(t=>t.id==='pl') ? "setRepView('pl')" : '',
+    help: { key:'rep_net',
+      meaning:'اللي فاضل لك فعلاً بعد كل حاجة: تكلفة الشغل والهالك والمصاريف (المرتبات والإيجار وغيرها).',
+      source:'رقم جديد في شاشة التقارير بس. الرئيسية وتقرير الربحية بيعرضوا «ربح الشغل بعد الهالك» (= ربح الشغل − الهالك) وده لسه قبل المصاريف والمرتبات — أما صافي الربح هنا فبعد المصاريف كمان.',
+      formula:'ربح الشغل '+money(cur.workProfit)+' − الهالك '+money(cur.scrap)+' − المصاريف '+money(cur.exp.total)+' = '+money(cur.net),
+      tax:'without',
+      note:'نسبة الصافي = صافي الربح ÷ صافي المبيعات = '+_repPct(cur.netMargin)+'. '+cmpNote }
+  }));
+  cards.push(repCard({
+    value: String(cur.cars), label:'عدد العربيات',
+    delta: has ? _repDeltaRow('', cur.cars, prev.cars, true, cnt, 'كان '+prev.cars) : '',
+    onclick: "openRepDrill('cars')",
+    help: { key:'rep_cars',
+      meaning:'عدد الفواتير غير الملغية اللي اتعملت في الفترة — كل فاتورة = عربية.',
+      source:'تاريخ الفاتورة جوه الفترة. الفاتورة الملغية مش بتتحسب.',
+      formula:cur.cars+' فاتورة',
+      note:cmpNote }
+  }));
+  cards.push(repCard({
+    value: money(cur.avgTicket), label:'متوسط الفاتورة للعربية',
+    delta: has ? _repDeltaRow('', cur.avgTicket, prev.avgTicket, true, money, 'كان '+money(prev.avgTicket)) : '',
+    help: { key:'rep_avg',
+      meaning:'متوسط اللي بتبيعه للعربية الواحدة بعد الخصم.',
+      source:'صافي المبيعات ÷ عدد العربيات.',
+      formula:money(cur.netSales)+' ÷ '+cur.cars+' = '+money(cur.avgTicket),
+      tax:'without',
+      note:'ده غير «متوسط قيمة الفاتورة» في المديونيات — اللي هناك بالضريبة. '+cmpNote }
+  }));
+
+  /* رسم آخر 12 شهر: صافي المبيعات + (التكلفة والمصاريف | المصاريف بس من غير rep.profit) + خط صافي الربح مع rep.profit بس */
+  const bar1 = { name:'صافي المبيعات', color:REP_COLORS[0], values: mo.map(m=>m.netSales) };
+  const bar2 = prof
+    ? { name:'التكلفة والمصاريف', color:REP_COLORS[1], values: mo.map(m=>m.netSales - m.workProfit + m.exp) }
+    : { name:'المصاريف', color:REP_COLORS[1], values: mo.map(m=>m.exp) };
+  const line = prof ? { name:'صافي الربح', color:REP_COLORS[2], values: mo.map(m=>m.net) } : null;
+  const chartTitle = 'آخر 12 شهر · المبيعات مقابل '+(prof ? 'التكلفة والمصاريف' : 'المصاريف');
+  const chartEye = repHelpEye(prof
+    ? { key:'rep_chart',
+        meaning:'العمود الأزرق: صافي المبيعات لكل شهر. العمود البرتقالي: التكلفة والمصاريف. الخط الأخضر: صافي الربح بعد كل حاجة.',
+        source:'آخر 12 شهر ميلادي لحد الشهر الحالي — مش مرتبط بفلتر الفترة. الشهور اللي قبل أول فاتورة أو مصروف مابتظهرش.',
+        formula:'التكلفة والمصاريف = (صافي المبيعات − ربح الشغل) + المصاريف · صافي الربح = ربح الشغل − الهالك − المصاريف',
+        tax:'without' }
+    : { key:'rep_chart',
+        meaning:'العمود الأزرق: صافي المبيعات لكل شهر. العمود البرتقالي: المصاريف.',
+        source:'آخر 12 شهر ميلادي لحد الشهر الحالي — مش مرتبط بفلتر الفترة. الشهور اللي قبل أول فاتورة أو مصروف مابتظهرش.',
+        formula:'المصاريف = المصاريف المسجلة في الشهر',
+        tax:'without' }, 'رسم آخر 12 شهر', 'آخر 12 شهر');
+
+  /* محتاج تاخد بالك */
+  const alerts = repAlerts(cur, prev, ctx.range, ctx.now);
+  const alertsHTML = alerts.length
+    ? alerts.map(a=>`<div class="rep-alert ${a.tone}"><span>${a.tone==='good' ? '✅' : '⚠️'}</span><span>${escNote(a.text)}</span></div>`).join('')
+    : `<div class="muted" style="font-size:13px">✅ مفيش حاجة غريبة في الفترة دي.</div>`;
+
+  /* وضعك دلوقتي */
+  const sn = repSnapshot();
+  const snap = [
+    repCard({ value: money(sn.cash), label:'الفلوس في الخزن', help:{ key:'rep_cash',
+      meaning:'الرصيد الحالي لكل الخزن والحسابات المالية الشغالة.',
+      source:'الرصيد الافتتاحي + حركات كل حساب. نفس إجمالي شاشة الخزنة.',
+      formula:'مجموع أرصدة '+liveAccounts().length+' حساب = '+money(sn.cash) } }),
+    repCard({ value: money(sn.receivable), label:'عند العملاء', help:{ key:'rep_recv',
+      meaning:'المتبقي على العملاء من كل الفواتير السارية، من أول ما السيستم اشتغل.',
+      source:'إجمالي كل فاتورة غير ملغية ناقص اللي اتحصّل منها. نفس «مستحقات غير محصلة» في الرئيسية.',
+      formula:'متبقي كل الفواتير = '+money(sn.receivable),
+      tax:'with' } }),
+    repCard({ value: money(sn.payable), label:'للموردين عليك', danger: sn.payable > 0.005, help:{ key:'rep_pay',
+      meaning:'اللي عليك للموردين دلوقتي.',
+      source:'مجموع أرصدة الموردين. نفس «مستحق للموردين» في الرئيسية.',
+      formula:'مجموع أرصدة '+activeSuppliers().length+' مورد = '+money(sn.payable) } }),
+    repCard({ value: money(sn.stockValue), label:'قيمة المخزون', help:{ key:'rep_stock',
+      meaning:'تمن شراء كل الأصناف اللي في المخزن دلوقتي.',
+      source:'كل صنف غير مؤرشف: الكمية × سعر الشراء.',
+      formula:'مجموع (الكمية × سعر الشراء) لـ '+activeInventory().length+' صنف = '+money(sn.stockValue) } }),
+    repCard({ value: String(sn.lowStock), label:'أصناف تحت حد الأمان', danger: sn.lowStock > 0, help:{ key:'rep_low',
+      meaning:'الأصناف اللي كميتها وصلت لحد الأمان أو أقل.',
+      source:'كل صنف غير مؤرشف كميته ≤ حد الأمان بتاعه.',
+      formula:sn.lowStock+' صنف من '+activeInventory().length } })
+  ];
 
   return `
-  <div class="grid g4" style="margin-bottom:24px">
-    ${stat(money(totalSales),'إجمالي المبيعات')}
-    ${stat(money(totalCollected),'إجمالي المحصّل')}
-    ${stat(money(outstanding),'مستحقات لم تحصّل')}
-    ${stat(money(totalExpenses),'المصروفات التشغيلية')}
-  </div>
-  <div class="grid g3" style="margin-bottom:24px">
-    ${stat(money(net),'صافي الربح (محصّل − مصروفات − هالك)')}
-    ${stat(money(scrapLoss),'خسائر الهالك والتالف', scrapLoss>0)}
-    ${stat(money(inventoryValue),'قيمة المخزون الحالي')}
-    ${stat(String(lowStock),'أصناف تحت حد الأمان', lowStock>0)}
-  </div>
-  <div class="section-head"><h3>آخر 10 فواتير</h3></div>
-  <div class="card">
-    <table><thead><tr><th>رقم</th><th>العميل</th><th>التاريخ</th><th>الإجمالي</th><th>المحصّل</th></tr></thead>
-    <tbody>
-    ${[...DB.invoices].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,10).map(inv=>{
-      const cust = DB.customers.find(c=>c.id===inv.customerId);
-      const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
-      return `<tr><td>#${inv.invNo}</td><td>${cust?cust.name:'—'}</td><td>${fmtDate(inv.date)}</td><td>${money(inv.total)}</td><td>${money(paid)}</td></tr>`;
-    }).join('') || `<tr><td colspan="5" class="empty">لا توجد فواتير</td></tr>`}
-    </tbody></table>
-  </div>
-  <div class="section-head" style="margin-top:26px"><h3>أداء الفنيين</h3></div>
+  <div class="grid ${cards.length % 3===0 ? 'g3' : 'g4'}" style="margin-bottom:24px">${cards.join('')}</div>
+  <div class="section-head"><h3>${chartTitle}</h3></div>
+  <div class="card" style="position:relative;margin-bottom:24px">${chartEye}${svgMonthBars(mo, [bar1, bar2], line)}</div>
+  <div class="section-head"><h3>محتاج تاخد بالك</h3></div>
+  <div class="card" style="margin-bottom:24px">${alertsHTML}</div>
+  <div class="section-head"><h3>وضعك دلوقتي (مش مرتبط بالفترة)</h3></div>
+  <div class="rep-snap" style="margin-bottom:24px">${snap.join('')}</div>`;
+}
+
+/* 🔧 التشغيل: الدالتين زي ما هما من غير ولا تغيير */
+function renderRepOps(){
+  return `
+  <div class="section-head"><h3>أداء الفنيين</h3></div>
   ${renderTechnicianPerformance()}
   <div class="section-head" style="margin-top:26px"><h3>تحليل أوامر الشغل الملغاة</h3></div>
   ${renderCancellationAnalytics()}`;
+}
+
+/* ============================================================
+   م255 — 💰 المكسب والخسارة: قائمة الدخل (البند · الفترة دي · اللي قبلها · الفرق · من المبيعات) · حركة الفلوس · الشهور جنب بعض · طباعة · Excel
+   صفوف القائمة بتتبني مرة واحدة في repPLRows (الشاشة · الطباعة · الـ CSV بنفس الترتيب والأرقام) من repStats/repMonthly — مفيش معادلة جديدة.
+   قراءة بس: مفيش saveKey ولا كتابة في DB (غير logAction للطباعة والـ Excel). من غير rep.profit مفيش ولا رقم بيتعرض ولا بيتطبع ولا بيتصدّر.
+   ============================================================ */
+function repPLAllowed(){ return can('rep.financial') && can('rep.profit'); }
+/* مبلغ للعرض: money() زي ما هي (السالب فيه علامة الاتجاه بتاعتها) — مع تفادي «-0» */
+function _repM(n){ n = _repNum(n); return money(Math.abs(n) < 0.005 ? 0 : n); }
+/* نفس نص repDeltaHTML من غير ألوان ولا HTML (للطباعة) */
+function _repDeltaTxt(cur, prev, fmt, points){
+  const c = _repNum(cur), p = _repNum(prev), dl = repDelta(c, p, true);
+  if(Math.abs(p) < 0.005) return Math.abs(c) < 0.005 ? '—' : 'جديد';
+  if(dl.dir==='same') return 'زي ما هو';
+  return (dl.dir==='up' ? '▲' : '▼')+' '+(fmt || money)(Math.abs(dl.diff))+((!points && dl.pct!==null) ? ' ('+Math.abs(dl.pct).toFixed(1)+'%)' : '');
+}
+/* فرق محايد (رمادي): للأرقام اللي زيادتها مش حلوة ولا وحشة، زي «دفعت للموردين» */
+function _repDeltaNeutral(cur, prev){ return `<span class="rep-delta" style="color:var(--muted)">${_repDeltaTxt(cur, prev)}</span>`; }
+
+/* صفوف قائمة الدخل: { key, kind, label, c, p, up, lvl, group?, invest? }
+   kind: sec (عنوان) · line · sub (إجمالي فرعي) · total (النتيجة) · grp (مجموعة مصاريف) · cat (بند جوه مجموعة).
+   c = الفترة دي · p = اللي قبلها (null لو مفيش مقارنة) · up = الزيادة حلوة (أخضر) ولا وحشة.
+   الخصم والتكلفة والمصاريف والهالك أرقامها موجبة وعلامة − في الاسم (زي أي قائمة دخل). «بنود تانية» بتظهر لو في أي عمودين فيها فرق ≥ نص جنيه
+   (عشان كل عمود يتجمع صح). مجموعة موجودة في اللي قبلها بس بتظهر والفترة دي 0 — برضه عشان العمود يتجمع */
+function repPLRows(cur, prev){
+  const R = [], pv = prev || null;
+  const add = (key, kind, label, get, up, lvl, extra)=>R.push(Object.assign({ key, kind, label, c:_repNum(get(cur)), p: pv ? _repNum(get(pv)) : null, up, lvl }, extra || {}));
+  R.push({ key:'sec_sales', kind:'sec', label:'المبيعات', lvl:0 });
+  add('service',  'line', 'مصنعية',         s=>s.sales.service,  true, 1);
+  add('part',     'line', 'قطع من المخزون', s=>s.sales.part,     true, 1);
+  add('ext_part', 'line', 'قطع خارجية',     s=>s.sales.ext_part, true, 1);
+  add('ext_work', 'line', 'أعمال خارجية',   s=>s.sales.ext_work, true, 1);
+  if(Math.abs(_repNum(cur.sales.other)) >= 0.5 || (pv && Math.abs(_repNum(pv.sales.other)) >= 0.5)) add('other', 'line', 'بنود تانية', s=>s.sales.other, true, 1);
+  add('discounts', 'line',  '− الخصومات',    s=>s.discounts, false, 1);
+  add('netSales',  'total', 'صافي المبيعات', s=>s.netSales,  true,  0);
+  add('cost',       'sub',  '− تكلفة الشغل',         s=>s.cost.total,    false, 1);
+  add('c_inParts',  'line', 'تكلفة قطع من المخزون',  s=>s.cost.inParts,  false, 2);
+  add('c_extParts', 'line', 'تكلفة قطع خارجية',      s=>s.cost.extParts, false, 2);
+  add('c_extWork',  'line', 'تكلفة أعمال خارجية',    s=>s.cost.extWork,  false, 2);
+  add('c_paint',    'line', 'تكلفة خامات دهان',      s=>s.cost.paint,    false, 2);
+  add('workProfit', 'total','ربح الشغل',             s=>s.workProfit,    true,  0);
+  add('exp', 'sub', '− المصاريف', s=>s.exp.total, false, 1);
+  const gmap = s=>{ const m = new Map(); ((s && s.exp.groups) || []).forEach(g=>m.set(g.group, g)); return m; };
+  const cg = gmap(cur), pg = gmap(pv);
+  const names = [...cg.keys()];
+  pg.forEach((g, n)=>{ if(!cg.has(n)) names.push(n); });
+  names.forEach(n=>{
+    const a = cg.get(n), b = pg.get(n);
+    R.push({ key:'grp', kind:'grp', label:String(n), invest: !!(a || b).invest, c: a ? _repNum(a.total) : 0, p: pv ? (b ? _repNum(b.total) : 0) : null, up:false, lvl:2 });
+    const cm = new Map(((a && a.cats) || []).map(x=>[x.cat, x.total])), pm = new Map(((b && b.cats) || []).map(x=>[x.cat, x.total]));
+    const cats = [...cm.keys()];
+    pm.forEach((v, k)=>{ if(!cm.has(k)) cats.push(k); });
+    cats.forEach(k=>R.push({ key:'cat', kind:'cat', label:String(k), group:String(n), c:_repNum(cm.get(k)), p: pv ? _repNum(pm.get(k)) : null, up:false, lvl:3 }));
+  });
+  add('scrap', 'line',  '− الهالك والتالف', s=>s.scrap, false, 1);
+  add('net',   'total', 'صافي الربح',       s=>s.net,   true,  0);
+  return R;
+}
+/* حركة الفلوس (برة حساب الربح). up=null ⇒ فرقها محايد */
+function repPLCash(cur, prev){
+  const f = (label, up, get)=>({ label, up, c:_repNum(get(cur)), p: prev ? _repNum(get(prev)) : null });
+  return [
+    f('الفلوس اللي دخلت فعلاً (بالضريبة)',         true,  s=>s.cash.collected),
+    f('اللي لسه برة من فواتير الفترة (بالضريبة)', false, s=>s.cash.debt),
+    f('دفعت للموردين',                              null,  s=>s.cash.supplierPaid)
+  ];
+}
+/* «من المبيعات»: البند ÷ صافي المبيعات × 100 — cp للفترة دي (null لو صافي المبيعات مش موجب)، pp لنفس البند في اللي قبلها على مبيعاتها هي (null لو مفيش). متقرّبين لنفس الرقم المعروض */
+function _repPLShares(c, p, cur, prev){
+  const r1 = x=>Math.round(x*10)/10;
+  const cb = _repNum(cur.netSales), pb = prev ? _repNum(prev.netSales) : 0;
+  return { cp: cb > 0 ? r1(c/cb*100) : null, pp: (prev && p!==null && pb > 0) ? r1(p/pb*100) : null };
+}
+function _repPLShareHTML(r, cur, prev){
+  const sh = _repPLShares(r.c, r.p, cur, prev);
+  if(sh.cp === null) return '—';
+  /* سطر «▲ n نقطة · كانت X%» بس لما النسبة اتغيرت واللي قبلها كان ليها قيمة (لو كانت صفر عمود «الفرق» بيقول «جديد») */
+  if(sh.pp === null || sh.pp === 0 || sh.pp === sh.cp) return _repPct(sh.cp);
+  return _repPct(sh.cp)+`<div class="rep-sub" style="font-size:11.5px">${repDeltaHTML(sh.cp, sh.pp, r.up, v=>v.toFixed(1)+' نقطة', true)}<span class="muted">كانت ${_repPct(sh.pp)}</span></div>`;
+}
+
+function repIsGroupOpen(name){ return Object.prototype.hasOwnProperty.call(repOpenGroups, name) && !!repOpenGroups[name]; }
+/* فتح/قفل مجموعة مصاريف: بياخد رقم من _repDrillKeys (اتسجل في نفس الرسمة اللي طلّعت الـ onclick) مش الاسم */
+function toggleRepGroup(i){
+  const name = _repDrillKeys[i];
+  if(typeof name !== 'string') return;
+  repOpenGroups[name] = !repIsGroupOpen(name);
+  refreshContent();
+}
+
+/* نداء التفاصيل لسطر في قائمة الدخل (نوع ومفتاح ثابتين — مفيش نص مستخدم) — '' لو السطر ملوش تفاصيل (الإجماليات) */
+function repPLDrillCall(key){
+  switch(key){
+    case 'service': case 'part': case 'ext_part': case 'ext_work': case 'other': return `openRepDrill('sales','${key}')`;
+    case 'discounts':  return `openRepDrill('discount')`;
+    case 'c_inParts':  return `openRepDrill('cost','inParts')`;
+    case 'c_extParts': return `openRepDrill('cost','extParts')`;
+    case 'c_extWork':  return `openRepDrill('cost','extWork')`;
+    case 'c_paint':    return `openRepDrill('cost','paint')`;
+    case 'scrap':      return `openRepDrill('scrap')`;
+  }
+  return '';
+}
+function repPLRowHTML(r, cur, prev){
+  if(r.kind==='sec') return `<tr><td colspan="5" style="padding:16px 12px 6px;font-weight:800;font-size:12px;color:var(--muted)">${escNote(r.label)}</td></tr>`;
+  const has = r.p !== null, total = r.kind==='total';
+  const trSt = total ? ' style="font-weight:800;background:var(--surface-2)"' : (r.kind==='sub' ? ' style="font-weight:700"' : (r.kind==='cat' ? ' style="font-size:13px"' : ''));
+  const pad = 12 + (r.lvl || 0)*18;
+  let first;
+  if(r.kind==='grp'){
+    /* السهم بيفتح/يقفل البنود، والاسم بيفتح مصاريف المجموعة — عنصرين منفصلين ونفس الفهرس (القيمة واحدة: اسم المجموعة) */
+    const gi = repKey(r.label);
+    first = `<td style="padding-right:${pad}px"><span class="rep-twist" onclick="toggleRepGroup(${gi})" title="اضغط لفتح/قفل بنود المجموعة">${repIsGroupOpen(r.label) ? '▾' : '▸'}</span> <span class="rep-drill" onclick="openRepDrill('expGroup',${gi})" title="اضغط تشوف المصاريف اللي ورا الرقم ده">${escNote(r.label)}${r.invest ? ' 💼' : ''}</span></td>`;
+  } else {
+    /* بند مصاريف جوه مجموعة: الفهرس بيشاور على الزوج [المجموعة, البند] — مش نص في الـ onclick */
+    const call = r.kind==='cat' ? `openRepDrill('expCat',${repKey([r.group, r.label])})` : repPLDrillCall(r.key);
+    first = call
+      ? `<td class="rep-drill" style="padding-right:${pad}px" onclick="${call}" title="اضغط تشوف السجلات اللي ورا الرقم ده">${escNote(r.label)}</td>`
+      : `<td style="padding-right:${pad}px">${escNote(r.label)}</td>`;
+  }
+  return `<tr${trSt}>${first}<td${total && r.c < -0.005 ? ' style="color:var(--danger)"' : ''}>${_repM(r.c)}</td><td>${has ? _repM(r.p) : '—'}</td><td>${has ? repDeltaHTML(r.c, r.p, r.up, money) : '—'}</td><td>${_repPLShareHTML(r, cur, prev)}</td></tr>`;
+}
+/* جدول آخر 12 شهر (repMonthly) — الأقدم أول عمود. forPrint ⇒ من غير تغليف الشاشة ولا ألوان الثيم */
+function repPLMonthsHTML(months, forPrint){
+  if(!months || !months.length) return '<div class="empty" style="padding:18px">مفيش بيانات شهور لسه</div>';
+  const bg = forPrint ? '#f3f3f3' : 'var(--surface-2)', red = forPrint ? '#c00' : 'var(--danger)';
+  const mrow = (label, get, o)=>{
+    o = o || {};
+    return `<tr${o.strong ? ` style="font-weight:800;background:${bg}"` : ''}><td>${label}</td>${months.map(m=>{
+      const v = get(m);
+      return `<td${(v!==null && v < -0.005 && o.red) ? ` style="color:${red}"` : ''}>${o.pct ? (v===null ? '—' : _repPct(v)) : _repM(v)}</td>`;
+    }).join('')}</tr>`;
+  };
+  const tbl = `<table${forPrint ? '' : ' class="rep-pl"'} style="min-width:${130 + months.length*96}px${forPrint ? ';font-size:10.5px' : ''}"><thead><tr><th>البند</th>${months.map(m=>`<th>${escNote(m.label)}${m.partial ? '*' : ''}</th>`).join('')}</tr></thead><tbody>
+    ${mrow('صافي المبيعات', m=>m.netSales)}${mrow('ربح الشغل', m=>m.workProfit)}${mrow('المصاريف', m=>m.exp)}${mrow('الهالك', m=>m.scrap)}
+    ${mrow('صافي الربح', m=>m.net, { strong:true, red:true })}${mrow('نسبة الصافي', m=>m.netSales > 0 ? m.net/m.netSales*100 : null, { pct:true, red:true })}
+  </tbody></table>`;
+  return forPrint ? tbl : `<div class="no-rt" style="overflow-x:auto">${tbl}</div>`;
+}
+
+function renderRepPL(ctx){
+  if(!repPLAllowed()) return '';
+  ctx = ctx || repCtx();
+  const cur = ctx.cur, prev = ctx.prev, has = !!prev;
+  const title = repPeriodTitle(repPeriod, ctx.range);
+  const cmpLine = has ? 'مقارنة بـ '+ctx.cmp.label+(ctx.noData ? ' · مفيش بيانات للمقارنة' : '') : 'من غير مقارنة';
+  const rows = repPLRows(cur, prev).filter(r=>r.kind!=='cat' || repIsGroupOpen(r.group));
+  const salaryTxt = repSalaryAlert(ctx.range, ctx.now, true);
+  const cashTR = repPLCash(cur, prev).map(r=>`<tr><td>${r.label}</td><td>${_repM(r.c)}</td><td>${has ? _repM(r.p) : '—'}</td><td>${has ? (r.up===null ? _repDeltaNeutral(r.c, r.p) : repDeltaHTML(r.c, r.p, r.up, money)) : '—'}</td></tr>`).join('');
+  return `
+  <div class="section-head" style="flex-wrap:wrap;gap:10px"><h3>💰 قائمة الدخل — ${escNote(title)}</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-sm" onclick="printRepPL()">🖨 طباعة</button><button class="btn btn-sm" onclick="exportRepPLXLSX()">⬇ Excel</button></div></div>
+  <div class="muted" style="font-size:12.5px;margin:-6px 2px 12px">${escNote(cmpLine)} · كل المبالغ من غير ضريبة · اضغط على السهم ▸ جنب المجموعة تشوف بنودها · واضغط على أي اسم بند منقّط تشوف الفواتير أو المصاريف اللي ورا الرقم</div>
+  <div class="card" style="padding:6px 8px;margin-bottom:14px"><div class="no-rt" style="overflow-x:auto"><table class="rep-pl" style="min-width:640px">
+    <thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th><th>من المبيعات</th></tr></thead>
+    <tbody>${rows.map(r=>repPLRowHTML(r, cur, prev)).join('')}</tbody></table></div></div>
+  ${salaryTxt ? `<div class="rep-alert warn" style="margin-bottom:6px"><span>⚠️</span><span>${escNote(salaryTxt)}</span></div>` : ''}
+  <div class="section-head" style="margin-top:26px"><h3>حركة الفلوس (برة حساب الربح)</h3></div>
+  <div class="card" style="padding:6px 8px;margin-bottom:8px"><div class="no-rt" style="overflow-x:auto"><table class="rep-pl" style="min-width:520px">
+    <thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th></tr></thead><tbody>${cashTR}</tbody></table></div></div>
+  <div class="muted" style="font-size:12px;margin:0 2px 8px">الفلوس اللي دخلت بتاريخ الدفعة (مش بتاريخ الفاتورة) · اللي لسه برة محسوب على فواتير الفترة نفسها · الاتنين بالضريبة ومش داخلين في حساب الربح اللي فوق.</div>
+  <div class="section-head" style="margin-top:26px"><h3>الشهور جنب بعض</h3></div>
+  <div class="muted" style="font-size:12.5px;margin:-6px 2px 10px">آخر 12 شهر لحد النهارده — مش مرتبط بفلتر الفترة${ctx.months.some(m=>m.partial) ? ' · * الشهر لسه ماخلصش' : ''}</div>
+  <div class="card" style="padding:6px 8px;margin-bottom:24px">${repPLMonthsHTML(ctx.months)}</div>`;
+}
+
+/* CSV للـ Excel: أرقام خام (من غير «ج.م») بنفس ترتيب الشاشة. الأقسام: القائمة (كل المجموعات بكل بنودها) · حركة الفلوس · الشهور.
+   اللي قبلها والفرق فاضيين لو مفيش مقارنة. الخصم والتكلفة والمصاريف والهالك موجبين وعلامة − في الاسم (زي الشاشة). meta اختياري: عنوان وفترة ومقارنة فوق */
+function repPLCSV(cur, prev, months, meta){
+  const r2 = x=>Math.round(_repNum(x)*100)/100, r1 = x=>Math.round(_repNum(x)*10)/10;
+  const out = [];
+  if(meta){
+    out.push(['التقرير', meta.title || 'قائمة الدخل']);
+    if(meta.period) out.push(['الفترة', meta.period]);
+    if(meta.compare) out.push(['المقارنة', meta.compare]);
+    out.push([]);
+  }
+  out.push(['البند', 'الفترة دي', 'اللي قبلها', 'الفرق', 'من المبيعات']);
+  repPLRows(cur, prev).forEach(r=>{
+    if(r.kind==='sec'){ out.push([r.label, '', '', '', '']); return; }
+    const sh = _repPLShares(r.c, r.p, cur, prev);
+    out.push([(r.kind==='cat' ? '    ' : (r.kind==='grp' ? '  ' : ''))+r.label+(r.invest ? ' 💼' : ''), r2(r.c), r.p===null ? '' : r2(r.p), r.p===null ? '' : r2(r.c - r.p), sh.cp===null ? '' : sh.cp]);
+  });
+  out.push([], ['حركة الفلوس (برة حساب الربح)', 'الفترة دي', 'اللي قبلها', 'الفرق', '']);
+  repPLCash(cur, prev).forEach(r=>out.push([r.label, r2(r.c), r.p===null ? '' : r2(r.p), r.p===null ? '' : r2(r.c - r.p), '']));
+  if(months && months.length){
+    out.push([], ['الشهر'].concat(months.map(m=>m.label+(m.partial ? '*' : ''))));
+    [['صافي المبيعات', m=>r2(m.netSales)], ['ربح الشغل', m=>r2(m.workProfit)], ['المصاريف', m=>r2(m.exp)], ['الهالك', m=>r2(m.scrap)], ['صافي الربح', m=>r2(m.net)],
+      ['نسبة الصافي', m=>_repNum(m.netSales) > 0 ? r1(m.net/m.netSales*100) : '']].forEach(([lbl, f])=>out.push([lbl].concat(months.map(f))));
+    if(months.some(m=>m.partial)) out.push(['* الشهر لسه ماخلصش']);
+  }
+  return _repCSV(out);
+}
+/* نص الـ CSV من صفوف (مصفوفة مصفوفات): كل خلية بين علامتي تنصيص و" مهربة "" وBOM في الأول عشان Excel يقرا العربي. بتتشارك بين قائمة الدخل وتقرير المصاريف */
+function _repCSV(rows){
+  return '﻿'+rows.map(r=>r.map(v=>'"'+String(v==null ? '' : v).replace(/"/g, '""')+'"').join(',')).join('\r\n');
+}
+
+/* ورقة الطباعة: كل المجموعات مفتوحة على بنودها (مهما كان شكل الشاشة) + حركة الفلوس + الشهور */
+function repPLPrintHTML(ctx){
+  const cur = ctx.cur, prev = ctx.prev, has = !!prev;
+  const title = repPeriodTitle(repPeriod, ctx.range);
+  const cmpLine = has ? 'مقارنة بـ '+ctx.cmp.label : 'من غير مقارنة';
+  const trs = repPLRows(cur, prev).map(r=>{
+    if(r.kind==='sec') return `<tr><td colspan="5" style="background:#eee;font-weight:bold">${escNote(r.label)}</td></tr>`;
+    const sh = _repPLShares(r.c, r.p, cur, prev);
+    const st = r.kind==='total' ? ' style="font-weight:bold;background:#f3f3f3"' : (r.kind==='sub' ? ' style="font-weight:bold"' : '');
+    return `<tr${st}><td style="padding-right:${8 + (r.lvl || 0)*14}px">${escNote(r.label)}${r.invest ? ' 💼' : ''}</td><td>${_repM(r.c)}</td><td>${has ? _repM(r.p) : '—'}</td><td>${has ? _repDeltaTxt(r.c, r.p, money) : '—'}</td><td>${sh.cp===null ? '—' : _repPct(sh.cp)}${sh.pp!==null ? ' (كانت '+_repPct(sh.pp)+')' : ''}</td></tr>`;
+  }).join('');
+  const cashTR = repPLCash(cur, prev).map(r=>`<tr><td>${r.label}</td><td>${_repM(r.c)}</td><td>${has ? _repM(r.p) : '—'}</td><td>${has ? _repDeltaTxt(r.c, r.p, money) : '—'}</td></tr>`).join('');
+  return `<style>@page{size:A4 landscape;margin:10mm}</style><div style="padding:10px">
+    <h3 style="margin:0 0 4px">💰 قائمة الدخل — ${escNote(title)}</h3>
+    <div style="font-size:12px;color:#555;margin-bottom:10px">${escNote((DB.settings && DB.settings.centerName) || 'Masters Auto Service')} — ${escNote(cmpLine)} · بواسطة ${escNote(actorName())}<br>كل المبالغ من غير ضريبة، ما عدا حركة الفلوس (بالضريبة).</div>
+    <table><thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th><th>من المبيعات</th></tr></thead><tbody>${trs}</tbody></table>
+    <h4 style="margin:16px 0 0">حركة الفلوس (برة حساب الربح)</h4>
+    <table style="max-width:700px"><thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th></tr></thead><tbody>${cashTR}</tbody></table>
+    ${ctx.months.length ? `<h4 style="margin:16px 0 0">الشهور جنب بعض (آخر 12 شهر${ctx.months.some(m=>m.partial) ? ' — * الشهر لسه ماخلصش' : ''})</h4>${repPLMonthsHTML(ctx.months, true)}` : ''}
+  </div>`;
+}
+/* now اختياري (للاختبار بس) — الزرار بينده من غير باراميتر */
+function printRepPL(now){
+  if(!repPLAllowed()){ toast('قائمة الدخل محتاجة صلاحيتي «التقارير المالية» و«تقارير الربحية والأرباح»', true); return; }
+  const ctx = repCtx(now), label = repPeriodTitle(repPeriod, ctx.range);
+  printHTML(repPLPrintHTML(ctx));
+  logAction('🖨 طباعة قائمة الدخل — '+label);
+}
+function exportRepPLXLSX(now){
+  if(!repPLAllowed()){ toast('قائمة الدخل محتاجة صلاحيتي «التقارير المالية» و«تقارير الربحية والأرباح»', true); return; }
+  const ctx = repCtx(now), label = repPeriodTitle(repPeriod, ctx.range);
+  const csv = repPLCSV(ctx.cur, ctx.prev, ctx.months, { title:'قائمة الدخل', period:label, compare: ctx.cmp ? 'مقارنة بـ '+ctx.cmp.label : 'من غير مقارنة' });
+  downloadXLSXFromCSV(('قائمة الدخل — '+label).replace(/[\\/:*?"<>|]/g, '-'), csv);
+  logAction('⬇ تصدير Excel لقائمة الدخل — '+label);
+  toast('اتصدّر ملف Excel — قائمة الدخل');
+}
+
+/* ============================================================
+   م255 — 💸 المصاريف: 4 كروت · أكتر البنود اللي اتغيرت · رسم المجموعات (آخر 12 شهر) · جدول البنود · الفلوس اللي طلعت ومش مصاريف · طباعة · Excel
+   كل الأرقام من repStats/repMonthly: الإجمالي = operatingExpenses() (نفس «إجمالي المصروفات» في renderExpenseReport لنفس الفترة).
+   قراءة بس: مفيش saveKey ولا كتابة في DB (غير logAction للطباعة والـ Excel). التاب محتاج rep.financial بس ومفيهوش ولا كلمة ربح/تكلفة
+   ولا رقم منهم (نسبة المصاريف من المبيعات مسموحة). نصوص المستخدم (مجموعة/بند) بتتهرّب بـ escNote والـ onclick بياخد رقم من _repDrillKeys بس.
+   ============================================================ */
+function setRepExpGroup(i){
+  if(i === ''){ repExpGroup = ''; refreshContent(); return; }
+  const name = _repDrillKeys[i];
+  if(typeof name !== 'string') return;   /* رقم مش موجود (رسمة قديمة / قيمة غلط) ⇒ ماتغيرش حاجة */
+  repExpGroup = name;
+  refreshContent();
+}
+
+/* تغيّر كل بند بين الفترتين: صف لكل {مجموعة، بند} (اتحاد الفترتين) مرتب بالفرق المطلق.
+   الصف: { group, cat, label, invest, cur, prev, diff } — label = اسم البند، ولو نفس الاسم موجود في أكتر من مجموعة بيتكتب «البند (المجموعة)».
+   prev=null (مفيش مقارنة) ⇒ prev/diff=null والعدادات صفر والترتيب بالأكبر. up/down/same = عدد البنود اللي زادت / قلّت / زي ما هي (فرق أقل من نص جنيه = زي ما هي) */
+function repExpChanges(cur, prev){
+  const has = !!prev, m = new Map();
+  const add = (s, f)=>((s && s.exp && s.exp.groups) || []).forEach(g=>(g.cats || []).forEach(c=>{
+    const k = JSON.stringify([String(g.group), String(c.cat)]);
+    let r = m.get(k);
+    if(!r){ r = { group:String(g.group), cat:String(c.cat), invest:!!g.invest || INVESTMENT_GROUPS.includes(g.group), cur:0, prev:0 }; m.set(k, r); }
+    r[f] += _repNum(c.total);
+  }));
+  add(cur, 'cur');
+  if(has) add(prev, 'prev');
+  const rows = [...m.values()], groupsOf = new Map();
+  rows.forEach(r=>{ if(!groupsOf.has(r.cat)) groupsOf.set(r.cat, new Set()); groupsOf.get(r.cat).add(r.group); });
+  rows.forEach(r=>{
+    r.label = groupsOf.get(r.cat).size > 1 ? r.cat+' ('+r.group+')' : r.cat;
+    if(has) r.diff = r.cur - r.prev; else { r.prev = null; r.diff = null; }
+  });
+  rows.sort((a, b)=> has ? (Math.abs(b.diff) - Math.abs(a.diff)) || (b.cur - a.cur) : (b.cur - a.cur));
+  let up = 0, down = 0, same = 0;
+  if(has) rows.forEach(r=>{ if(Math.abs(r.diff) < 0.005) same++; else if(r.diff > 0) up++; else down++; });
+  return { rows, up, down, same };
+}
+/* المصاريف ÷ صافي المبيعات × 100 — null لو صافي المبيعات مش موجب */
+function _repExpRatio(s){ const n = _repNum(s && s.netSales); return n > 0 ? _repNum(s.exp && s.exp.total)/n*100 : null; }
+/* «+مبلغ»: الـ LRM قبل علامة + عشان في سياق RTL ماتنقلبش بعد الرقم */
+function _repPlus(n){ return '‎+'+money(n); }
+/* فرق بند لوحده: زي repDeltaHTML (زيادة المصاريف أحمر ونقصها أخضر) — بس البند الجديد (كان صفر) بيكتب المبلغ مع «جديد» بدل «جديد» لوحدها */
+function _repExpDiffHTML(r){
+  if(r.prev === null) return '—';
+  if(Math.abs(r.prev) >= 0.005 || Math.abs(r.diff) < 0.005) return repDeltaHTML(r.cur, r.prev, false, money);
+  const dl = repDelta(r.cur, r.prev, false);
+  return `<span class="rep-delta ${dl.good ? 'up' : 'dn'}" style="color:${dl.good ? 'var(--success)' : 'var(--danger)'}">${dl.dir==='up' ? '▲' : '▼'} ${money(Math.abs(dl.diff))} · جديد</span>`;
+}
+/* صفوف جدول البنود: المجموعات ثم بنودها — نفس صفوف المجموعات والبنود في قائمة الدخل (repPLRows) بنفس الترتيب والأرقام:
+   { kind:'grp'|'cat', label, group?, invest?, c (الفترة دي), p (اللي قبلها · null لو مفيش مقارنة) } */
+function repExpTableRows(cur, prev){
+  return repPLRows(cur, prev).filter(r=>r.kind==='grp' || r.kind==='cat');
+}
+/* الفلوس اللي طلعت من الخزنة بس مش مصاريف (مش داخلة في الإجمالي) */
+function repExpOutflows(cur, prev){
+  const f = (label, get)=>({ label, c:_repNum(get(cur)), p: prev ? _repNum(get(prev)) : null });
+  return [
+    f('سداد موردين',      s=>s.cash.supplierPaid),
+    f('استرداد عرابين',   s=>s.cash.depositRefunds),
+    f('رد فلوس لعملاء',   s=>s.cash.custRefunds)
+  ];
+}
+
+/* رسم المجموعات: أعمدة متقسمة لآخر 12 شهر (ctx.months) + دليل HTML (الدوس على مجموعة بيعرضها لوحدها · «الكل» بيرجّعها).
+   اللون من ترتيب المجموعة في allExpenseGroups() (repGroupColors بتتنده مرة واحدة بكل أسماء المجموعات اللي في الـ 12 شهر)؛ اللي بعد الـ 8 بيتجمّعوا في «تانية» رمادي.
+   الفلتر repExpGroup بيأثر على الرسم بس (الكروت والجدول زي ما هما). مجموعة مالهاش بيانات في الـ 12 شهر ⇒ الكل */
+function repExpChartHTML(ctx){
+  const ms = Array.isArray(ctx.months) ? ctx.months : [];
+  const seen = [], seenSet = new Set();
+  ms.forEach(m=>Object.keys(m.expByGroup || {}).forEach(g=>{ if(!seenSet.has(g)){ seenSet.add(g); seen.push(g); } }));
+  const all = [...new Set(allExpenseGroups().map(String))];
+  const names = all.filter(g=>seenSet.has(g)).concat(seen.filter(g=>!all.includes(g)));
+  const colors = repGroupColors(names), fold = colors.__fold || {};
+  const valOf = g=>ms.map(m=>_repNum((m.expByGroup || {})[g]));
+  const series = []; let rest = null;
+  names.forEach(g=>{
+    if(Object.prototype.hasOwnProperty.call(fold, g)){
+      if(!rest) rest = { name:fold[g], color:REP_GRAY, values:ms.map(()=>0) };
+      valOf(g).forEach((v, i)=>{ rest.values[i] += v; });
+    } else series.push({ name:g, color:colors[g], values:valOf(g) });
+  });
+  if(rest) series.push(rest);
+  const sel = seenSet.has(repExpGroup) ? repExpGroup : '';
+  const shown = sel ? [{ name:sel, color:colors[sel], values:valOf(sel) }] : series;
+  let legend = '';
+  if(series.length){
+    const items = series.map(s=>{
+      if(s === rest) return `<span class="rep-lg${sel ? ' off' : ''}"><i style="background:${s.color}"></i>${escNote(s.name)}</span>`;
+      return `<button type="button" class="rep-lg${sel ? (s.name===sel ? ' on' : ' off') : ''}" onclick="setRepExpGroup(${repKey(s.name)})"><i style="background:${s.color}"></i>${escNote(s.name)}${INVESTMENT_GROUPS.includes(s.name) ? ' 💼' : ''}</button>`;
+    }).join('');
+    /* المجموعة المختارة جوه «تانية» مالهاش زرار في الدليل ⇒ شارة بتقول إنها هي المعروضة */
+    const foldedSel = (sel && !series.some(s=>s.name===sel)) ? `<span class="rep-lg on"><i style="background:${REP_GRAY}"></i>${escNote(sel)}</span>` : '';
+    legend = `<div class="rep-legend" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px"><button type="button" class="rep-lg${sel ? '' : ' on'}" onclick="setRepExpGroup('')">الكل</button>${items}${foldedSel}</div>`;
+  }
+  return legend + svgStackedMonths(ms, shown);
+}
+
+/* صف في جدول البنود: المجموعة (الدوس على اسمها بيفلتر الرسم) أو البند. total = إجمالي مصاريف الفترة (عمود «من المصاريف») */
+function repExpRowHTML(r, total, has){
+  const grp = r.kind === 'grp';
+  /* اسم المجموعة بيفلتر الرسم (زي ما كان) · رقم «الفترة دي» (للمجموعة والبند) بيفتح المصاريف اللي ورا الرقم — خليتين منفصلتين.
+     المجموعة بتتسجّل في _repDrillKeys مرة واحدة والفلتر والتفاصيل بياخدوا نفس الفهرس؛ البند بيتسجّل كزوج [المجموعة, البند] */
+  const gi = grp ? repKey(r.label) : -1;
+  const first = grp
+    ? `<td style="padding-right:12px;cursor:pointer" onclick="setRepExpGroup(${gi})" title="اضغط تشوف المجموعة دي لوحدها في الرسم">${escNote(r.label)}${r.invest ? ' 💼' : ''}</td>`
+    : `<td style="padding-right:34px;font-size:13px">${escNote(r.label)}</td>`;
+  const drill = grp ? `openRepDrill('expGroup',${gi})` : `openRepDrill('expCat',${repKey([r.group, r.label])})`;
+  const trSt = grp ? ` style="font-weight:700${repExpGroup===r.label ? ';background:var(--surface-2)' : ''}"` : '';
+  return `<tr${trSt}>${first}<td class="rep-drill" onclick="${drill}" title="اضغط تشوف المصاريف اللي ورا الرقم ده">${_repM(r.c)}</td><td>${has ? _repM(r.p) : '—'}</td><td>${has ? repDeltaHTML(r.c, r.p, false, money) : '—'}</td><td>${total > 0 ? _repPct(r.c/total*100) : '—'}</td></tr>`;
+}
+
+function renderRepExpenses(ctx){
+  if(!can('rep.financial')) return '';
+  ctx = ctx || repCtx();
+  const cur = ctx.cur, prev = ctx.prev, has = !!prev;
+  const ch = repExpChanges(cur, prev);
+  const title = repPeriodTitle(repPeriod, ctx.range);
+  const cmpLine = has ? 'مقارنة بـ '+ctx.cmp.label+(ctx.noData ? ' · مفيش بيانات للمقارنة' : '') : 'من غير مقارنة';
+  const cmpNote = has ? 'المقارنة بـ '+ctx.cmp.label+'.' : 'الفترة دي من غير مقارنة.';
+  const r1 = x=>Math.round(x*10)/10;
+  const nCats = cur.exp.groups.reduce((s, g)=>s + g.cats.length, 0);
+  const cards = [];
+
+  /* 1) إجمالي المصاريف */
+  cards.push(repCard({
+    value: money(cur.exp.total), label:'إجمالي المصاريف',
+    delta: has ? _repDeltaRow('', cur.exp.total, prev.exp.total, false, money, 'كان '+money(prev.exp.total)) : '',
+    help: { key:'repx_total',
+      meaning:'كل المصاريف اللي اتسجلت في الفترة (إيجار · مرتبات · كهرباء …). المصاريف الاستثمارية (أصول 💼) جواها.',
+      source:'مصاريف الفترة بتاريخ المصروف — نفس «إجمالي المصروفات» في تقرير المصاريف لنفس الفترة. سداد الموردين واسترداد العرابين ورد فلوس العملاء مش مصاريف (بتظهر في آخر الصفحة).',
+      formula:'مصاريف الفترة = '+money(cur.exp.total)+' ('+nCats+' بند في '+cur.exp.groups.length+' مجموعة)',
+      note:cmpNote }
+  }));
+
+  /* 2) المصاريف من المبيعات (فرقها بالنقط) */
+  const rc = _repExpRatio(cur), rp = has ? _repExpRatio(prev) : null;
+  let ratioDelta = '';
+  if(has && rc !== null) ratioDelta = rp !== null
+    ? `<div class="rep-sub">${repDeltaHTML(r1(rc), r1(rp), false, v=>v.toFixed(1)+' نقطة', true)}<span class="muted">كانت ${_repPct(rp)}</span></div>`
+    : `<div class="rep-sub"><span class="muted">كانت —</span></div>`;
+  cards.push(repCard({
+    value: rc !== null ? _repPct(rc) : '—', label:'المصاريف من المبيعات', delta: ratioDelta,
+    help: { key:'repx_ratio',
+      meaning:'كام جنيه مصاريف على كل 100 جنيه مبيعات. كل ما النسبة قلّت كان أحسن.',
+      source:'إجمالي المصاريف ÷ صافي المبيعات (من غير ضريبة) لنفس الفترة.',
+      formula: rc !== null ? money(cur.exp.total)+' ÷ '+money(cur.netSales)+' = '+_repPct(rc) : 'مفيش مبيعات في الفترة دي، فالنسبة مش بتتحسب',
+      note:cmpNote }
+  }));
+
+  /* 3) أكتر بند زاد (نفس البند اللي في «محتاج تاخد بالك» في الملخص) */
+  const top = has ? ch.rows.find(r=>r.diff > 0.005) : null;
+  cards.push(repCard({
+    value: top ? `<span style="font-size:18px;line-height:1.6">${escNote(top.label)}${top.invest ? ' 💼' : ''}</span>` : '—', label:'أكتر بند زاد',
+    delta: top
+      ? `<div class="rep-sub"><span class="rep-delta dn" style="color:var(--danger)">${_repPlus(top.diff)}</span><span class="muted">${top.prev < 0.005 ? 'بند جديد' : 'كان '+money(top.prev)}</span></div>`
+      : (has ? `<div class="rep-sub"><span class="muted">مفيش بند زاد عن الفترة اللي قبلها</span></div>` : `<div class="rep-sub"><span class="muted">من غير مقارنة</span></div>`),
+    help: { key:'repx_top',
+      meaning:'البند اللي مصروفه زاد بأكبر مبلغ عن الفترة اللي قبلها.',
+      source:'بنقارن كل بند (جوه مجموعته) بنفس البند في فترة المقارنة. هو نفس البند اللي بيتكتب في «محتاج تاخد بالك» في الملخص.',
+      formula: top ? escNote(top.label)+': '+money(top.prev)+' ← '+money(top.cur)+' = '+_repPlus(top.diff) : (has ? 'مفيش بند زاد عن الفترة اللي قبلها' : 'الفترة دي من غير مقارنة'),
+      note:cmpNote }
+  }));
+
+  /* 4) عدد البنود: زادت / قلت / زي ما هي (المصاريف الزيادة أحمر والنقص أخضر) */
+  const cnt = (n, col)=>`<span style="color:${n > 0 ? col : 'var(--muted)'}">${n}</span>`;
+  cards.push(repCard({
+    value: has ? cnt(ch.up, 'var(--danger)')+' / '+cnt(ch.down, 'var(--success)')+' / '+cnt(ch.same, 'var(--muted)') : '—',
+    label:'عدد البنود: زادت / قلت / زي ما هي',
+    delta: has ? `<div class="rep-sub"><span class="muted">من ${ch.rows.length} بند</span></div>` : `<div class="rep-sub"><span class="muted">من غير مقارنة</span></div>`,
+    help: { key:'repx_counts',
+      meaning:'كام بند مصروفه زاد، وكام بند قلّ، وكام فضل زي ما هو عن الفترة اللي قبلها.',
+      source:'كل بند بيتقارن بنفسه جوه مجموعته. فرق أقل من نص جنيه بيتعد «زي ما هو».',
+      formula: has ? 'زادت '+ch.up+' · قلت '+ch.down+' · زي ما هي '+ch.same+' (من '+ch.rows.length+' بند)' : 'الفترة دي من غير مقارنة',
+      note:cmpNote }
+  }));
+
+  /* أكتر البنود اللي اتغيرت: أكبر 5 بالفرق المطلق (من غير اللي ماتغيرش) — عمودين صغيرين لكل بند بنفس المقياس */
+  const changed = has ? ch.rows.filter(r=>Math.abs(r.diff) >= 0.005).slice(0, 5) : [];
+  const maxV = changed.reduce((mx, r)=>Math.max(mx, r.cur, r.prev), 0);
+  const bw = v=>maxV > 0 ? Math.round(Math.max(0, v)/maxV*1000)/10 : 0;
+  const chgHTML = !has
+    ? `<div class="muted" style="font-size:13px;padding:10px 2px">الفترة دي من غير مقارنة — مفيش بنود نقارنها.</div>`
+    : (changed.length ? changed.map(r=>`<div class="rep-chg">
+        <div class="rep-chg-name">${escNote(r.label)}${r.invest ? ' 💼' : ''}</div>
+        <div class="rep-chg-bars">
+          <div class="rep-bar-row"><span class="muted">الفترة دي</span><span class="rep-bar-track"><span class="rep-bar" style="width:${bw(r.cur)}%"></span></span><b>${money(r.cur)}</b></div>
+          <div class="rep-bar-row"><span class="muted">اللي قبلها</span><span class="rep-bar-track"><span class="rep-bar prev" style="width:${bw(r.prev)}%"></span></span><span>${money(r.prev)}</span></div>
+        </div>
+        <div class="rep-chg-diff">${_repExpDiffHTML(r)}</div>
+      </div>`).join('')
+      : `<div class="muted" style="font-size:13px;padding:10px 2px">مفيش بند اتغير عن الفترة اللي قبلها.</div>`);
+
+  /* جدول كل البنود */
+  const total = _repNum(cur.exp.total);
+  const tRows = repExpTableRows(cur, prev);
+  const tbody = tRows.length
+    ? tRows.map(r=>repExpRowHTML(r, total, has)).join('')
+      + `<tr style="font-weight:800;background:var(--surface-2)"><td style="padding-right:12px">الإجمالي</td><td>${_repM(total)}</td><td>${has ? _repM(prev.exp.total) : '—'}</td><td>${has ? repDeltaHTML(total, prev.exp.total, false, money) : '—'}</td><td>${total > 0 ? _repPct(100) : '—'}</td></tr>`
+    : `<tr><td colspan="5" class="empty">مفيش مصاريف في الفترة دي</td></tr>`;
+
+  /* الفلوس اللي طلعت ومش مصاريف */
+  const outTR = repExpOutflows(cur, prev).map(r=>`<tr><td>${r.label}</td><td>${_repM(r.c)}</td><td>${has ? _repM(r.p) : '—'}</td><td>${has ? _repDeltaNeutral(r.c, r.p) : '—'}</td></tr>`).join('');
+
+  return `
+  <div class="section-head" style="flex-wrap:wrap;gap:10px"><h3>💸 المصاريف — ${escNote(title)}</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-sm" onclick="printRepExp()">🖨 طباعة</button><button class="btn btn-sm" onclick="exportRepExpXLSX()">⬇ Excel</button></div></div>
+  <div class="muted" style="font-size:12.5px;margin:-6px 2px 14px">${escNote(cmpLine)} · المصاريف الاستثمارية (💼) داخلة في الإجمالي</div>
+  <div class="grid g4" style="margin-bottom:24px">${cards.join('')}</div>
+  <div class="section-head"><h3>أكتر البنود اللي اتغيرت</h3></div>
+  <div class="muted" style="font-size:12.5px;margin:-6px 2px 10px">أكبر 5 بنود بقيمة الفرق (زيادة أو نقص) عن الفترة اللي قبلها</div>
+  <div class="card" style="padding:6px 16px;margin-bottom:24px">${chgHTML}</div>
+  <div class="section-head"><h3>رسم المجموعات — آخر 12 شهر</h3></div>
+  <div class="muted" style="font-size:12.5px;margin:-6px 2px 10px">مش مرتبط بفلتر الفترة · لون كل مجموعة ثابت · اضغط على اسم مجموعة تشوفها لوحدها</div>
+  <div class="card" style="margin-bottom:24px">${repExpChartHTML(ctx)}</div>
+  <div class="section-head"><h3>كل البنود حسب المجموعة</h3></div>
+  <div class="muted" style="font-size:12.5px;margin:-6px 2px 10px">اضغط على اسم مجموعة تشوفها لوحدها في الرسم · واضغط على الرقم المنقّط تشوف المصاريف اللي وراه</div>
+  <div class="card" style="padding:6px 8px;margin-bottom:24px"><div class="no-rt" style="overflow-x:auto"><table class="rep-pl" style="min-width:620px">
+    <thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th><th>من المصاريف</th></tr></thead>
+    <tbody>${tbody}</tbody></table></div></div>
+  <div class="section-head"><h3>فلوس طلعت من الخزنة بس مش مصاريف</h3></div>
+  <div class="muted" style="font-size:12.5px;margin:-6px 2px 10px">خرجت من الخزنة بس مش مصاريف: مش داخلة في إجمالي المصاريف فوق ولا في نسبة المصاريف من المبيعات</div>
+  <div class="card" style="padding:6px 8px;margin-bottom:24px"><div class="no-rt" style="overflow-x:auto"><table class="rep-pl" style="min-width:520px">
+    <thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th></tr></thead><tbody>${outTR}</tbody></table></div></div>`;
+}
+
+/* CSV للـ Excel (نفس تنسيق قائمة الدخل: أرقام خام من غير «ج.م» · _repCSV): جدول البنود (المجموعات وبنودها + الإجمالي) ثم الفلوس اللي طلعت ومش مصاريف.
+   اللي قبلها والفرق فاضيين لو مفيش مقارنة. meta اختياري: عنوان وفترة ومقارنة فوق */
+function repExpCSV(cur, prev, meta){
+  const r2 = x=>Math.round(_repNum(x)*100)/100, r1 = x=>Math.round(_repNum(x)*10)/10;
+  const out = [];
+  if(meta){
+    out.push(['التقرير', meta.title || 'تقرير المصاريف']);
+    if(meta.period) out.push(['الفترة', meta.period]);
+    if(meta.compare) out.push(['المقارنة', meta.compare]);
+    out.push([]);
+  }
+  const total = _repNum(cur.exp.total), pt = prev ? _repNum(prev.exp.total) : null;
+  out.push(['البند', 'الفترة دي', 'اللي قبلها', 'الفرق', 'من المصاريف']);
+  repExpTableRows(cur, prev).forEach(r=>{
+    out.push([(r.kind==='cat' ? '    ' : '  ')+r.label+(r.invest ? ' 💼' : ''), r2(r.c), r.p===null ? '' : r2(r.p), r.p===null ? '' : r2(r.c - r.p), total > 0 ? r1(r.c/total*100) : '']);
+  });
+  out.push(['الإجمالي', r2(total), pt===null ? '' : r2(pt), pt===null ? '' : r2(total - pt), total > 0 ? 100 : '']);
+  out.push([], ['فلوس طلعت من الخزنة بس مش مصاريف', 'الفترة دي', 'اللي قبلها', 'الفرق', '']);
+  repExpOutflows(cur, prev).forEach(r=>out.push([r.label, r2(r.c), r.p===null ? '' : r2(r.p), r.p===null ? '' : r2(r.c - r.p), '']));
+  return _repCSV(out);
+}
+
+/* ورقة الطباعة: ملخص الإجمالي والنسبة + الجدول كله + الفلوس اللي طلعت ومش مصاريف */
+function repExpPrintHTML(ctx){
+  const cur = ctx.cur, prev = ctx.prev, has = !!prev;
+  const title = repPeriodTitle(repPeriod, ctx.range);
+  const cmpLine = has ? 'مقارنة بـ '+ctx.cmp.label : 'من غير مقارنة';
+  const total = _repNum(cur.exp.total), rc = _repExpRatio(cur);
+  const trs = repExpTableRows(cur, prev).map(r=>{
+    const grp = r.kind==='grp';
+    return `<tr${grp ? ' style="font-weight:bold;background:#f3f3f3"' : ''}><td style="padding-right:${grp ? 8 : 26}px">${escNote(r.label)}${r.invest ? ' 💼' : ''}</td><td>${_repM(r.c)}</td><td>${has ? _repM(r.p) : '—'}</td><td>${has ? _repDeltaTxt(r.c, r.p, money) : '—'}</td><td>${total > 0 ? _repPct(r.c/total*100) : '—'}</td></tr>`;
+  }).join('');
+  const outTR = repExpOutflows(cur, prev).map(r=>`<tr><td>${r.label}</td><td>${_repM(r.c)}</td><td>${has ? _repM(r.p) : '—'}</td><td>${has ? _repDeltaTxt(r.c, r.p, money) : '—'}</td></tr>`).join('');
+  return `<style>@page{size:A4;margin:12mm}</style><div style="padding:10px">
+    <h3 style="margin:0 0 4px">💸 تقرير المصاريف — ${escNote(title)}</h3>
+    <div style="font-size:12px;color:#555;margin-bottom:10px">${escNote((DB.settings && DB.settings.centerName) || 'Masters Auto Service')} — ${escNote(cmpLine)} · بواسطة ${escNote(actorName())}<br>إجمالي المصاريف: ${_repM(total)}${has ? ' (كان '+_repM(prev.exp.total)+')' : ''} · المصاريف من المبيعات: ${rc !== null ? _repPct(rc) : '—'} · المصاريف الاستثمارية (💼) داخلة في الإجمالي</div>
+    <table><thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th><th>من المصاريف</th></tr></thead><tbody>${trs || '<tr><td colspan="5">مفيش مصاريف في الفترة دي</td></tr>'}
+      <tr style="font-weight:bold;background:#eee"><td>الإجمالي</td><td>${_repM(total)}</td><td>${has ? _repM(prev.exp.total) : '—'}</td><td>${has ? _repDeltaTxt(total, prev.exp.total, money) : '—'}</td><td>${total > 0 ? _repPct(100) : '—'}</td></tr></tbody></table>
+    <h4 style="margin:16px 0 0">فلوس طلعت من الخزنة بس مش مصاريف</h4>
+    <div style="font-size:11px;color:#555;margin-bottom:4px">مش داخلة في إجمالي المصاريف ولا في نسبة المصاريف من المبيعات</div>
+    <table style="max-width:700px"><thead><tr><th>البند</th><th>الفترة دي</th><th>اللي قبلها</th><th>الفرق</th></tr></thead><tbody>${outTR}</tbody></table>
+  </div>`;
+}
+/* now اختياري (للاختبار بس) — الزرار بينده من غير باراميتر */
+function printRepExp(now){
+  if(!can('rep.financial')){ toast('تقرير المصاريف محتاج صلاحية «التقارير المالية»', true); return; }
+  const ctx = repCtx(now), label = repPeriodTitle(repPeriod, ctx.range);
+  printHTML(repExpPrintHTML(ctx));
+  logAction('🖨 طباعة تقرير المصاريف — '+label);
+}
+function exportRepExpXLSX(now){
+  if(!can('rep.financial')){ toast('تقرير المصاريف محتاج صلاحية «التقارير المالية»', true); return; }
+  const ctx = repCtx(now), label = repPeriodTitle(repPeriod, ctx.range);
+  const csv = repExpCSV(ctx.cur, ctx.prev, { title:'تقرير المصاريف', period:label, compare: ctx.cmp ? 'مقارنة بـ '+ctx.cmp.label : 'من غير مقارنة' });
+  downloadXLSXFromCSV(('تقرير المصاريف — '+label).replace(/[\\/:*?"<>|]/g, '-'), csv);
+  logAction('⬇ تصدير Excel لتقرير المصاريف — '+label);
+  toast('اتصدّر ملف Excel — تقرير المصاريف');
+}
+
+/* ============================================================
+   م255 — التفاصيل اللي ورا الأرقام (Drill-down): السجلات اللي عملت الرقم، ومجموعها = الرقم نفسه بالظبط (< قرش)
+   repDrillRows دالة صافية بتعكس قاعدة repStats لكل سجل لوحده (مفيش معادلة جديدة):
+   · المبيعات من inv.items (الكمية × سعر البيع) بالنوع · «إجمالي البيع» = subtotal (أو total + الخصم) · «بنود تانية» = إجمالي الفاتورة − الأنواع الأربعة
+     (وبتتصفّر لو مجموع الفترة أقل من نص جنيه زي repStats) · الخصم = inv.discount
+   · التكلفة من بنود أمر الشغل الحالي (الكمية × سعر الشراء) + internalCosts — زي computeProfitStats بالظبط (أمر شغل على فاتورتين بيتحسب مرتين)
+   · الهالك qty × unitCost لحركات type='scrap' · المصاريف من operatingExpenses() بتاريخها جوه الفترة (المجموعة expGroupOf والبند category أو «غير محدد»)
+   الصلاحيات: rep.financial لكل الأنواع، والتكلفة والهالك محتاجين rep.profit كمان. قراءة بس: مفيش saveKey ولا كتابة في DB.
+   مفاتيح المجموعة/البند هي رقم في _repDrillKeys (اتسجّل في نفس الرسمة اللي طلّعت الـ onclick): المجموعة نص، والبند زوج [المجموعة, البند].
+   ============================================================ */
+/* '' = مسموح · غير كده نص رسالة «🔒…» */
+function repDrillDenied(kind){
+  if(!can('rep.financial')) return '🔒 التفاصيل دي محتاجة صلاحية «التقارير المالية»';
+  if((kind==='cost' || kind==='scrap') && !can('rep.profit')) return '🔒 تفاصيل التكلفة والهالك محتاجة صلاحية «تقارير الربحية والأرباح»';
+  return '';
+}
+/* القيمة المسجّلة في _repDrillKeys بالفهرس — undefined لو الفهرس مش صالح */
+function _repDrillKeyAt(key){
+  const i = typeof key==='number' ? key : (typeof key==='string' && /^\d+$/.test(key) ? +key : -1);
+  return (Number.isInteger(i) && i >= 0 && i < _repDrillKeys.length) ? _repDrillKeys[i] : undefined;
+}
+/* id بيتحط جوه onclick: بس لو شكله id بتاع السيستم (حروف وأرقام و _ و -) */
+function _repSafeId(id){ return (typeof id==='string' && /^[\w-]+$/.test(id)) ? id : ''; }
+function _repHas(o, k){ return Object.prototype.hasOwnProperty.call(o, k); }
+
+function repDrillRows(kind, key, range){
+  const none = { rows:[], total:0 };
+  if(repDrillDenied(kind)) return none;
+  range = range || repRange(repPeriod);
+  const byDate = (a, b)=>new Date(a.date) - new Date(b.date);
+
+  /* الهالك */
+  if(kind==='scrap'){
+    const parts = new Map(); DB.inventory.forEach(p=>{ if(!parts.has(p.id)) parts.set(p.id, p); });
+    const rows = []; let total = 0;
+    DB.stockMoves.forEach(m=>{
+      if(m.type!=='scrap' || !inPeriod(m.date, range)) return;
+      const cost = (m.qty||0)*(m.unitCost||0), p = m.partId ? parts.get(m.partId) : null;
+      total += cost;
+      rows.push({ date:m.date, part:(p && p.name) || m.extName || '—', qty:m.qty||0, cost });
+    });
+    return { rows: rows.sort(byDate), total };
+  }
+
+  /* المصاريف: مجموعة أو بند جوه مجموعة */
+  if(kind==='expGroup' || kind==='expCat'){
+    const v = _repDrillKeyAt(key);
+    let group, cat = null;
+    if(kind==='expGroup' && typeof v==='string') group = v;
+    else if(kind==='expCat' && Array.isArray(v) && v.length===2 && typeof v[0]==='string' && typeof v[1]==='string'){ group = v[0]; cat = v[1]; }
+    else return none;
+    /* خصوصية الموظفين (قرار م215 / صلاحيات الموارد البشرية): سطور المرتبات والسلف والمكافآت فيها اسم الموظف ومبلغه، فكل نوع بيتجمّع
+       في سطر واحد «مرتبات/سلف/مكافآت (N سطر)» بمجموعه — من غير اسم ولا مبلغ لشخص ولا حساب/مسجّل ولا id (فمش قابل للدوس) —
+       إلا لو الجلسة معاها صلاحية النوع ده (نفس دوال الموارد البشرية: hrCanSeeSalary للمرتب · hrCanAdvance للسلفة · hrCanReward للمكافأة).
+       الإجمالي زي ما هو (= إجمالي المجموعة/البند). المالك can() عنده true فبيشوف كل سطر لوحده. مصروف قديم txnType='expense' تحت «مرتبات» بيفضل زي ما هو */
+    const FOLD = { salary:{ show:hrCanSeeSalary(), label:'مرتبات' }, advance:{ show:hrCanAdvance(), label:'سلف' }, reward:{ show:hrCanReward(), label:'مكافآت' } };
+    const rows = [], folded = {}; let total = 0;
+    operatingExpenses().forEach(e=>{
+      if(!inPeriod(e.date, range) || String(expGroupOf(e))!==group) return;
+      const c = e.category || 'غير محدد';
+      if(cat!==null && c!==cat) return;
+      const amount = e.amount||0, tt = expTxnType(e);
+      total += amount;
+      if(_repHas(FOLD, tt) && !FOLD[tt].show){
+        const f = folded[tt] || (folded[tt] = { id:'', date:e.date, desc:'', amount:0, account:'', by:'', cat:FOLD[tt].label, n:0, fold:tt });
+        f.amount += amount; f.n++;
+        if(new Date(e.date) > new Date(f.date)) f.date = e.date;   /* تاريخ آخر سطر من النوع ده في الفترة */
+        return;
+      }
+      rows.push({ id:e.id, date:e.date, desc:e.description || e.note || '', amount, account:e.payAccount || '', by:e.actor || e.recordedBy || '', cat:c });
+    });
+    ['salary', 'advance', 'reward'].forEach(t=>{ const f = folded[t]; if(f){ f.desc = f.cat+' ('+f.n+' سطر)'; rows.push(f); } });
+    return { rows: rows.sort(byDate), total };
+  }
+
+  /* الفواتير: مبيعات · خصومات · تكلفة · عربيات */
+  const SALES = ['service', 'part', 'ext_part', 'ext_work'];
+  const COSTK = { inParts:'part', extParts:'ext_part', extWork:'ext_work' };
+  if(kind==='sales'){ if(!(SALES.includes(key) || key==='other' || key==='all')) return none; }
+  else if(kind==='cost'){ if(!(_repHas(COSTK, key) || key==='paint')) return none; }
+  else if(kind!=='discount' && kind!=='cars') return none;
+
+  const jobs = new Map(), custs = new Map(), cars = new Map();
+  DB.jobs.forEach(j=>{ if(!jobs.has(j.id)) jobs.set(j.id, j); });   /* أول أمر بالـ id زي DB.jobs.find */
+  DB.customers.forEach(c=>{ if(!custs.has(c.id)) custs.set(c.id, c); });
+  DB.cars.forEach(c=>{ if(!cars.has(c.id)) cars.set(c.id, c); });
+  const gross = inv=>inv.subtotal!=null ? inv.subtotal : inv.total + (inv.discount||0);   /* نفس computeProfitStats */
+  const kindSum = (inv, k)=>(inv.items||[]).reduce((s, it)=>it.kind===k ? s + (it.qty||0)*(it.unitPrice||0) : s, 0);
+  const amountOf = (inv, job)=>{
+    if(kind==='sales'){
+      if(key==='all') return gross(inv);
+      if(key==='other') return gross(inv) - SALES.reduce((s, k)=>s + kindSum(inv, k), 0);
+      return kindSum(inv, key);
+    }
+    if(kind==='discount') return inv.discount||0;
+    if(kind==='cars') return gross(inv) - (inv.discount||0);
+    if(!job) return 0;   /* cost */
+    if(key==='paint') return (job.internalCosts||[]).reduce((s, ic)=>s + (ic.total||0), 0);
+    return (job.items||[]).reduce((s, it)=>it.kind===COSTK[key] ? s + (it.qty||0)*(it.costPrice||0) : s, 0);
+  };
+  const rows = []; let total = 0;
+  DB.invoices.forEach(inv=>{
+    if(inv.cancelled || !inPeriod(inv.date, range)) return;
+    const job = inv.jobId ? jobs.get(inv.jobId) : null;
+    const amount = amountOf(inv, job);
+    total += amount;
+    if(kind!=='cars' && Math.abs(amount) < 0.005) return;   /* الفاتورة اللي مالهاش قيمة في البند ده مش بتتعرض (العربيات كل فاتورة محسوبة) */
+    const cust = custs.get(inv.customerId || (job && job.customerId));
+    const car = cars.get((job && job.carId) || inv.carId);
+    rows.push({ invNo: inv.invNo!=null ? inv.invNo : '', jobId: inv.jobId || '', cust: cust ? (cust.name || '') : '', plate: car ? (car.plate || '') : '', date: inv.date, amount });
+  });
+  if(kind==='sales' && key==='other' && Math.abs(total) < 0.5) return none;   /* repStats بتصفّر «بنود تانية» لو أقل من نص جنيه */
+  return { rows: rows.sort(byDate), total };
+}
+
+/* اسم الرقم وعمود القيمة للمودال — null لو النوع أو المفتاح مش صالح */
+function repDrillMeta(kind, key){
+  const SALES = { service:'مصنعية', part:'قطع من المخزون', ext_part:'قطع خارجية', ext_work:'أعمال خارجية', other:'بنود تانية', all:'إجمالي البيع (قبل الخصم)' };
+  const COST = { inParts:'تكلفة قطع من المخزون', extParts:'تكلفة قطع خارجية', extWork:'تكلفة أعمال خارجية', paint:'تكلفة خامات دهان' };
+  switch(kind){
+    case 'sales':    return _repHas(SALES, key) ? { fam:'inv', name:SALES[key], val:'القيمة' } : null;
+    case 'discount': return { fam:'inv', name:'الخصومات', val:'الخصم' };
+    case 'cost':     return _repHas(COST, key) ? { fam:'inv', name:COST[key], val:'التكلفة' } : null;
+    case 'cars':     return { fam:'inv', name:'عدد العربيات', val:'صافي الفاتورة', unit:'عربية' };
+    case 'scrap':    return { fam:'scrap', name:'الهالك والتالف' };
+    case 'expGroup': { const g = _repDrillKeyAt(key); return typeof g==='string' ? { fam:'exp', name:g, group:true } : null; }
+    case 'expCat':   { const v = _repDrillKeyAt(key); return (Array.isArray(v) && v.length===2) ? { fam:'exp', name:String(v[1])+' · '+String(v[0]) } : null; }
+  }
+  return null;
+}
+
+/* جسم المودال: عنوان فيه الرقم والفترة + جدول السجلات (جوه no-rt) + صف الإجمالي. من غير سجلات ⇒ سطر «مفيش سجلات» */
+function repDrillHTML(kind, key, meta, res, label, range){
+  const rows = res.rows, n = rows.length, tot = _repM(res.total);
+  const head = `<h3>🔎 ${escNote(meta.name)} — ${escNote(label)}</h3>`;
+  if(!n) return head+`<div class="empty" style="padding:18px;text-align:center">مفيش سجلات في الفترة دي</div>`;
+  const th = cols=>`<thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>`;
+  let cols, body, foot, note = '', unit;
+  if(meta.fam==='inv'){
+    unit = meta.unit || 'فاتورة';
+    cols = ['رقم الفاتورة', 'العميل', 'العربية', 'التاريخ', meta.val];
+    body = rows.map(r=>{
+      const jid = _repSafeId(r.jobId);
+      return `<tr${jid ? ` onclick="openWorkOrderReport('${jid}')"` : ''}><td style="white-space:nowrap">${r.invNo!=='' ? '#'+escNote(r.invNo) : '—'}</td><td>${escNote(r.cust) || '—'}</td><td>${escNote(r.plate) || '—'}</td><td style="white-space:nowrap">${fmtDate(r.date)}</td><td style="white-space:nowrap;font-weight:700">${_repM(r.amount)}</td></tr>`;
+    }).join('');
+    foot = `<tr><td colspan="4">الإجمالي — ${n} ${unit}</td><td style="white-space:nowrap">${tot}</td></tr>`;
+    if(kind==='sales' && key==='all'){   /* الكارت بيقول «صافي المبيعات» ⇒ نكمّل من الإجمالي للصافي */
+      const disc = repDrillRows('discount', undefined, range).total;
+      foot += `<tr><td colspan="4">− الخصومات</td><td style="white-space:nowrap">${_repM(disc)}</td></tr><tr><td colspan="4">= صافي المبيعات</td><td style="white-space:nowrap">${_repM(profitCore(res.total, disc, 0).net)}</td></tr>`;
+    }
+    note = 'اضغط على أي فاتورة تفتح أمر الشغل بتاعها · الفواتير الملغية مش بتتحسب'+(kind==='cost' ? ' · التكلفة من بنود أمر الشغل (الكمية × سعر الشراء)' : '');
+  } else if(meta.fam==='exp'){
+    unit = 'مصروف';
+    cols = ['التاريخ'].concat(meta.group ? ['البند'] : [], ['الوصف', 'المبلغ', 'الخزنة', 'مين سجّل']);
+    body = rows.map(r=>{
+      const rid = _repSafeId(r.id);
+      return `<tr${rid ? ` onclick="viewReceipt('${rid}')"` : ''}><td style="white-space:nowrap">${fmtDate(r.date)}</td>${meta.group ? `<td>${escNote(r.cat)}</td>` : ''}<td>${escNote(r.desc) || '—'}</td><td style="white-space:nowrap;font-weight:700">${_repM(r.amount)}</td><td>${escNote(r.account) || '—'}</td><td>${escNote(r.by) || '—'}</td></tr>`;
+    }).join('');
+    foot = `<tr><td colspan="${meta.group ? 3 : 2}">الإجمالي — ${n} ${unit}</td><td style="white-space:nowrap">${tot}</td><td colspan="2"></td></tr>`;
+    const FN = { salary:['المرتبات', 'الرواتب'], advance:['السلف', 'سلفة لموظف'], reward:['المكافآت', 'مكافأة لموظف'] };   /* اسم النوع · اسم الصلاحية */
+    const ft = ['salary', 'advance', 'reward'].filter(t=>rows.some(r=>r.fold===t));
+    note = 'اضغط على أي مصروف تشوف صورة الفاتورة (لو متصورة)'
+      + (ft.length ? ' · '+ft.map(t=>FN[t][0]).join(' و')+' متجمّعة '+(ft.length>1 ? '(سطر لكل نوع)' : 'في سطر واحد')+' — تفاصيلها لأصحاب صلاحية '+ft.map(t=>'«'+FN[t][1]+'»').join(' و')+' بس' : '');
+  } else {
+    unit = 'حركة';
+    cols = ['التاريخ', 'الصنف', 'الكمية', 'التكلفة'];
+    body = rows.map(r=>`<tr><td style="white-space:nowrap">${fmtDate(r.date)}</td><td>${escNote(r.part)}</td><td>${escNote(r.qty)}</td><td style="white-space:nowrap;font-weight:700">${_repM(r.cost)}</td></tr>`).join('');
+    foot = `<tr><td colspan="2">الإجمالي — ${n} ${unit}</td><td>${escNote(rows.reduce((s, r)=>s + _repNum(r.qty), 0))}</td><td style="white-space:nowrap">${tot}</td></tr>`;
+  }
+  return head
+    + `<div class="muted" style="font-size:12.5px;margin:-4px 0 10px">${n} ${unit} · الإجمالي ${tot}</div>`
+    + `<div style="max-height:60vh;overflow-y:auto"><div class="no-rt" style="overflow-x:auto"><table class="rep-dr" style="min-width:${meta.fam==='exp' ? 620 : 460}px">${th(cols)}<tbody>${body}</tbody><tfoot>${foot}</tfoot></table></div></div>`
+    + (note ? `<div class="muted" style="font-size:12px;margin-top:8px">${note}</div>` : '');
+}
+
+/* الدوس على رقم في قائمة الدخل/جدول المصاريف/كارت الملخص ⇒ مودال بالسجلات اللي وراه (بفترة الشاشة) */
+function openRepDrill(kind, key){
+  const denied = repDrillDenied(kind);
+  if(denied){ toast(denied, true); return; }
+  const meta = repDrillMeta(kind, key);
+  if(!meta) return;   /* نوع مجهول / فهرس قديم ⇒ مفيش حاجة تتفتح */
+  const range = repRange(repPeriod);
+  openModal(repDrillHTML(kind, key, meta, repDrillRows(kind, key, range), repPeriodTitle(repPeriod, range), range), true);
+}
+
+/* ============================================================
+   م255 — نواة حساب شاشة التقارير الجديدة (المرحلة الأولى)
+   دوال صافية: بتقرا DB وبترجّع أرقام بس — مفيش saveKey ولا كتابة.
+   القاعدة (مواصفات §4): مفيش معادلات جديدة لأرقام موجودة — كل رقم بيتحسب بنفس دالة شبيهه:
+   computeProfitStats (المبيعات · التكلفة · ربح الشغل · الهالك) · operatingExpenses (المصاريف)
+   · نفس قاعدة renderReceivables للمحصّل (دفعات الفواتير غير الملغية بتاريخ الدفعة).
+   الاستثناء الوحيد repMonthly: لفة واحدة للتابلت (§6) فبتكرر حساب الفاتورة الواحدة
+   (إجمالي · خصم · تكلفة من بنود الأمر الحالية) بنفس معادلة computeProfitStats بالظبط،
+   والاختبار بيقارنها شهر بشهر بالدوال الأصلية.
+   ============================================================ */
+function _repNum(v){ const n = Number(v); return isFinite(n) ? n : 0; }
+function _repSOD(d){ d = new Date(d); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function _repEOD(d){ d = new Date(d); return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23,59,59,999); }
+function _repNearSOD(d){ return _repSOD(new Date(new Date(d).getTime()+12*3600000)); }   /* أقرب منتصف ليل (بيصلّح فرق ساعة توقيت الصيف) */
+function _repAddDays(d, n){ d = new Date(d); return new Date(d.getFullYear(), d.getMonth(), d.getDate()+n); }   /* بداية اليوم بعد n يوم — بالتقويم مش بالمللي ثانية (توقيت الصيف) */
+function _repDaysBetween(a, b){ return Math.round((_repSOD(b)-_repSOD(a))/86400000); }
+function _repDim(y, m){ return new Date(y, m+1, 0).getDate(); }   /* عدد أيام الشهر */
+function _repParseDay(s){ const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s||'')); return m ? new Date(+m[1], +m[2]-1, +m[3]) : null; }
+
+/* مدى الفترة اللي الشاشة بتشتغل عليه. غير المخصصة = periodRange زي ما هي.
+   المخصصة: 'YYYY-MM-DD' بتتقرا بتوقيت الجهاز (periodRange بتقراها UTC فبتبوّظ كشف الشهر الكامل في مصر) —
+   البداية 00:00 والنهاية 23:59:59.999. الجنب الفاضي بيرجع زي periodRange (2000-01-01 / دلوقتي) */
+function repRange(st){
+  st = st || {};
+  if(st.preset !== 'custom') return periodRange(st);
+  const f = _repParseDay(st.from), t = _repParseDay(st.to);
+  return {
+    from: f || new Date(2000,0,1),
+    to: t ? new Date(t.getFullYear(), t.getMonth(), t.getDate(), 23,59,59,999) : new Date()
+  };
+}
+/* اسم الفترة: شهر كامل «سبتمبر 2026» · جزء من شهر «1–10 أكتوبر» · يوم واحد بالتاريخ · غير كده «من → إلى» */
+function repRangeLabel(from, to){
+  const f = new Date(from), t = new Date(to);
+  const sameMonth = f.getFullYear()===t.getFullYear() && f.getMonth()===t.getMonth();
+  if(sameMonth && f.getDate()===1 && t.getDate()===_repDim(t.getFullYear(), t.getMonth())) return AR_MONTHS[f.getMonth()]+' '+f.getFullYear();
+  if(sameMonth && f.getDate()===t.getDate()) return fmtDate(f);
+  if(sameMonth) return f.getDate()+'–'+t.getDate()+' '+AR_MONTHS[f.getMonth()];
+  return fmtDate(f)+' → '+fmtDate(t);
+}
+/* نافذة المقارنة (مواصفات §5). range.to = «دلوقتي» (بيتثبّت في الاختبار). نهاية النافذة دايماً آخر اليوم 23:59:59.999.
+   'all' (وأي preset مش معروف) ⇒ null = مفيش مقارنة */
+function repCompareRange(preset, range){
+  if(!range || !range.from || !range.to) return null;
+  const f = new Date(range.from), t = new Date(range.to);
+  let pf, pt;
+  switch(preset){
+    /* periodRange بتبني اليوم والأسبوع بالمللي ثانية (±86400000) — فعبر تغيير توقيت الصيف في مصر الـ from ممكن يقع 23:00 اليوم اللي قبله
+       (والـ to ممكن يعدّي لـ 00:59 اليوم اللي بعده). عشان كده الـ from بيتقرّب لأقرب منتصف ليل ونهاية النافذة بتتحسب من البداية بالتقويم */
+    case 'today': case 'yesterday':        /* اليوم اللي قبله، يوم كامل */
+      pf = _repAddDays(_repNearSOD(f), -1); pt = _repEOD(pf); break;
+    case 'this_week':                      /* نفس الأيام من الأسبوع اللي فات (−7 أيام للطرفين) */
+      pf = _repAddDays(_repNearSOD(f), -7); pt = _repEOD(_repAddDays(t, -7)); break;
+    case 'last_week':                      /* الأسبوع اللي قبله كامل: 7 أيام بالظبط من السبت للجمعة */
+      pf = _repAddDays(_repNearSOD(f), -7); pt = _repEOD(_repAddDays(pf, 6)); break;
+    case 'this_month': {                   /* من 1 الشهر اللي فات لنفس رقم اليوم — ولو الشهر أقصر بيقف عند آخره */
+      pf = new Date(f.getFullYear(), f.getMonth()-1, 1);
+      pt = new Date(pf.getFullYear(), pf.getMonth(), Math.min(t.getDate(), _repDim(pf.getFullYear(), pf.getMonth())), 23,59,59,999);
+      break; }
+    case 'last_month':                     /* الشهر اللي قبله كامل */
+      pf = new Date(f.getFullYear(), f.getMonth()-1, 1);
+      pt = new Date(f.getFullYear(), f.getMonth(), 0, 23,59,59,999); break;
+    case 'this_quarter': {                 /* الربع اللي فات من أوله بنفس عدد الأيام (ومايعدّيش آخر الربع ده لو أقصر) */
+      pf = new Date(f.getFullYear(), f.getMonth()-3, 1);
+      const qEnd = new Date(pf.getFullYear(), pf.getMonth()+3, 0, 23,59,59,999);
+      pt = _repEOD(_repAddDays(pf, _repDaysBetween(f, t)));
+      if(pt.getTime() > qEnd.getTime()) pt = qEnd;
+      break; }
+    case 'this_year': {                    /* السنة اللي فاتت من يناير لنفس التاريخ (29 فبراير ⇒ 28) */
+      const y = f.getFullYear()-1;
+      pf = new Date(y, 0, 1);
+      pt = new Date(y, t.getMonth(), Math.min(t.getDate(), _repDim(y, t.getMonth())), 23,59,59,999);
+      break; }
+    case 'custom': {
+      if(_repSOD(t).getTime() < _repSOD(f).getTime() || f.getTime() <= new Date(2000,0,1).getTime()) return null;   /* مدى مقلوب أو مفتوح من الأول ⇒ مفيش قبله حاجة */
+      if(f.getDate()===1 && t.getDate()===_repDim(t.getFullYear(), t.getMonth())){   /* شهور كاملة ⇒ نفس عدد الشهور الكاملة اللي قبلها */
+        const n = (t.getFullYear()-f.getFullYear())*12 + t.getMonth() - f.getMonth() + 1;
+        pf = new Date(f.getFullYear(), f.getMonth()-n, 1);
+        pt = new Date(f.getFullYear(), f.getMonth(), 0, 23,59,59,999);
+      } else {                                                                      /* غير كده ⇒ نفس عدد الأيام اللي قبلها علطول */
+        pt = _repEOD(_repAddDays(f, -1));
+        pf = _repAddDays(f, -1 - _repDaysBetween(f, t));
+      }
+      break; }
+    default: return null;
+  }
+  return { from: pf, to: pt, label: repRangeLabel(pf, pt) };
+}
+
+/* أرقام فترة واحدة — كلها من مصادرها الأصلية (مواصفات §4). مفيش قسمة على صفر: النسب 0 (partsMargin = null لو مبيعات القطع صفر) */
+function repStats(range){
+  const ps = computeProfitStats(range);
+  /* المبيعات حسب النوع من بنود فواتير الفترة. اللي مش بيتجمع على إجمالي البيع (فاتورة قديمة من غير بنود،
+     أو بنود اتعدلت بعد الفاتورة) بيروح «بنود تانية» عشان القائمة تتجمع صح دايماً — ومابيظهرش لو الفرق أقل من نص جنيه */
+  const sales = { service:0, part:0, ext_part:0, ext_work:0, other:0 };
+  DB.invoices.forEach(inv=>{
+    if(inv.cancelled || !inPeriod(inv.date, range)) return;
+    (inv.items||[]).forEach(it=>{
+      if(it.kind==='service' || it.kind==='part' || it.kind==='ext_part' || it.kind==='ext_work') sales[it.kind] += (it.qty||0)*(it.unitPrice||0);
+    });
+  });
+  sales.other = ps.gross - (sales.service + sales.part + sales.ext_part + sales.ext_work);
+  if(Math.abs(sales.other) < 0.5) sales.other = 0;
+  /* المصاريف = operatingExpenses() اللي تاريخها جوه الفترة (نفس فلتر «إجمالي المصروفات» في renderExpenseReport) */
+  let expTotal = 0;
+  const gm = new Map();
+  operatingExpenses().forEach(e=>{
+    if(!inPeriod(e.date, range)) return;
+    const amt = e.amount||0, g = expGroupOf(e), c = e.category || 'غير محدد';
+    expTotal += amt;
+    let G = gm.get(g);
+    if(!G){ G = { group:g, invest:INVESTMENT_GROUPS.includes(g), total:0, cm:new Map() }; gm.set(g, G); }
+    G.total += amt;
+    G.cm.set(c, (G.cm.get(c)||0) + amt);
+  });
+  const groups = [...gm.values()].map(G=>({
+    group:G.group, invest:G.invest, total:G.total,
+    cats:[...G.cm].map(([cat, total])=>({ cat, total })).sort((a,b)=>b.total-a.total)
+  })).sort((a,b)=>b.total-a.total);
+  /* حركة الفلوس (برة حساب الربح): المحصّل بتاريخ الدفعة (نفس collectedTotal في renderReceivables) + سداد الموردين والاستردادات */
+  let collected = 0, supplierPaid = 0, depositRefunds = 0, custRefunds = 0;
+  DB.invoices.forEach(inv=>{
+    if(inv.cancelled) return;
+    (inv.payments||[]).forEach(p=>{ if(inPeriod(p.date, range)) collected += p.amount||0; });
+  });
+  DB.expenses.forEach(e=>{
+    if(!inPeriod(e.date, range)) return;
+    const tt = expTxnType(e);
+    if(tt==='purchase_payment' || tt==='supplier_payment') supplierPaid += e.amount||0;
+    else if(tt==='deposit_refund') depositRefunds += e.amount||0;
+    else if(tt==='cust_refund') custRefunds += e.amount||0;
+  });
+  const net = ps.netProfit - expTotal;   /* = ربح الشغل − الهالك − المصاريف */
+  return {
+    ps, gross:ps.gross, discounts:ps.discounts, netSales:ps.netSales, sales,
+    cost:{ inParts:ps.inParts, extParts:ps.extParts, extWork:ps.extWork, paint:ps.paint, total:ps.cost },
+    workProfit:ps.profit, workMargin:ps.margin, scrap:ps.scrapCost,
+    net, netMargin: ps.netSales>0 ? net/ps.netSales*100 : 0,
+    cars:ps.count, avgTicket: ps.count>0 ? ps.netSales/ps.count : 0,
+    partsMargin: sales.part>0 ? (sales.part - ps.inParts)/sales.part*100 : null,
+    exp:{ total:expTotal, groups },
+    cash:{ collected, debt:ps.debt, supplierPaid, depositRefunds, custRefunds }
+  };
+}
+
+/* آخر n شهر ميلادي لحد شهر now — لفة واحدة على الفواتير والمصاريف وحركات الهالك (الشغل من Map متبنية مرة).
+   الشهور اللي قبل أول فاتورة غير ملغية أو أول مصروف تشغيلي بتتشال. الشهر الأخير (partial) لسه ماخلصش.
+   الأقدم الأول. السنة بتتكتب في أول شهر وفي يناير بس. نفس معادلات computeProfitStats/operatingExpenses لكل شهر */
+function repMonthly(n, now){
+  now = now ? new Date(now) : new Date();
+  n = Math.max(1, Math.floor(_repNum(n)) || 12);
+  const firstMi = now.getFullYear()*12 + now.getMonth() - (n-1);   /* رقم الشهر = سنة×12 + شهر */
+  const acc = [];
+  for(let i=0; i<n; i++) acc.push({ gross:0, disc:0, cost:0, scrap:0, exp:0, byGroup:new Map() });
+  const jobs = new Map();
+  DB.jobs.forEach(j=>{ if(!jobs.has(j.id)) jobs.set(j.id, j); });   /* أول أمر بالـ id زي DB.jobs.find */
+  let minMi = Infinity;
+  const miOf = (s)=>{ const d = new Date(s); return isNaN(d.getTime()) ? null : d.getFullYear()*12 + d.getMonth(); };
+  DB.invoices.forEach(inv=>{
+    if(inv.cancelled) return;
+    const mi = miOf(inv.date); if(mi===null) return;
+    if(mi < minMi) minMi = mi;
+    const a = acc[mi - firstMi]; if(!a) return;
+    a.gross += (inv.subtotal!=null ? inv.subtotal : inv.total + (inv.discount||0));
+    a.disc += inv.discount||0;
+    const job = jobs.get(inv.jobId);
+    if(job){
+      (job.items||[]).forEach(it=>{ if(it.kind==='part' || it.kind==='ext_part' || it.kind==='ext_work') a.cost += (it.qty||0)*(it.costPrice||0); });
+      (job.internalCosts||[]).forEach(ic=>{ a.cost += ic.total||0; });
+    }
+  });
+  DB.expenses.forEach(e=>{
+    if(!isOperatingExpense(e)) return;
+    const mi = miOf(e.date); if(mi===null) return;
+    if(mi < minMi) minMi = mi;
+    const a = acc[mi - firstMi]; if(!a) return;
+    const amt = e.amount||0, g = expGroupOf(e);
+    a.exp += amt;
+    a.byGroup.set(g, (a.byGroup.get(g)||0) + amt);
+  });
+  DB.stockMoves.forEach(m=>{
+    if(m.type!=='scrap') return;
+    const mi = miOf(m.date); if(mi===null) return;
+    const a = acc[mi - firstMi]; if(!a) return;
+    a.scrap += (m.qty||0)*(m.unitCost||0);
+  });
+  if(minMi === Infinity) return [];
+  const out = [];
+  for(let i=Math.max(0, minMi - firstMi); i<n; i++){
+    const a = acc[i], mi = firstMi + i, y = Math.floor(mi/12), m = mi - y*12;
+    const pc = profitCore(a.gross, a.disc, a.cost);
+    out.push({
+      ym: y+'-'+String(m+1).padStart(2,'0'),
+      label: AR_MONTHS[m] + ((out.length===0 || m===0) ? ' '+y : ''),
+      partial: i === n-1,
+      netSales: pc.net, workProfit: pc.profit, exp: a.exp, scrap: a.scrap,
+      net: pc.profit - a.scrap - a.exp,
+      expByGroup: Object.fromEntries(a.byGroup)
+    });
+  }
+  return out;
+}
+
+/* الفرق بين رقمين. pct = null لو القديم صفر. good = الاتجاه حلو ولا وحش حسب goodWhenUp (null لو ثابت).
+   النسبة على |القديم| عشان الخسارة اللي قلّت تطلع تحسّن مش عكسه */
+function repDelta(cur, prev, goodWhenUp){
+  cur = _repNum(cur); prev = _repNum(prev);
+  const diff = cur - prev;
+  const dir = Math.abs(diff) < 0.005 ? 'same' : (diff > 0 ? 'up' : 'down');
+  const pct = Math.abs(prev) < 0.005 ? null : diff/Math.abs(prev)*100;
+  const good = dir==='same' ? null : (goodWhenUp ? dir==='up' : dir==='down');
+  return { diff, pct, dir, good };
+}
+/* سهم الفرق: ▲/▼ + الفرق (fmt) + (النسبة%). «جديد» لو القديم صفر والجديد لأ · «—» لو الاتنين صفر.
+   points=true ⇒ من غير النسبة وfmt بياخد فرق النقط (للنسب المئوية). الكلاس up (حلو/أخضر) أو dn (وحش/أحمر) حسب goodWhenUp */
+function repDeltaHTML(cur, prev, goodWhenUp, fmt, points){
+  fmt = fmt || money;
+  const c = _repNum(cur), p = _repNum(prev);
+  const dl = repDelta(c, p, goodWhenUp);
+  const cls = dl.good===null ? '' : (dl.good ? ' up' : ' dn');
+  const col = dl.good===null ? 'var(--muted)' : (dl.good ? 'var(--success)' : 'var(--danger)');
+  const wrap = (txt)=>`<span class="rep-delta${cls}" style="color:${col}">${txt}</span>`;
+  if(Math.abs(p) < 0.005) return Math.abs(c) < 0.005 ? wrap('—') : wrap('جديد');
+  if(dl.dir==='same') return wrap('زي ما هو');
+  return wrap((dl.dir==='up' ? '▲' : '▼')+' '+fmt(Math.abs(dl.diff)) + ((!points && dl.pct!==null) ? ' ('+Math.abs(dl.pct).toFixed(1)+'%)' : ''));
+}
+/* ============================================================
+   م255 — الرسوم (SVG جوه الملف، من غير أي مكتبة). كلها دوال صافية بترجّع نص HTML/SVG:
+   مفيش داتا ولا حفظ. الشهر الأقدم على اليمين والأحدث على الشمال (RTL). القيم الفاسدة (undefined/null/NaN) = صفر،
+   وكله صفر ⇒ div «مفيش بيانات كفاية». الأرقام إنجليزي (money/toFixed). ألوان الثيم (var(--border)/var(--muted))
+   بتتحط في style مش في attribute، لأن var() جوه attribute مش مضمون في SVG. ألوان السلاسل hex عادية.
+   ============================================================ */
+var REP_COLORS = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#6250d6','#e34948'];
+var REP_GRAY = '#9a9890';
+
+/* اختصار الأرقام فوق الأعمدة وعلى المحور: 1.5K · 112K — السالب بعلامته، والصغير رقم صحيح */
+function repShort(n){
+  n = _repNum(n);
+  const a = Math.abs(n), r = Math.round(a);
+  if(r === 0) return '0';
+  const sign = n < 0 ? '-' : '';
+  if(r < 1000) return sign + r;
+  const k = a/1000;
+  return sign + k.toFixed(k >= 99.95 ? 0 : 1) + 'K';
+}
+/* رقم جوه نص SVG: السالب بياخد LRM قبله، وإلا في سياق RTL بيتعرض «100K-» بدل «-100K» */
+function _repNumTxt(n){ const s = repShort(n); return s.charAt(0) === '-' ? '‎' + s : s; }
+function _repPx(n){ n = Number(n); return (isFinite(n) ? n : 0).toFixed(1); }
+function _repChartEmpty(){ return '<div class="empty" style="padding:24px 12px">مفيش بيانات كفاية</div>'; }
+/* لون السلسلة لازم hex (بيتحط في attribute/style) — أي حاجة تانية بتتبدل بلون من الباليتة حسب الترتيب */
+function _repColor(c, i){
+  return (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c)) ? c : REP_COLORS[(i||0) % REP_COLORS.length];
+}
+function _repMonths(months){
+  return (Array.isArray(months) ? months : []).map(m => (m && typeof m === 'object')
+    ? { label: String(m.label==null ? '' : m.label), partial: !!m.partial }
+    : { label: String(m==null ? '' : m), partial: false });
+}
+/* سلاسل [{name,color,values}] ⇒ {name,color,v:[n أرقام سليمة]} (الناقص أو الفاسد = صفر، والزايد بيتتجاهل) */
+function _repSeries(list, n, maxCount, colorOffset){
+  return (Array.isArray(list) ? list : []).filter(s => s && typeof s === 'object').slice(0, maxCount).map((s, i) => ({
+    name: String(s.name==null ? '' : s.name),
+    color: _repColor(s.color, colorOffset + i),
+    v: Array.from({length:n}, (_, k) => _repNum(Array.isArray(s.values) ? s.values[k] : 0))
+  }));
+}
+/* مقياس المحور الرأسي: لازم يشمل الصفر والسالب، وخطواته 1/2/5 × 10^k (أرقام صحيحة) */
+function _repScale(lo, hi){
+  lo = Math.min(0, _repNum(lo)); hi = Math.max(0, _repNum(hi));
+  if(hi - lo < 1e-9) hi = lo + 1;
+  const raw = (hi - lo)/4, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw/mag;
+  const step = Math.max(1, (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag);
+  const k0 = Math.floor(lo/step + 1e-9), k1 = Math.ceil(hi/step - 1e-9), ticks = [];
+  for(let k = k0; k <= k1; k++) ticks.push(k*step);
+  return { lo: k0*step, hi: k1*step, ticks };
+}
+/* الإطار المشترك للرسمين: شبكة + أرقام المحور (على اليمين) + أسماء الشهور (الأقدم يمين) + ملحوظة الشهر اللي لسه ماخلصش */
+function _repFrame(ms, lo, hi){
+  const sc = _repScale(lo, hi), n = ms.length;
+  const note = ms.some(m => m.partial);
+  const W = 420, padT = 16, plotH = 160, padL = 6, padR = 40;
+  const H = padT + plotH + 24 + (note ? 14 : 0);
+  const plotR = W - padR, slot = (plotR - padL)/n;
+  const y = v => padT + (sc.hi - v)/(sc.hi - sc.lo)*plotH;
+  let g = '';
+  sc.ticks.forEach(t => {
+    const zero = Math.abs(t) < 1e-9, yy = y(t);
+    g += `<line x1="${padL}" x2="${_repPx(plotR)}" y1="${_repPx(yy)}" y2="${_repPx(yy)}" stroke-width="1" style="stroke:var(--${zero ? 'muted' : 'border'})${zero ? ';opacity:.6' : ''}"/>`;
+    g += `<text x="${W-4}" y="${_repPx(yy+3.5)}" text-anchor="start" font-size="10" style="fill:var(--muted)">${_repNumTxt(t)}</text>`;
+  });
+  /* أسماء الشهور: لو الزحمة كتير بنعرض كل k-ة والأحدث ظاهر دايماً (السنة ماتتحسبش في العرض المقدّر) */
+  let widest = 0;
+  ms.forEach(m => { widest = Math.max(widest, (m.label.replace(/\s*\d{4}/, '').length + (m.partial ? 1 : 0))*5.4); });
+  const k = Math.max(1, Math.ceil(widest/slot)), ly = padT + plotH + 14;
+  ms.forEach((m, i) => {
+    if((n - 1 - i) % k) return;
+    g += `<text x="${_repPx(plotR - (i + 0.5)*slot)}" y="${_repPx(ly)}" text-anchor="middle" font-size="10" style="fill:var(--muted)">${escNote(m.label)}${m.partial ? '*' : ''}</text>`;
+  });
+  if(note) g += `<text x="${W-4}" y="${H-3}" text-anchor="start" font-size="9.5" style="fill:var(--muted)">* الشهر لسه ماخلصش</text>`;
+  return { W, H, plotR, slot, y, grid: g };
+}
+function _repSvg(f, title, body){
+  return `<svg viewBox="0 0 ${f.W} ${f.H}" width="100%" role="img" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:auto;max-width:640px;margin:0 auto;direction:rtl"><title>${escNote(title)}</title>${f.grid}${body}</svg>`;
+}
+
+/* خط صغير (sparkline) لكارت: النقطة الأولى (الأقدم) على اليمين. أقل من نقطتين ⇒ ''. بيكبر بعرض الكارت والخط 2px ثابت */
+function svgSpark(values){
+  const v = (Array.isArray(values) ? values : []).map(_repNum);
+  if(v.length < 2) return '';
+  const W = 120, H = 22, pad = 2;
+  const mn = Math.min(...v), mx = Math.max(...v), rng = mx - mn;
+  const pts = v.map((x, i) => {
+    const px = W - pad - i/(v.length - 1)*(W - 2*pad);
+    const py = rng === 0 ? H/2 : H - pad - (x - mn)/rng*(H - 2*pad);
+    return _repPx(px) + ',' + _repPx(py);
+  }).join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" role="img" style="display:block;width:100%;height:${H}px"><title>اتجاه آخر الفترات</title><polyline points="${pts}" fill="none" stroke="${REP_COLORS[0]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" style="vector-effect:non-scaling-stroke"/></svg>`;
+}
+
+/* أعمدة شهرية: months [{label,partial}] · bars [{name,color,values}] (أول اتنين بس) · line {name,color,values}|null.
+   دليل HTML فوق الرسم. عمود لكل شهر لكل سلسلة (حتى لو صفر). الشهر الناقص عليه *. السالب بينزل تحت خط الصفر */
+function svgMonthBars(months, bars, line){
+  const ms = _repMonths(months), n = ms.length;
+  if(!n) return _repChartEmpty();
+  const bs = _repSeries(bars, n, 2, 0);
+  const ls = (line && typeof line === 'object') ? _repSeries([line], n, 1, bs.length)[0] : null;
+  const all = [].concat(...bs.map(s => s.v), ls ? ls.v : []);
+  if(!all.some(x => x !== 0)) return _repChartEmpty();
+  const f = _repFrame(ms, Math.min(...all), Math.max(...all));
+  const nb = bs.length, gap = 2, y0 = f.y(0);
+  const bw = nb ? Math.max(2, Math.min(26, (f.slot*0.72 - gap*(nb - 1))/nb)) : 0;
+  const groupW = nb*bw + Math.max(0, nb - 1)*gap;
+  let body = '';
+  ms.forEach((m, i) => {
+    const gx = f.plotR - i*f.slot - (f.slot - groupW)/2;      // الحافة اليمنى لمجموعة أعمدة الشهر
+    bs.forEach((s, j) => {
+      const v = s.v[i], yv = f.y(v);
+      const h = Math.max(Math.abs(yv - y0), v !== 0 ? 1 : 0);
+      body += `<rect x="${_repPx(gx - (j + 1)*bw - j*gap)}" y="${_repPx(Math.min(yv, y0))}" width="${_repPx(bw)}" height="${_repPx(h)}" rx="2" fill="${s.color}"><title>${escNote(s.name)} · ${escNote(m.label)}: ${money(v)}</title></rect>`;
+    });
+  });
+  if(ls){
+    const pts = ls.v.map((v, i) => [f.plotR - (i + 0.5)*f.slot, f.y(v)]);
+    if(n > 1) body += `<polyline points="${pts.map(p => _repPx(p[0]) + ',' + _repPx(p[1])).join(' ')}" fill="none" stroke="${ls.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    pts.forEach((p, i) => {
+      body += `<circle cx="${_repPx(p[0])}" cy="${_repPx(p[1])}" r="3" fill="${ls.color}" stroke-width="1.5" style="stroke:var(--surface)"><title>${escNote(ls.name)} · ${escNote(ms[i].label)}: ${money(ls.v[i])}</title></circle>`;
+    });
+  }
+  const names = bs.map(s => s.name).join(' و ');
+  const title = 'رسم أعمدة بالشهور' + (names ? ': ' + names : '') + (ls ? ' مع خط ' + ls.name : '');
+  const item = (color, name, isLine) => `<span style="display:inline-flex;align-items:center;gap:5px">${isLine
+    ? `<i style="display:inline-block;width:14px;height:0;border-top:2px solid ${color}"></i>`
+    : `<i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${color}"></i>`}${escNote(name)}</span>`;
+  const legend = `<div class="rep-legend" style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin-bottom:6px">${bs.map(s => item(s.color, s.name, false)).join('')}${ls ? item(ls.color, ls.name, true) : ''}</div>`;
+  return `<div class="rep-chart">${legend}${_repSvg(f, title, body)}</div>`;
+}
+
+/* أعمدة شهرية متقسمة: groups [{name,color,values}] — الأولى من تحت. <rect لكل جزء مش صفر بس.
+   فوق كل عمود إجماله (repShort). الجزء السالب (استرداد) بينزل تحت خط الصفر. الدليل (legend) على اللي بينادي الدالة */
+function svgStackedMonths(months, groups){
+  const ms = _repMonths(months), n = ms.length;
+  if(!n) return _repChartEmpty();
+  const gs = _repSeries(groups, n, Infinity, 0);
+  if(!gs.some(g => g.v.some(x => x !== 0))) return _repChartEmpty();
+  let lo = 0, hi = 0;
+  ms.forEach((m, i) => {
+    let p = 0, q = 0;
+    gs.forEach(g => { const v = g.v[i]; if(v > 0) p += v; else q += v; });
+    hi = Math.max(hi, p); lo = Math.min(lo, q);
+  });
+  const f = _repFrame(ms, lo, hi), bw = Math.max(3, Math.min(34, f.slot*0.62));
+  let body = '';
+  ms.forEach((m, i) => {
+    const x = f.plotR - (i + 0.5)*f.slot - bw/2;
+    let up = 0, down = 0, total = 0, any = false;
+    gs.forEach(g => {
+      const v = g.v[i];
+      if(v === 0) return;
+      any = true; total += v;
+      let a, b;                                              // a = الحافة العليا · b = السفلى (بالقيمة)
+      if(v > 0){ a = up + v; b = up; up = a; } else { a = down; b = down + v; down = b; }
+      const top = f.y(a), h = Math.max(f.y(b) - top, 1);
+      body += `<rect x="${_repPx(x)}" y="${_repPx(top)}" width="${_repPx(bw)}" height="${_repPx(h)}" rx="2" fill="${g.color}"><title>${escNote(g.name)} · ${escNote(m.label)}: ${money(v)}</title></rect>`;
+    });
+    if(any) body += `<text x="${_repPx(x + bw/2)}" y="${_repPx(f.y(up) - 4)}" text-anchor="middle" font-size="10" font-weight="600" style="fill:var(--text)">${_repNumTxt(total)}</text>`;
+  });
+  return `<div class="rep-chart">${_repSvg(f, 'رسم أعمدة متراصة بالشهور حسب المجموعة', body)}</div>`;
+}
+
+/* لون ثابت لكل مجموعة مصروفات حسب مكانها في allExpenseGroups() (مش حسب حجمها) ⇒ اللون ما بيتغيرش من شهر لشهر.
+   الأسماء اللي مش فيها بتيجي بعدها بترتيب الدخول. من الفهرس 8 وطالع ⇒ رمادي ومتجمّعة في «تانية» (__fold) */
+function repGroupColors(names){
+  const all = allExpenseGroups(), pos = new Map();
+  all.forEach((g, i) => { if(!pos.has(g)) pos.set(g, i); });
+  const list = (Array.isArray(names) ? names : []).map(String), extra = [];
+  list.forEach(nm => { if(!pos.has(nm) && extra.indexOf(nm) < 0) extra.push(nm); });
+  const out = { __fold: {} };
+  list.forEach(nm => {
+    const idx = pos.has(nm) ? pos.get(nm) : pos.size + extra.indexOf(nm);
+    if(idx >= REP_COLORS.length){ out[nm] = REP_GRAY; out.__fold[nm] = 'تانية'; }
+    else out[nm] = REP_COLORS[idx];
+  });
+  return out;
 }
 function renderCancellationAnalytics(){
   const cancelled = DB.jobs.filter(j=>j.status==='ملغاة');
@@ -22000,8 +23519,33 @@ const HR_JOBS = ['مهندس استقبال','أمين مخزن','محاسب','�
 const HR_DEPTS = ['الاستقبال','الحسابات','المخزن','الورشة','الإدارة'];
 const LEAVE_TYPES = ['دورية','طارئة','مرضية','بدون راتب'];
 const EMP_STATUS = ['نشط','موقوف','مستقيل','أرشيف'];
-let hrView = 'employees';
-function setHrView(v){ hrView = v; refreshContent(); }
+/* م254: شاشة الموارد البشرية = 5 تابات (النهارده · الموظفين · الطلبات · شهر المرتب · الإعدادات).
+   الشاشات القديمة بتتعرض جوّاها زي ما هي بنفس دوال الرسم — واللينكات القديمة (setHrView('leaves'…)) بتتترجم لمكانها الجديد.
+   الحالة بـ var عشان الاختبار يقراها (w.hrView …) */
+var hrView = 'today';        // 'today' | 'employees' | 'requests' | 'month' | 'settings'
+var hrReqType = 'pending';   // 'pending' | 'leaves' | 'early' | 'errands'
+var hrMonthYm = null;        // 'YYYY-MM' (شهر المرتب) أو null = الشهر الحالي
+var hrMonthStep = null;      // 1 | 2 | 3 | 4 | 'att-reports' | 'rewards' | null = أول خطوة متاحة
+/* م254 (RF-4): ⚙️ الإعدادات لصاحب المركز، أو لصاحب تعديل الحضور اللي معاه كمان حضور/تقفيل/اعتماد — نفس وصول زرار «القواعد» القديم (كان جوه تاب الحضور اللي بيحتاج واحدة منهم) */
+function hrCanSettings(){ return isOwnerSession() || (can('hr.att_edit') && (can('hr.attendance') || can('hr.att_close') || can('hr.att_approve'))); }
+function hrViews(){
+  const v = [['today', '🏠 النهارده']];
+  if(hrCanViewEmps()) v.push(['employees', '👥 الموظفين']);   /* م215: عرض الملفات بصلاحية العرض أو أي صلاحية بتشتغل منها */
+  v.push(['requests', '📝 الطلبات']);
+  if(hrMonthSteps().length) v.push(['month', '📅 شهر المرتب']);   /* مصدر واحد للصلاحيات (م254): التاب ظاهر لو فيه خطوة أو تقرير متاح */
+  if(hrCanSettings()) v.push(['settings', '⚙️ الإعدادات']);
+  return v;
+}
+function setHrView(v){
+  /* اللينكات القديمة: الاسم القديم ⇐ مكانه الجديد */
+  if(v === 'leaves' || v === 'early' || v === 'errands'){ hrReqType = v; v = 'requests'; }
+  else if(v === 'attendance'){ hrMonthStep = ({ import:1, review:2, close:3, reports:'att-reports' })[attSubView] || 2; v = 'month'; }
+  else if(v === 'payroll'){ hrMonthStep = 4; v = 'month'; }
+  else if(v === 'rewards'){ hrMonthStep = 'rewards'; v = 'month'; }
+  hrView = v; refreshContent();
+}
+function setHrReqType(t){ hrReqType = t; refreshContent(); }
+function setHrMonthStep(k){ hrMonthStep = k; refreshContent(); }
 function hrCanManage(){ return can('hr.employees') || can('hr.approve'); }
 function leaveDaysCount(from, to){
   if(!from || !to) return 0;
@@ -22900,7 +24444,7 @@ async function attCommitImport(){
   attImportDraft = null;
   // م214: بعد الحفظ على طول — تقرير الموظف يوم بيوم للفترة اللي اترفعت
   const one = cover.filter(c=>c.empId);
-  if(one.length===1){ attSubView = 'reports'; attRep = { mode:'emp', month:attCycleOf(one[0].to), emp:one[0].empId, from:one[0].from, to:one[0].to }; }
+  if(one.length===1){ attSubView = 'reports'; hrView = 'month'; hrMonthStep = 'att-reports'; hrMonthApply(attCycleOf(one[0].to)); attRep = { mode:'emp', month:attCycleOf(one[0].to), emp:one[0].empId, from:one[0].from, to:one[0].to }; }   /* م254: شهر المرتب ← تقرير الحضور */
   toast('تم الاستيراد: '+accepted+' بصمة'+(dup?' ('+dup+' مكرر اتجاهل)':'')+(imp.review?' — '+imp.review+' يوم محتاج مراجعة':''));
   refreshContent();
 }
@@ -23116,6 +24660,11 @@ function renderAttImport(){
   return body;
 }
 /* ---------- م214: قائمة «البصمات الناقصة» لموظف الـHR ---------- */
+/* م254: الأيام اللي لسه محتاجة تكملة/مراجعة — مصدر واحد للكارت ده ولكارت «🕒 أيام بصمة ناقصة» في 🏠 النهارده عشان العدّادين مايختلفوش.
+   م218: الناقص اللي مأمورية أو إذن انصراف معتمد بيغطيه مش محتاج تكملة (مش بيتعد) */
+function attMissingReviewRows(){
+  return DB.attendance.filter(r=>r.kind==='session' && r.status==='review' && !(r.missing && attDayExcuse(r.empId, r.dateStr, r).missingOk));
+}
 function attMissingCardHTML(){
   const all = DB.attendance.filter(r=>r.kind==='session' && (r.status==='review' || r.status==='edge'));
   if(!all.length) return '';
@@ -23123,7 +24672,7 @@ function attMissingCardHTML(){
   /* م218: الناقص اللي مأمورية أو إذن انصراف معتمد بيغطيه مش محتاج تكملة */
   const okMiss = r => r.missing && attDayExcuse(r.empId, r.dateStr, r).missingOk;
   const excusedN = all.filter(r=>r.status==='review' && okMiss(r)).length;
-  const rv = all.filter(r=>r.status==='review' && !okMiss(r)).sort((a,b)=> a.dateStr<b.dateStr ? 1 : a.dateStr>b.dateStr ? -1 : 0);
+  const rv = attMissingReviewRows().sort((a,b)=> a.dateStr<b.dateStr ? 1 : a.dateStr>b.dateStr ? -1 : 0);
   const ed = all.filter(r=>r.status==='edge');
   const canEdit = can('hr.att_edit');
   const row = s => {
@@ -23149,11 +24698,23 @@ function attMissingCardHTML(){
 }
 /* ---------- شاشة مراجعة الحضور ---------- */
 let attReviewFilter = { emp:'', from:'', to:'', status:'' };
-function renderAttReview(){
-  if(!can('hr.attendance')) return `<div class="card"><div class="empty">🔒 مالكش صلاحية على الحضور</div></div>`;
-  const f = attReviewFilter;
+/* م254: كارت «أرقام بصمة لموظفين غير معروفين» اتنقل من فوق المراجعة لخطوة ① (نفس الكارت بالظبط) — renderAttReview() من غير opts لسه بيعرضه جواها */
+function attUnknownCodesHTML(){
   // الموظفين غير المعروفين
   const unmatchedFps = [...new Set(DB.attendance.filter(r=>r.kind==='punch' && !r.empId).map(r=>r.fpId))];
+  return unmatchedFps.length?`
+  <div class="card" style="border:1px solid var(--danger);margin-bottom:16px">
+    <div class="dsec" style="color:var(--danger)">⚠️ أرقام بصمة لموظفين غير معروفين (${unmatchedFps.length})</div>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">اربط كل رقم بالموظف الصح — النظام مش بيعمل موظف جديد لوحده.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${unmatchedFps.map(fp=>`<button class="btn btn-sm" onclick="openAttMapEmp('${fp}')">🔗 رقم ${fp} (${DB.attendance.filter(r=>r.kind==='punch'&&r.fpId===fp).length} بصمة)</button>`).join('')}
+    </div>
+  </div>`:'';
+}
+function renderAttReview(opts){
+  opts = opts || {};
+  if(!can('hr.attendance')) return `<div class="card"><div class="empty">🔒 مالكش صلاحية على الحضور</div></div>`;
+  const f = attReviewFilter;
   let sessions = DB.attendance.filter(r=>r.kind==='session');
   if(f.emp) sessions = sessions.filter(s=>s.empId===f.emp);
   if(f.status) sessions = sessions.filter(s=> f.status==='review' ? s.status==='review' : s.status==='ok');
@@ -23172,14 +24733,7 @@ function renderAttReview(){
   const empName = id => { const e=DB.employees.find(x=>x.id===id); return e?e.name:'—'; };
   return `
   ${attMissingCardHTML()}
-  ${unmatchedFps.length?`
-  <div class="card" style="border:1px solid var(--danger);margin-bottom:16px">
-    <div class="dsec" style="color:var(--danger)">⚠️ أرقام بصمة لموظفين غير معروفين (${unmatchedFps.length})</div>
-    <div class="muted" style="font-size:12px;margin-bottom:8px">اربط كل رقم بالموظف الصح — النظام مش بيعمل موظف جديد لوحده.</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px">
-      ${unmatchedFps.map(fp=>`<button class="btn btn-sm" onclick="openAttMapEmp('${fp}')">🔗 رقم ${fp} (${DB.attendance.filter(r=>r.kind==='punch'&&r.fpId===fp).length} بصمة)</button>`).join('')}
-    </div>
-  </div>`:''}
+  ${opts.noCodes ? '' : attUnknownCodesHTML()}
   <div class="grid g3" style="margin-bottom:16px">
     ${stat(String(DB.attendance.filter(r=>r.kind==='session').length),'إجمالي أيام الحضور')}
     ${stat(String(reviewN),'تحتاج مراجعة', reviewN>0)}
@@ -23413,7 +24967,7 @@ function renderAttendance(){
   </div>
   ${attSubView==='close' ? renderAttClose() : attSubView==='import' ? renderAttImport() : attSubView==='reports' ? renderAttReports() : renderAttReview()}`;
 }
-function attOpenCloseFor(empId){ attCloseMonth = attCycleOf(attRepRange().to); attSubView = 'close'; refreshContent(); openAttCloseDetail(empId); }
+function attOpenCloseFor(empId){ hrMonthApply(attCycleOf(attRepRange().to), true); attSubView = 'close'; hrView = 'month'; hrMonthStep = 3; refreshContent(); openAttCloseDetail(empId); }   /* م254: شهر المرتب ← خطوة ③ */
 let attSubView = 'review';
 /* ============ م204: إدخال حضور يدوي (يوم أو أسبوع) + تقارير الحضور ============
    طلب سيف: لحد ما استيراد البصمة من الإكسل يتصلح، الموارد البشرية تدخّل الحضور
@@ -24080,25 +25634,424 @@ function exportPayrollSheet(){
   downloadXLSXFromCSV('كشف-مرتبات-' + r.from + '-' + r.to, csv);
   logAction('⬇ تصدير كشف المرتبات — ' + periodLabel(r.from, r.to));
 }
+/* م254: خطوات شهر المرتب المتاحة للمستخدم (نفس شروط الشاشات القديمة بالظبط) — الترتيب ثابت */
+function hrMonthSteps(){
+  const s = [];
+  if(can('hr.attendance')) s.push([1, '① البصمة'], [2, '② المراجعة']);   /* م217 */
+  if(can('hr.att_close') || can('hr.att_approve')) s.push([3, '③ التقفيل والاعتماد']);
+  if(can('hr.payroll')) s.push([4, '④ المرتبات والصرف']);
+  if(can('hr.attendance')) s.push(['att-reports', '📊 تقرير الحضور']);
+  if(hrCanViewEmps()) s.push(['rewards', '🎁 تقرير المكافآت']);   /* م251 */
+  return s;
+}
+/* ============ م254: 🏠 النهارده — «⚡ محتاج منك» · «👀 مين مش موجود» · ملخص الشهر · تسجيل سريع ============
+   قراءة بس — مابتغيّر بيانات ولا شهر ولا فلتر ولا خطوة. كل كارت بصلاحية صاحبه بس وبيوديك للمكان اللي تخلّصه منه (الأرقام نفس حسابات الشاشات القديمة).
+   النص اللي بيتحط في الصفحة (title · sub) جاهز للعرض: أسماء الموظفين والأكواد متهرّبة بـ escNote. */
+function hrTodayCnt(n, one, two, few, many){ return n===1 ? one : n===2 ? two : n + ' ' + (n<=10 ? few : many); }
+function hrTodayTodos(){
+  const out = [], nmap = new Map(DB.employees.map(e=>[e.id, e.name]));
+  const nm = id => escNote(nmap.get(id) || '—');
+  const list = a => a.slice(0, 3).join(' · ') + (a.length > 3 ? ' …' : '');
+  /* 📝 طلبات مستنية موافقتك — كل الطلبات المنتظرة من غير فلتر شاشة الطلبات (زي الداشبورد) — والزرار بيصفّي الفلتر الأول عشان الجدول يعرض اللي اتعدّ (م254 RF-6) */
+  if(hrCanManage()){
+    const p = hrPendingRequests(true);
+    if(p.length){
+      const sub = [['leave', 'إجازة'], ['early', 'إذن انصراف'], ['errand', 'مأمورية']].map(([k, l])=>{
+        const a = p.filter(x=>x.kind===k);
+        return a.length ? a.length + ' ' + l + ' (' + list([...new Set(a.map(x=>nm(x.empId)))]) + ')' : '';
+      }).filter(Boolean).join(' · ');
+      out.push({ key:'req', icon:'📝', title:hrTodayCnt(p.length, 'طلب مستني موافقتك', 'طلبين مستنيين موافقتك', 'طلبات مستنية موافقتك', 'طلب مستني موافقتك'),
+        sub, btn:'افتح الطلبات', go:"hrFilter.emp='';hrFilter.preset='all';setHrView('requests');setHrReqType('pending')" });
+    }
+  }
+  /* 🕒 أيام بصمة ناقصة — نفس صفوف كارت «البصمات الناقصة» (attMissingReviewRows) */
+  const att = can('hr.attendance'), appr = can('hr.att_approve');
+  if(att){
+    const rows = attMissingReviewRows();
+    if(rows.length){
+      const per = new Map(); rows.forEach(r=>per.set(r.empId, (per.get(r.empId) || 0) + 1));
+      out.push({ key:'missing', icon:'🕒', title:hrTodayCnt(rows.length, 'يوم بصمة ناقصة', 'يومين بصمة ناقصة', 'أيام بصمة ناقصة', 'يوم بصمة ناقصة'),
+        sub:list([...per.entries()].sort((a, b)=>b[1] - a[1]).map(([id, n])=>nm(id) + ' (' + n + ')')), btn:'كمّلهم', go:"setHrView('month');setHrMonthStep(2)" });
+    }
+  }
+  /* 🔗 أكواد بصمة مش متربطة (بصمات من غير موظف) · 🔒 تقفيلات مستنية اعتمادك (close بحالة pending) — مرور واحد على الحضور */
+  let codes = null, closes = null;
+  if(att || appr){
+    codes = new Map(); closes = [];
+    DB.attendance.forEach(r=>{
+      if(r.kind==='punch'){ if(!r.empId) codes.set(r.fpId, (codes.get(r.fpId) || 0) + 1); }
+      else if(r.kind==='close' && r.status==='pending') closes.push(r);
+    });
+  }
+  if(att && codes.size){
+    out.push({ key:'codes', icon:'🔗', title:hrTodayCnt(codes.size, 'كود بصمة مش متربط بموظف', 'كودين بصمة مش متربطين', 'أكواد بصمة مش متربطة', 'كود بصمة مش متربط'),
+      sub:list([...codes.entries()].map(([fp, n])=>'كود ' + escNote(fp) + ' (' + n + ' بصمة)')), btn:codes.size > 1 ? 'اربطهم' : 'اربطه', go:"setHrView('month');setHrMonthStep(1)" });
+  }
+  if(appr && closes.length){
+    const yms = [...new Set(closes.map(r=>String(r.ym || (r.to && attCycleOf(r.to)) || '')))].filter(y=>/^\d{4}-\d{2}$/.test(y)).sort();
+    const cur = hrMonthYmNow(), target = yms.includes(cur) ? cur : yms[yms.length - 1];   /* الشهر المفتوح مالوش تقفيل مستني ⇐ نفتح شهر التقفيل المستني (آخر واحد) */
+    out.push({ key:'approve', icon:'🔒', title:hrTodayCnt(closes.length, 'تقفيل مستني اعتمادك', 'تقفيلين مستنيين اعتمادك', 'تقفيلات مستنية اعتمادك', 'تقفيل مستني اعتمادك'),
+      sub:list([...new Set(closes.map(r=>nm(r.empId)))]) + (yms.length ? ' — شهر المرتب ' + yms.map(y=>+y.split('-')[1]).join(' · ') : ''),
+      btn:'اعتمد', go:(target ? "hrMonthApply('" + target + "');" : '') + "setHrView('month');setHrMonthStep(3)" });
+  }
+  /* 💰 سلف عدّت الحد — نفس حساب «عدّت الحد» الحالي (highAdvanceEmployees ⇐ empAdvanceState) ولصاحب صلاحية الرواتب بس: غيره مايتحسبلهوش payrollCalc أصلاً */
+  if(hrCanSeeSalary()){
+    const hi = highAdvanceEmployees();
+    if(hi.length){
+      const f = hi[0];
+      out.push({ key:'advance', icon:'💰', title:hrTodayCnt(hi.length, 'سلفة عدّت الحد', 'سلفتين عدّوا الحد', 'سلف عدّت الحد', 'سلفة عدّت الحد'),
+        sub:escNote(f.e.name) + ' – ' + money(f.adv) + ' من حد ' + money(f.limit) + (hi.length > 1 ? ' · و' + (hi.length - 1) + ' كمان' : ''), btn:'شوف', go:"openEmployeeDetail('" + f.e.id + "')" });
+    }
+  }
+  return out;
+}
+function hrHm12(t){
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(t || ''));
+  return m ? ((+m[1] % 12) || 12) + ':' + m[2] + ' ' + (+m[1] < 12 ? 'ص' : 'م') : '';
+}
+/* مين مش موجود يوم ds (الافتراضي النهارده) — من البيانات المتسجلة بس (مش تخمين): إجازة معتمدة بتغطي اليوم · مأمورية/إذن انصراف معتمد اليوم · غياب متسجل اليوم.
+   المستقيل والأرشيف مايظهروش. text من غير الاسم (الاسم في name) — والاتنين لسه خام: اللي بيرسم بيهرّبهم. */
+function hrAwayToday(ds){
+  ds = ds || attDateStr(Date.now());
+  const live = e=>e.status!=='مستقيل' && e.status!=='أرشيف', emps = new Map(DB.employees.filter(live).map(e=>[e.id, e]));
+  const day = x=>String(x || '').slice(0, 10), dm = x=>day(x).slice(8, 10) + '/' + day(x).slice(5, 7);
+  const out = [], add = (e, icon, text)=>out.push({ empId:e.id, name:e.name, icon, text });
+  (DB.leaveRequests || []).forEach(r=>{
+    const e = emps.get(r.employeeId);
+    if(e && r.status==='approved' && day(r.from) <= ds && day(r.to) >= ds) add(e, '🏖️', 'إجازة' + (r.type ? ' ' + r.type : '') + ' لحد ' + dm(r.to));
+  });
+  (DB.permits || []).forEach(p=>{
+    const e = emps.get(p.employeeId);
+    if(!e || p.status!=='approved' || day(p.date)!==ds) return;
+    if(p.kind==='errand'){ const o = hrHm12(p.outTime), b = hrHm12(p.backTime); add(e, '🚗', 'مأمورية' + (o ? ' ' + o + (b ? ' ← ' + b : '') : (p.errandType ? ' ' + p.errandType : ''))); }
+    else if(p.kind==='early'){ const t = hrHm12(p.leaveTime); add(e, '⏰', 'إذن انصراف' + (t ? ' ' + t : '')); }
+  });
+  /* م254 (RF-3): الغياب (سجل الموظف) بيظهر بس لمن يشوف ملفات الموظفين أو الحضور — الإجازة والمأمورية والإذن زي ما هم لكل من فاتح الشاشة */
+  if(hrCanViewEmps() || can('hr.attendance')) DB.employees.forEach(e=>{ if(live(e) && attAbsenceOn(e, ds)) add(e, '🚫', 'غياب'); });   /* نفس قاعدة الحضور: الغياب بيغطي date ← date + (أيام − 1) (٠٫٥ يوم = يومه بس) */
+  return out;
+}
+function renderHrToday(){
+  const todos = hrTodayTodos(), away = hrAwayToday(), today = attDateStr(Date.now()), cyc = hrCycleOf(today), dm = ds=>ds.slice(8, 10) + '/' + ds.slice(5, 7);
+  const todoHTML = todos.length ? todos.map(t=>`
+    <div class="htd-todo${t.key==='missing' || t.key==='advance' ? ' htd-hot' : ''}">
+      <span class="htd-ico">${t.icon}</span>
+      <div class="htd-body"><div class="htd-t">${t.title}</div><div class="htd-s">${t.sub}</div></div>
+      <button type="button" class="btn btn-sm${t.key==='req' || t.key==='missing' ? ' btn-accent' : ''}" onclick="${t.go}">${t.btn}</button>
+    </div>`).join('') : `<div class="card"><div class="empty">✅ مفيش حاجة مستنياك النهارده</div></div>`;
+  const awayHTML = away.length
+    ? `<div class="mchips">${away.map(a=>`<span class="mchip">${a.icon} ${escNote(a.name || '—')} – ${escNote(a.text)}</span>`).join('')}</div>`
+    : `<div class="muted" style="font-size:13px">✅ الكل موجود النهارده — مفيش إجازة ولا مأمورية ولا غياب متسجل</div>`;
+  /* ملخص الشهر: بيختفي لو المستخدم مالوش ولا خطوة ولا تقرير في شهر المرتب (نفس شرط تاب 📅 في hrViews) */
+  let monthHTML = '';
+  const ymT = hrMonthSteps().length ? hrMonthYmNow() : null, stT = ymT ? hrMonthStatus(ymT) : null;
+  /* م254: لو الأربع خطوات كلهم 🔒 (زي محاسب معاه تقرير المكافآت بس) الكارت مالوش لازمة — تقاريره في تاب 📅 */
+  if(stT && [1, 2, 3, 4].some(k=>!stT['s' + k].locked)){
+    const ym = ymT, st = stT, here = hrMonthAutoStep(st);
+    const sumTxt = (k, s)=> k===1 ? (s.m ? s.n + ' من ' + s.m + ' موظف' : 'مفيش موظفين بيبصموا')
+      : k===2 ? (s.missing ? hrTodayCnt(s.missing, 'يوم ناقص', 'يومين ناقصين', 'أيام ناقصة', 'يوم ناقص') : 'مفيش ناقص')
+      : k===3 ? s.approved + ' من ' + s.total + ' اتعتمدوا' : 'اتصرف لـ ' + s.paid + ' من ' + s.total;
+    const closing = ym !== attCycleOf(today);   /* أول 10 أيام بعد القفل الملخص بيوري الشهر اللي خلص (hrDefaultMonth) — مش الشهر اللي في السطر اللي فوق */
+    monthHTML = `
+    <div class="htd-h">📅 ${closing ? 'الشهر اللي بتقفله دلوقتي' : 'ملخص الشهر'}</div>
+    <div class="card">
+      <div class="muted" style="font-size:12.5px;margin-bottom:8px">${hrMonthLabel(ym)}${closing ? '<div style="font-size:11.5px;margin-top:2px">أول 10 أيام بعد يوم القفل بنوريك الشهر اللي خلص عشان تقفّله وتصرف مرتباته</div>' : ''}</div>
+      ${[1, 2, 3, 4].map(k=>{
+        const s = st['s' + k];
+        return `<div class="htd-step${k===here ? ' htd-here' : ''}${s.locked ? ' htd-lock' : ''}"><span>${s.locked ? '🔒' : s.done ? '✅' : k===here ? '🟠' : '⚪'}</span><span>${HR_MONTH_NUMS[k]} ${HR_MONTH_TITLES[k]} – ${s.locked ? 'مش من صلاحياتك' : sumTxt(k, s)}</span></div>`;
+      }).join('')}
+      <button type="button" class="btn btn-accent" style="width:100%;margin-top:12px" onclick="hrMonthStep=null;setHrView('month')">كمّل شغل الشهر ⟵</button>
+    </div>`;
+  }
+  return `
+  <div class="muted" style="font-size:13px;margin-bottom:14px">${attDayLabel(today, true)} · شهر المرتب الحالي: <b style="color:var(--text)">${dm(cyc.from)} ← ${dm(cyc.to)}</b></div>
+  <div class="htd">
+    <div class="htd-col">
+      <div class="htd-h">⚡ محتاج منك</div>
+      ${todoHTML}
+    </div>
+    <div class="htd-col">
+      <div class="htd-h">👀 مين مش موجود النهارده</div>
+      <div class="card">${awayHTML}</div>
+      ${monthHTML}
+      <div class="htd-h">➕ تسجيل سريع</div>
+      <div class="htd-quick">
+        ${can('hr.attendance') ? `<button type="button" class="btn" onclick="setHrView('month');setHrMonthStep(1)">📥 رفع بصمة</button>` : ''}
+        <button type="button" class="btn" onclick="openNewLeaveModal()">🏖️ طلب إجازة</button>
+        <button type="button" class="btn" onclick="openNewPermitModal('early')">⏰ إذن انصراف</button>
+        <button type="button" class="btn" onclick="openNewPermitModal('errand')">🚗 مأمورية</button>
+      </div>
+    </div>
+  </div>`;
+}
+/* ============ م254: 📝 الطلبات — «⏳ المستني» جدول واحد للأنواع التلاتة + شاشة كل نوع زي ما هي ============
+   القبول/الاعتماد/الرفض من الجدول بينادوا نفس دوال الشاشات القديمة (approveLeave · rejectLeave · approvePermit · rejectPermit)
+   بنفس الـ id — فنفس الحالة ونفس الرصيد ونفس سطر سجل العمليات. ونفس فلتر الموظف/الفترة (hrFilterMatch). */
+function hrPendingRequests(all){   /* all=true ⇐ من غير فلتر الموظف/الفترة (كارت 🏠 النهارده) */
+  const out = [];
+  DB.leaveRequests.forEach(r=>{
+    if(r.status!=='pending' || !(all || hrFilterMatch(r.employeeId, r.from))) return;
+    out.push({ kind:'leave', id:r.id, no:r.reqNo, empId:r.employeeId,
+      when: fmtDate(r.from)+' → '+fmtDate(r.to)+' ('+r.days+' يوم)',
+      details: r.type + (r.reason ? ' — '+r.reason : ''),
+      sortKey: r.date || '' });
+  });
+  DB.permits.forEach(p=>{
+    if((p.kind!=='early' && p.kind!=='errand') || p.status!=='pending' || !(all || hrFilterMatch(p.employeeId, p.date))) return;
+    const isEarly = p.kind==='early';
+    const parts = isEarly
+      ? ['انصراف '+(p.leaveTime||'—')+(p.remainHours ? ' (باقي '+p.remainHours+' ساعة)' : ''), p.reason||p.desc]
+      : [(p.errandType||'')+(p.errandType==='ساعات محددة' && p.hours ? ' ('+p.hours+' س)' : ''), p.destination, p.reason||p.desc];
+    out.push({ kind:p.kind, id:p.id, no:p.permitNo, empId:p.employeeId,
+      when: fmtDate(p.date)+(isEarly ? '' : (p.outTime ? ' · '+p.outTime+(p.backTime ? ' → '+p.backTime : '') : '')),
+      details: parts.filter(Boolean).join(' — ') || '—',
+      sortKey: p.createdAt || '' });
+  });
+  return out.sort((a,b)=> a.sortKey < b.sortKey ? 1 : a.sortKey > b.sortKey ? -1 : 0);   // الأحدث الأول
+}
+function renderHrRequests(){
+  const pend = hrPendingRequests();
+  const canDecide = hrCanManage();   /* نفس شرط الشاشات القديمة — والدوال بتحرس نفسها */
+  const t = ['pending', 'leaves', 'early', 'errands'].includes(hrReqType) ? hrReqType : 'pending';
+  const types = [['pending', '⏳ المستني ('+pend.length+')'], ['leaves', '🏖️ الإجازات'], ['early', '⏰ أذونات الانصراف'], ['errands', '🚗 المأموريات']];
+  const head = `
+  <div class="section-head"><h3>📝 الطلبات</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-accent" onclick="openNewLeaveModal()">➕ طلب إجازة</button>
+      <button class="btn" onclick="openNewPermitModal('early')">➕ إذن انصراف</button>
+      <button class="btn" onclick="openNewPermitModal('errand')">➕ مأمورية</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+    ${types.map(([id, lbl])=>`<button class="btn btn-sm ${t===id?'btn-accent':''}" onclick="setHrReqType('${id}')">${lbl}</button>`).join('')}
+  </div>`;
+  if(t==='leaves') return head + renderLeaveRequests();
+  if(t==='early') return head + renderPermits('early');
+  if(t==='errands') return head + renderPermits('errand');
+  const tags = {
+    leave:  '<span class="tag" style="background:rgba(139,92,246,.15);color:#a78bfa;white-space:nowrap">🏖️ إجازة</span>',
+    early:  '<span class="tag" style="background:rgba(245,158,11,.15);color:#f59e0b;white-space:nowrap">⏰ إذن انصراف</span>',
+    errand: '<span class="tag" style="background:rgba(59,130,246,.15);color:#60a5fa;white-space:nowrap">🚗 مأمورية</span>'
+  };
+  const row = (x)=>{
+    const emp = DB.employees.find(e=>e.id===x.empId);
+    const isLeave = x.kind==='leave';
+    const approveFn = isLeave ? 'approveLeave' : 'approvePermit', rejectFn = isLeave ? 'rejectLeave' : 'rejectPermit';
+    return `<tr>
+      <td>${tags[x.kind]}</td><td>#${x.no||'—'}</td>
+      <td style="font-weight:700">${emp?escNote(emp.name):'—'}</td>
+      <td style="white-space:nowrap;font-size:12.5px">${escNote(x.when)}</td>
+      <td class="muted" style="font-size:12px">${escNote(x.details)}</td>
+      <td>${leaveStatusTag('pending')}</td>
+      <td>${canDecide ? `
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-sm btn-accent" onclick="${approveFn}('${x.id}')">${isLeave?'قبول':'اعتماد'}</button>
+          <button class="btn btn-sm btn-danger" onclick="${rejectFn}('${x.id}')">رفض</button>
+        </div>` : ''}</td>
+    </tr>`;
+  };
+  return head + `
+  ${hrFilterBar()}
+  <div class="card" style="overflow-x:auto">
+    <table><thead><tr><th>النوع</th><th>رقم</th><th>الموظف</th><th>امتى</th><th>التفاصيل</th><th>الحالة</th><th></th></tr></thead>
+    <tbody>${pend.length ? pend.map(row).join('') : `<tr><td colspan="7" class="empty">مفيش طلبات منتظرة</td></tr>`}</tbody></table>
+    <div class="muted" style="font-size:12px;margin-top:10px">نفس أزرار القبول والرفض ونفس الأرصدة اللي في «الإجازات» و«أذونات الانصراف» و«المأموريات» — هنا بس في قايمة واحدة. السجل والإحصائيات في كل نوع لوحده.</div>
+  </div>`;
+}
+/* ============ م254: 📅 شهر المرتب — اختيار الشهر + 4 خطوات بحالتها ============
+   اختيار الشهر بيظبط شهر كل الشاشات اللي تحته مع بعض (التقفيل · الرواتب · تقرير الحضور · تقرير المكافآت) —
+   والشاشات نفسها لسه فيها فلاترها لو حد عايز يغيّر جواها. العلامات ✅ / «إنت هنا» / ⚪ / 🔒 للمعلومة بس: مابتمنعش تفتح أي خطوة متاحة. */
+/* الشهر الافتراضي: التقفيل والصرف بيتعملوا بعد يوم 25 على الشهر اللي لسه خلص — فمن بعد يوم القفل بيوم لحد 10 أيام (26 ← 4) الافتراضي هو الشهر اللي فات، وبعد كده الشهر الحالي */
+function hrDefaultMonth(ds){
+  const cur = attCycleOf(ds), [y, m] = cur.split('-').map(Number), pd = new Date(y, m - 2, 1);
+  const prev = pd.getFullYear() + '-' + String(pd.getMonth() + 1).padStart(2, '0');
+  const days = Math.round((attDateObj(ds) - attDateObj(attCycleRange(prev).to)) / 86400000);   // كام يوم بعد يوم قفل الشهر اللي فات
+  return days >= 1 && days <= 10 ? prev : cur;
+}
+function hrMonthYmNow(){ return hrMonthYm || hrDefaultMonth(attDateStr(Date.now())); }
+var hrMonthSynced = null;   // آخر شهر افتراضي اتظبطت عليه الشاشات من غير ما حد يختار (عشان ماننطّش فوق اللي اتغيّر جوه الشاشات)
+/* لسه ماختارش شهر ⇐ العنوان والكروت وكل الشاشات اللي تحت لازم يبقوا على نفس الشهر الافتراضي. كل شاشة بتتظبط بس لو لسه على قيمتها الافتراضية
+   (أو على آخر شهر افتراضي ظبطناه) — اللي اتغيّر جوه الشاشة نفسها (أو جه من لينك زي «تقفيل الموظف») مابنكتبش فوقه */
+function hrMonthDefaultSync(){
+  if(hrMonthYm) return;
+  const ym = hrMonthYmNow(), was = hrMonthSynced;
+  if(!attCloseMonth) attCloseMonth = ym;
+  if(!attRep.month && !attRep.from && !attRep.to) attRep.month = ym;
+  if(was === ym) return;
+  hrMonthSynced = ym;
+  const rg = attCycleRange(ym), wasRg = was ? attCycleRange(was) : null, curRg = hrCycleOf(), nowYm = attCycleOf(attDateStr(Date.now()));
+  const isRg = (a, b) => !!(a && b && a.from === b.from && a.to === b.to);
+  if(was && attCloseMonth === was) attCloseMonth = ym;
+  if(was && attRep.month === was && !attRep.from && !attRep.to) attRep.month = ym;
+  if(!payrollPeriod || isRg(payrollPeriod, curRg) || isRg(payrollPeriod, wasRg)){ payrollPeriod = Object.assign({}, rg); payrollPeriodAuto = true; }   /* م254 (RF-1): تنبيهات الداشبورد مابتتحركش مع ده */
+  if(rwPeriod.preset === 'cycle'){ if(ym !== nowYm) rwPeriod = Object.assign({ preset:'custom' }, rg); }
+  else if(rwPeriod.preset === 'custom' && isRg(rwPeriod, wasRg)) rwPeriod = Object.assign({ preset:'custom' }, rg);
+}
+/* بتظبط حالة الشاشات على الشهر ده من غير ما ترسم (setHrMonth بيرسم بعدها) — keepRep: سيب فترة تقرير الحضور زي ما هي */
+function hrMonthApply(ym, keepRep){
+  hrMonthYm = ym; attCloseMonth = ym;
+  payrollPeriod = Object.assign({}, attCycleRange(ym)); payrollPeriodAuto = true;   /* م254 (RF-1): تنبيهات الداشبورد مابتتحركش مع ده */
+  if(!keepRep){ attRep.month = ym; attRep.from = ''; attRep.to = ''; }
+  rwPeriod = Object.assign({ preset:'custom' }, attCycleRange(ym));
+}
+function setHrMonth(ym){ hrMonthApply(ym); if(hrMonthStep !== 'att-reports' && hrMonthStep !== 'rewards') hrMonthStep = null; refreshContent(); }   /* التقارير بتفضل مفتوحة عشان تتصفحها شهر ورا شهر */
+function hrMonthShift(delta){
+  const [y, m] = hrMonthYmNow().split('-').map(Number), d = new Date(y, m - 1 + (delta < 0 ? -1 : 1), 1);
+  setHrMonth(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
+}
+/* «موظف بيبصم» = نشط وليه كود جهاز أو اترفعتله بصمات قبل كده (كود عبد الله ورمضان اتمسح بالإيد وبصماتهم فاضلة) — اللي عمره ما بصم مش داخل */
+function hrPunchingEmps(){
+  const punched = new Set(DB.attendance.filter(r=>r.kind==='punch' && r.empId).map(r=>r.empId));
+  return DB.employees.filter(e=>e.status==='نشط' && (String(e.fpId || '').trim() || punched.has(e.id)));
+}
+/* م254 (RF-2): أعداد التقفيل (اتبعتوا · اتعتمدوا · الإجمالي) من سجلات التقفيل بس — من غير حساب مرتب كل موظف (attCloseData كان بيحسب الشهر لكل واحد وهو ثابت التكلفة على الكروت).
+   نفس قاعدة attCloseData بالظبط: الموظف داخل لو نشط أو عنده أي سجل تقفيل للدورة دي (حتى لو اتعمله إعادة فتح)، والسجل المحسوب = آخر سجل مش «اتفتح من جديد» (attCloseFor). */
+function hrMonthCloseCounts(rg){
+  const any = new Set(), last = new Map();
+  DB.attendance.forEach(r=>{
+    if(r.kind!=='close' || r.from!==rg.from || r.to!==rg.to) return;
+    any.add(r.empId);
+    if(r.status!=='reopened') last.set(r.empId, r);
+  });
+  let sent = 0, approved = 0, total = 0;
+  DB.employees.forEach(e=>{
+    if(e.status!=='نشط' && !any.has(e.id)) return;
+    total++;
+    const rec = last.get(e.id);
+    if(rec){ sent++; if(rec.status==='approved') approved++; }
+  });
+  return { sent, approved, total, done:total > 0 && approved === total };
+}
+/* حالة الخطوات الأربعة لشهر معيّن — locked = خطوة مش من صلاحيات المستخدم (مالهاش أرقام) · الأرقام للمعلومة بس */
+function hrMonthStatus(ym){
+  const open = new Set(hrMonthSteps().map(s=>s[0])), rg = attCycleRange(ym);
+  const st = { s1:{ done:false, n:0, m:0, unknown:[], notUp:[], locked:!open.has(1) }, s2:{ done:false, missing:0, locked:!open.has(2) },
+    s3:{ done:false, sent:0, approved:0, total:0, locked:!open.has(3) }, s4:{ done:false, paid:0, total:0, locked:!open.has(4) } };
+  if(!st.s1.locked || !st.s2.locked){
+    const unknown = new Set(), inCycle = new Set(); let missing = 0;
+    DB.attendance.forEach(r=>{
+      if(r.kind==='punch'){ if(!r.empId) unknown.add(r.fpId); }
+      else if(r.kind==='session' && r.dateStr>=rg.from && r.dateStr<=rg.to){
+        inCycle.add(r.empId);
+        if(r.status==='review' && !(r.missing && attDayExcuse(r.empId, r.dateStr, r).missingOk)) missing++;   /* نفس قاعدة كارت «البصمات الناقصة» (م218) */
+      }
+    });
+    if(!st.s1.locked){
+      const punching = hrPunchingEmps(), notUp = punching.filter(e=>!inCycle.has(e.id));
+      Object.assign(st.s1, { m:punching.length, n:punching.length - notUp.length, unknown:[...unknown], notUp, done:!unknown.size && !notUp.length });
+    }
+    if(!st.s2.locked) Object.assign(st.s2, { missing, done:missing === 0 });
+  }
+  if(!st.s3.locked) Object.assign(st.s3, hrMonthCloseCounts(rg));
+  if(!st.s4.locked){
+    const emps = DB.employees.filter(e=>e.status!=='مستقيل' && e.status!=='أرشيف'), paid = emps.filter(e=>hrPayFor(e, ym)).length;   /* نفس ناس كشف المرتبات */
+    Object.assign(st.s4, { paid, total:emps.length, done:emps.length > 0 && paid === emps.length });
+  }
+  return st;
+}
+/* «إنت هنا» = أول خطوة لسه ماخلصتش من المتاحة — لو كلها خلصت آخر خطوة متاحة — ولو مفيش خطوة متاحة null */
+function hrMonthAutoStep(st){
+  const open = [1, 2, 3, 4].filter(k=>!st['s' + k].locked);
+  return open.find(k=>!st['s' + k].done) || open[open.length - 1] || null;
+}
+function hrMonthLabel(ym){
+  const rg = attCycleRange(ym), dm = ds=>ds.slice(8, 10) + '/' + ds.slice(5, 7);
+  return 'شهر المرتب ' + (+String(ym).split('-')[1]) + ' — من ' + dm(rg.from) + ' لـ ' + dm(rg.to);
+}
+const HR_MONTH_TITLES = { 1:'البصمة', 2:'المراجعة', 3:'التقفيل والاعتماد', 4:'المرتبات والصرف' };
+const HR_MONTH_NUMS = { 1:'①', 2:'②', 3:'③', 4:'④' };
+function hrMonthCounter(k, s){
+  if(k===1){
+    const unk = s.unknown.length ? (s.unknown.length === 1 ? 'كود واحد' : s.unknown.length + ' أكواد') + ' مش متربط' : '';
+    return s.m ? s.n + ' من ' + s.m + ' موظف اترفعتلهم بصمة' + (unk ? ' · ' + unk : '') : (unk || 'مفيش موظفين بيبصموا');
+  }
+  if(k===2) return s.missing ? s.missing + ' يوم بصمة ناقصة · لو اتكمّلت مش هتتخصم' : 'مفيش بصمات ناقصة';
+  if(k===3) return s.sent + ' اتبعتوا · ' + s.approved + ' اتعتمدوا من ' + s.total;
+  return 'اتصرف لـ ' + s.paid + ' من ' + s.total;
+}
+function hrMonthCardHTML(k, s, isHere){
+  const num = HR_MONTH_NUMS[k], title = HR_MONTH_TITLES[k];
+  if(s.locked) return `<div class="mstep mstep-lock" aria-disabled="true"><div class="mstep-top"><span>خطوة ${num}</span><span>🔒</span></div>
+    <div class="mstep-t">${title}</div><div class="mstep-s">🔒 مش من صلاحياتك</div></div>`;
+  const cls = 'mstep' + (s.done ? ' mstep-done' : '') + (isHere ? ' mstep-here' : '') + (hrMonthStep===k ? ' mstep-sel' : '');
+  return `<button type="button" class="${cls}" onclick="setHrMonthStep(${k})"${hrMonthStep===k ? ' aria-current="step"' : ''}>
+    <div class="mstep-top"><span>خطوة ${num}${isHere ? ' — <b class="mstep-here-tag">إنت هنا</b>' : ''}</span><span>${s.done ? '✅' : isHere ? '🟠' : '⚪'}</span></div>
+    <div class="mstep-t">${title}</div><div class="mstep-s">${hrMonthCounter(k, s)}</div></button>`;
+}
+function renderHrMonth(){
+  const steps = hrMonthSteps();
+  if(!steps.length) return `<div class="card"><div class="empty">🔒 مالكش صلاحية على شهر المرتب</div></div>`;
+  hrMonthDefaultSync();
+  const ym = hrMonthYmNow(), st = hrMonthStatus(ym), here = hrMonthAutoStep(st);
+  if(!steps.some(s=>s[0]===hrMonthStep)) hrMonthStep = here || steps[0][0];   // المحفوظ مش متاح (أو لسه ماتحددش) ⇐ إنت هنا، ولو مفيش ⇐ أول تقرير متاح
+  const k = hrMonthStep, y = ym.split('-')[0];
+  const reps = [['att-reports', 'تقرير الحضور'], ['rewards', '🎁 تقرير المكافآت']].filter(([id])=>steps.some(s=>s[0]===id));
+  const head = `
+  <div class="card mhead">
+    <div class="mhead-nav">
+      <button type="button" class="btn btn-sm" title="الشهر اللي فات" aria-label="الشهر اللي فات" onclick="hrMonthShift(-1)">▶</button>
+      <b class="mhead-t">${hrMonthLabel(ym)}</b><span class="muted" style="font-size:12px">${y}</span>
+      <button type="button" class="btn btn-sm" title="الشهر الجاي" aria-label="الشهر الجاي" onclick="hrMonthShift(1)">◀</button>
+    </div>
+    ${reps.length ? `<div class="mhead-rep"><span class="muted" style="font-size:12.5px">📊 تقارير الشهر:</span>
+      ${reps.map(([id, lbl])=>`<button type="button" class="btn btn-sm ${k===id?'btn-accent':''}" onclick="setHrMonthStep('${id}')">${lbl}</button>`).join('')}</div>` : ''}
+  </div>
+  <div class="mstep-row">${[1, 2, 3, 4].map(n=>hrMonthCardHTML(n, st['s' + n], n===here)).join('')}</div>`;
+  let body;
+  if(k===1){
+    const notUp = st.s1.notUp.slice().sort(cmpName);
+    body = attUnknownCodesHTML() + (notUp.length ? `
+  <div class="card" style="margin-bottom:16px">
+    <div style="font-weight:800;font-size:13.5px;margin-bottom:6px">👥 لسه مااترفعتلهمش بصمة للشهر ده (${notUp.length})</div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">موظفين بيبصموا (ليهم كود في الجهاز أو اترفعتلهم بصمات قبل كده) ومفيش ليهم ولا يوم حضور في الشهر ده — ارفع ملف البصمة بتاعهم.</div>
+    <div class="mchips">${notUp.map(e=>`<span class="mchip">${escNote(e.name)}</span>`).join('')}</div>
+  </div>` : '') + renderAttImport();
+  }
+  else if(k===2) body = (can('hr.att_edit') ? `<div style="margin-bottom:12px"><button class="btn btn-sm" onclick="openAttManual()">✍️ إدخال حضور يدوي</button></div>` : '') + renderAttReview({ noCodes:true });
+  /* م254: اللي معاه تعديل الحضور + التقفيل/الاعتماد من غير hr.attendance مابيوصلش لخطوة ② — زرار الإدخال اليدوي كان ظاهر له فوق التقفيل في الشكل القديم، فبيفضل ظاهر هنا */
+  else if(k===3) body = (can('hr.att_edit') && !can('hr.attendance') ? `<div style="margin-bottom:12px"><button class="btn btn-sm" onclick="openAttManual()">✍️ إدخال حضور يدوي</button></div>` : '') + renderAttClose();
+  else if(k===4) body = renderPayroll({ noSettings:true });
+  else if(k==='att-reports') body = renderAttReports();
+  else body = renderRewardsReport();
+  const nextK = (k===1 || k===2 || k===3) && !st['s' + (k + 1)].locked ? k + 1 : null;
+  const foot = nextK ? `<div style="margin-top:18px"><button type="button" class="btn btn-accent" onclick="setHrMonthStep(${nextK})">الخطوة الجاية: ${HR_MONTH_NUMS[nextK]} ${HR_MONTH_TITLES[nextK]} ⟵</button></div>` : '';
+  return head + body + foot;
+}
+/* ============ م254: ⚙️ الإعدادات — قواعد الحضور + إعدادات الرواتب ============
+   الكارتين بنفس النوافذ والدوال الحالية (openAttRules · saveWorkingDays) ونفس شروطها:
+   قواعد الحضور لصاحب المركز أو hr.att_edit، وإعدادات الرواتب (أيام العمل · يوم القفل) لصاحب المركز بس.
+   تنبيه يوم القفل هنا جنب الخانات (مش جوه payrollSettingsHTML) عشان renderPayroll() يفضل زي ما هو. */
+function renderHrSettings(){
+  const owner = isOwnerSession(), canRules = hrCanSettings();
+  if(!canRules) return `<div class="card"><div class="empty">🔒 مالكش صلاحية على الإعدادات — كلّم صاحب المركز</div></div>`;
+  const r = attRules();
+  const off = (r.weeklyOff || []).map(i=>AR_WEEKDAYS204[i]).filter(Boolean).join(' و ') || 'مفيش';
+  const rulesCard = `
+    <div class="card" style="margin-bottom:16px">
+      <div class="htd-h" style="font-size:15px;margin-bottom:8px">⏱ قواعد الحضور</div>
+      <div class="muted" style="font-size:13px;line-height:1.9;margin-bottom:12px">الإجازة الأسبوعية: <b style="color:var(--text)">${off}</b> · يوم الشغل <b style="color:var(--text)">${r.otThresholdHours}</b> ساعة${r.otEnabled ? ' (فوقها إضافي)' : ''} · سماح التأخير <b style="color:var(--text)">${r.defaultGraceMin}</b> دقيقة</div>
+      <button type="button" class="btn btn-sm" onclick="openAttRules()">⚙️ القواعد</button>
+    </div>`;
+  const payCard = owner ? `
+    <div class="card" style="margin-bottom:16px">
+      <div class="htd-h" style="font-size:15px;margin-bottom:8px">💵 إعدادات الرواتب</div>
+      ${payrollSettingsHTML()}
+      <div class="muted" style="font-size:12.5px;margin-top:10px">⚠️ ماتغيّرش يوم القفل في نص شهر ولا بعد ما شهر اتقفل أو اتصرف</div>
+    </div>` : '';
+  return rulesCard + payCard;
+}
 function renderHR(){
-  // الشاشات الفرعية بتظهر حسب صلاحيات المستخدم (الملاحظة 32)
-  const views = [];
-  if(hrCanViewEmps()) views.push(['employees','👥 ملفات الموظفين'], ['rewards','🎁 تقرير المكافآت']);   /* م215: عرض الملفات بصلاحية العرض أو أي صلاحية بتشتغل منها · م251 */
-  views.push(['leaves','🏖️ طلبات الإجازات'], ['early','⏰ أذونات الانصراف'], ['errands','🚗 المأموريات']);
-  if(can('hr.attendance') || can('hr.att_close') || can('hr.att_approve')) views.push(['attendance','🕒 الحضور والانصراف']);   /* م217 */
-  if(can('hr.payroll')) views.push(['payroll','💵 الرواتب']);
+  // التابات بتظهر حسب صلاحيات المستخدم (الملاحظة 32 · م254)
+  const views = hrViews();
   if(!views.some(v=>v[0]===hrView)) hrView = views[0][0];
   const tabsBar = `
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px">
     ${views.map(([id,lbl])=>`<button class="btn btn-sm ${hrView===id?'btn-accent':''}" onclick="setHrView('${id}')">${lbl}</button>`).join('')}
   </div>`;
-  const body = hrView==='leaves' ? renderLeaveRequests()
-    : hrView==='early' ? renderPermits('early')
-    : hrView==='errands' ? renderPermits('errand')
-    : hrView==='attendance' ? renderAttendance()
-    : hrView==='payroll' ? renderPayroll()
-    : hrView==='rewards' ? renderRewardsReport()
-    : renderEmployees();
+  const body = hrView==='employees' ? renderEmployees()
+    : hrView==='requests' ? renderHrRequests()
+    : hrView==='month' ? renderHrMonth()
+    : hrView==='settings' ? renderHrSettings()
+    : renderHrToday();
   return tabsBar + body;
 }
 /* ============ م251: 🎁 تقرير المكافآت — كل موظف خد قد إيه من المركز متفنّط بالنوع ============
@@ -24452,6 +26405,173 @@ function setEmpDetailPeriod(empId, k, v){
   else empDetailPeriod[k] = v;
   openEmployeeDetail(empId);
 }
+/* ---------- م256: 📎 مستندات الموظف (بطاقة · شهادات · عقد …) ----------
+   الصور في مخزن مقفول «emp-docs» (مش عام) وبتتفتح بلينك مؤقت ساعة. الملف بيشيل المسار بس في e.docs.
+   الإضافة والعرض = صلاحية «تعديل ملف الموظف وإضافة موظف» · المسح = صاحب المركز بس */
+const ED_BUCKET = 'emp-docs';
+const EMP_DOC_TYPES = ['بطاقة (وش)','بطاقة (ضهر)','شهادة ميلاد','شهادة تجنيد','فيش جنائي','مؤهل دراسي','عقد عمل','تانية'];
+var _edUrls = {};      // path → { url, exp }
+var _edBusy = false;
+function canEmpDocs(){ return can('hr.employees'); }
+function empDocs(e){ return ((e && e.docs) || []).filter(d=>d && d.path); }
+function edErrText(err){
+  const m = String((err && (err.message || err.error)) || err || '');
+  if(/bucket|not found|row-level security|policy|unauthori|403|404/i.test(m))
+    return isOwnerSession() ? 'مكان المستندات لسه ماتعملش في Supabase — نفّذ ملف db/تحديث-م256-مستندات-الموظفين.sql مرة واحدة (SQL Editor ← Run)' : 'مكان المستندات لسه ماتجهزش على السيرفر — كلّم صاحب المركز';
+  if(/fetch|network|timeout|aborted|offline/i.test(m)) return 'النت فاصل — جرّب تاني';
+  return 'حصلت مشكلة (' + m.slice(0, 80) + ') — جرّب تاني';
+}
+/* لينكات مؤقتة (ساعة) — بتتخزن 50 دقيقة عشان مانطلبهاش كل شوية */
+async function empDocUrls(paths){
+  const now = Date.now(), need = paths.filter(p=>!(_edUrls[p] && _edUrls[p].exp > now));
+  if(need.length){
+    if(!sb || !sb.storage || typeof sb.storage.from !== 'function') throw new Error('bucket not found');
+    const { data, error } = await sb.storage.from(ED_BUCKET).createSignedUrls(need, 3600);
+    if(error) throw error;
+    (data || []).forEach(r=>{ if(r && r.signedUrl && r.path) _edUrls[r.path] = { url:r.signedUrl, exp:now + 50 * 60000 }; });
+  }
+  const out = {};
+  paths.forEach(p=>{ if(_edUrls[p]) out[p] = _edUrls[p].url; });
+  return out;
+}
+function empDocsHTML(e){
+  const list = empDocs(e).slice().sort((a, b)=>String(b.at).localeCompare(String(a.at)));
+  const own = isOwnerSession();
+  return `<h3 style="margin-top:0">📎 مستندات ${escNote(e.name)} <span class="muted" style="font-size:12px">#${escNote(e.empNo || '—')}</span></h3>
+    <div class="card" style="padding:12px;margin-bottom:12px">
+      <div class="form-row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <div style="flex:1;min-width:140px"><label class="f-label">نوع المستند</label>
+          <select class="f" id="edType">${EMP_DOC_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
+        <div style="flex:2;min-width:160px"><label class="f-label">ملاحظة (اختياري)</label><input class="f" id="edNote" maxlength="120"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <label class="btn btn-accent" style="cursor:pointer">📷 صوّر بالكاميرا<input type="file" accept="image/*" capture="environment" style="display:none" onchange="empDocPick('${e.id}',this)"></label>
+        <label class="btn" style="cursor:pointer">🖼 اختار صورة من الجهاز<input type="file" accept="image/*" style="display:none" onchange="empDocPick('${e.id}',this)"></label>
+        ${list.length ? `<button class="btn" onclick="empDocPrint('${e.id}','')">🖨 طباعة كل المستندات</button>` : ''}
+      </div>
+      <div class="muted" style="font-size:11.5px;margin-top:6px">الصورة بتتصغّر لوحدها قبل الرفع · المستندات بتتفتح بلينك مؤقت ومحدش يقدر يفتحها من برة السيستم${own ? '' : ' · المسح لصاحب المركز بس'}</div>
+    </div>
+    ${list.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px">
+      ${list.map(d=>`<div class="card" style="padding:8px;text-align:center">
+        <div style="height:110px;display:flex;align-items:center;justify-content:center;background:var(--surface-2);border-radius:6px;cursor:pointer;overflow:hidden" onclick="empDocView('${e.id}','${d.id}')">
+          <img data-edpath="${escAttr(d.path)}" alt="" style="max-width:100%;max-height:110px;display:none"><span class="muted" style="font-size:11px">⏳</span></div>
+        <div style="font-weight:700;font-size:12.5px;margin-top:6px">${escNote(d.type || '—')}</div>
+        ${d.note ? `<div class="muted" style="font-size:11px">${escNote(d.note)}</div>` : ''}
+        <div class="muted" style="font-size:10.5px">${fmtDate(d.at)} · ${escNote(d.by || '')}</div>
+        <div style="display:flex;gap:4px;justify-content:center;margin-top:6px">
+          <button class="btn btn-sm" onclick="empDocView('${e.id}','${d.id}')">🔍</button>
+          <button class="btn btn-sm" onclick="empDocPrint('${e.id}','${d.id}')">🖨</button>
+          ${own ? `<button class="btn btn-sm" style="color:var(--danger)" onclick="empDocDelete('${e.id}','${d.id}')">🗑</button>` : ''}
+        </div></div>`).join('')}</div>` : `<div class="empty" style="padding:18px">مفيش مستندات لسه — صوّر البطاقة أو الشهادات وهتتحفظ هنا</div>`}
+    <div style="margin-top:14px;display:flex;gap:8px"><button class="btn" onclick="openEmployeeDetail('${e.id}')">↩ رجوع لملف الموظف</button><button class="btn" onclick="closeModal()">إغلاق</button></div>`;
+}
+function openEmpDocs(empId){
+  const e = DB.employees.find(x=>x.id===empId);
+  if(!e) return;
+  if(!canEmpDocs()){ toast('المستندات لصاحب صلاحية «تعديل ملف الموظف وإضافة موظف» بس', true); return; }
+  openModal(empDocsHTML(e));
+  empDocsLoadThumbs(e);
+}
+async function empDocsLoadThumbs(e){
+  const paths = empDocs(e).map(d=>d.path);
+  if(!paths.length) return;
+  let urls = {};
+  try{ urls = await empDocUrls(paths); }catch(err){ toast(edErrText(err), true); return; }
+  const imgs = (typeof document.querySelectorAll === 'function') ? [...document.querySelectorAll('img[data-edpath]')] : [];
+  imgs.forEach(im=>{
+    const u = urls[im.getAttribute('data-edpath')];
+    if(!u) return;
+    im.src = u; im.style.display = '';
+    const sp = im.nextElementSibling; if(sp) sp.style.display = 'none';
+  });
+}
+function empDocPick(empId, input){
+  const file = input && input.files && input.files[0];
+  if(input) try{ input.value = ''; }catch(x){}
+  if(!file) return;
+  const type = (document.getElementById('edType') || {}).value || 'تانية';
+  const note = ((document.getElementById('edNote') || {}).value || '').trim().slice(0, 120);
+  return empDocAddFile(empId, file, type, note);
+}
+async function empDocAddFile(empId, file, type, note){
+  const e = DB.employees.find(x=>x.id===empId);
+  if(!e) return false;
+  if(!canEmpDocs()){ toast('المستندات لصاحب صلاحية «تعديل ملف الموظف وإضافة موظف» بس', true); return false; }
+  if(_edBusy){ toast('استنى — فيه صورة بترفع دلوقتي', true); return false; }
+  _edBusy = true;
+  try{
+    let blob;
+    try{ blob = (await tcCompress(file)).blob; }catch(err){ toast('الملف ده مش صورة — اختار صورة (JPG / PNG)', true); return false; }
+    if(!sb || !sb.storage || typeof sb.storage.from !== 'function') throw new Error('bucket not found');
+    const id = uid('doc'), path = empId + '/' + id + '_' + tcRand() + '.jpg';
+    toast('⏳ بيترفع…');
+    const { error } = await sb.storage.from(ED_BUCKET).upload(path, blob, { contentType:'image/jpeg', upsert:false });
+    if(error) throw error;
+    if(!Array.isArray(e.docs)) e.docs = [];
+    const t = EMP_DOC_TYPES.includes(type) ? type : 'تانية';
+    e.docs.push({ id, type:t, note:String(note || ''), path, at:new Date().toISOString(), by:actorName() });
+    await saveKey('employees');
+    logAction('📎 إضافة مستند «' + t + '» لملف الموظف ' + e.name).catch(()=>{});
+    toast('✅ المستند اتحفظ في ملف ' + e.name);
+    openEmpDocs(empId);
+    return true;
+  }catch(err){ toast(edErrText(err), true); return false; }
+  finally{ _edBusy = false; }
+}
+async function empDocView(empId, docId){
+  const e = DB.employees.find(x=>x.id===empId), d = e && empDocs(e).find(x=>x.id===docId);
+  if(!d || !canEmpDocs()) return;
+  let u;
+  try{ u = (await empDocUrls([d.path]))[d.path]; }catch(err){ toast(edErrText(err), true); return; }
+  if(!u){ toast('الصورة مش موجودة على السيرفر', true); return; }
+  openModal(`<h3 style="margin-top:0">${escNote(d.type || '—')} — ${escNote(e.name)}</h3>
+    ${d.note ? `<div class="muted" style="font-size:12px;margin-bottom:6px">${escNote(d.note)}</div>` : ''}
+    <div style="text-align:center"><img src="${escAttr(u)}" alt="" style="max-width:100%;max-height:70vh;border-radius:8px"></div>
+    <div class="muted" style="font-size:11px;margin-top:6px">${fmtDateTime(d.at)} · ${escNote(d.by || '')}</div>
+    <div style="margin-top:12px;display:flex;gap:8px"><button class="btn btn-accent" onclick="empDocPrint('${empId}','${docId}')">🖨 طباعة</button><button class="btn" onclick="openEmpDocs('${empId}')">↩ رجوع للمستندات</button></div>`);
+}
+/* طباعة: كل مستند في ورقة لوحده — الصور لازم تحمّل الأول وإلا بتطلع فاضية */
+async function empDocPrint(empId, docId){
+  const e = DB.employees.find(x=>x.id===empId);
+  if(!e || !canEmpDocs()) return;
+  const list = empDocs(e).filter(d=>!docId || d.id===docId).sort((a, b)=>EMP_DOC_TYPES.indexOf(a.type) - EMP_DOC_TYPES.indexOf(b.type));
+  if(!list.length) return;
+  let urls;
+  try{ urls = await empDocUrls(list.map(d=>d.path)); }catch(err){ toast(edErrText(err), true); return; }
+  const center = escNote((DB.settings && DB.settings.centerName) || '');
+  const html = list.map((d, i)=>`<div style="${i < list.length - 1 ? 'page-break-after:always;' : ''}text-align:center;padding:10px 0">
+      <div style="font-size:15px;font-weight:700">${escNote(e.name)} — #${escNote(e.empNo || '—')} — ${escNote(d.type || '—')}</div>
+      <div style="font-size:11.5px;color:#666;margin-bottom:8px">${center}${d.note ? ' · ' + escNote(d.note) : ''} · ${fmtDate(d.at)}</div>
+      ${urls[d.path] ? `<img src="${escAttr(urls[d.path])}" alt="" style="max-width:100%;max-height:240mm">` : '<div>الصورة مش موجودة</div>'}
+    </div>`).join('');
+  let area = document.getElementById('printArea');
+  if(!area){ area = document.createElement('div'); area.id = 'printArea'; document.body.appendChild(area); }
+  area.innerHTML = html;
+  const imgs = (typeof area.querySelectorAll === 'function') ? [...area.querySelectorAll('img')] : [];
+  let done = false;
+  const go = ()=>{ if(done) return; done = true; try{ window.print(); }catch(x){ toast('الطباعة المباشرة متقفلة هنا', true); } };
+  let left = imgs.filter(im=>!im.complete).length;
+  if(!left) setTimeout(go, 150);
+  else { imgs.forEach(im=>{ if(!im.complete){ im.onload = im.onerror = ()=>{ if(--left <= 0) setTimeout(go, 100); }; } }); setTimeout(go, 8000); }
+  logAction('🖨 طباعة ' + (docId ? 'مستند «' + list[0].type + '»' : 'مستندات (' + list.length + ')') + ' — الموظف ' + e.name).catch(()=>{});
+}
+function empDocDelete(empId, docId){
+  const e = DB.employees.find(x=>x.id===empId), d = e && empDocs(e).find(x=>x.id===docId);
+  if(!d) return;
+  if(!isOwnerSession()){ toast('مسح المستندات لصاحب المركز بس', true); return; }
+  askConfirm('تمسح «' + d.type + '» من ملف ' + e.name + '؟ الصورة هتتمسح نهائي.', async ()=>{
+    try{
+      const { error } = await sb.storage.from(ED_BUCKET).remove([d.path]);
+      if(error && !/not found/i.test(String(error.message || ''))) throw error;
+    }catch(err){ toast(edErrText(err), true); return; }
+    e.docs = (e.docs || []).filter(x=>x.id !== docId);
+    delete _edUrls[d.path];
+    await saveKey('employees');
+    logAction('🗑 مسح مستند «' + d.type + '» من ملف الموظف ' + e.name).catch(()=>{});
+    toast('اتمسح');
+    openEmpDocs(empId);
+  });
+}
 function openEmployeeDetail(empId){
   const e = DB.employees.find(x=>x.id===empId);
   if(!e) return;
@@ -24488,10 +26608,8 @@ function openEmployeeDetail(empId){
   const fixed = (e.socialIns || 0) + (e.healthIns || 0) + (e.otherDeduct || 0);
   const btns = [
     can('hr.employees') ? `<button class="btn" onclick="openEditEmployeeModal('${empId}')">✏️ تعديل الملف</button>` : '',
-    can('hr.penalties') ? `<button class="btn" onclick="openAbsenceModal('${empId}')">🚫 غياب</button>` : '',
-    hrCanAdvance() ? `<button class="btn" onclick="openAdvanceModal('${empId}')">💰 سلفة</button>` : '',
-    hrCanReward() ? `<button class="btn" onclick="openBonusModal('${empId}')">🎁 مكافأة</button>` : '',
-    can('hr.penalties') ? `<button class="btn" onclick="openPenaltyModal('${empId}')">⚖️ جزاء</button>` : '',
+    canEmpDocs() ? `<button class="btn" onclick="openEmpDocs('${empId}')">📎 المستندات (${empDocs(e).length})</button>` : '',   /* م256 */
+    hrRecordBtnHTML(empId),   /* م254: غياب · سلفة · مكافأة · جزاء بقوا زرار واحد «➕ تسجيل» (أو الزرار نفسه لو مسموح بواحد بس) */
     sal ? `<button class="btn btn-accent" onclick="openPayslip('${empId}')">🧾 كشف الراتب</button>` : '',
     `<button class="btn" onclick="openClearanceModal('${empId}')">📄 استقالة / إخلاء طرف</button>`,   /* م222 */
   ].filter(Boolean);
@@ -24572,6 +26690,36 @@ function openEmployeeDetail(empId){
     <div class="emp-tabs">${tabs.map(([k, l, n])=>`<button class="btn btn-sm ${empDetailTab===k ? 'btn-accent' : ''}" onclick="setEmpDetailTab('${empId}','${k}')">${l} (${n})</button>`).join('')}</div>
     <div style="overflow-x:auto">${body}</div>
   `, 'wide');
+}
+/* ============ م254: «➕ تسجيل» في ملف الموظف ============
+   غياب · سلفة · مكافأة · جزاء بيفتحوا نفس النوافذ بالظبط وكل واحد بنفس شرط صلاحيته (مفيش أي منطق حفظ اتغيّر).
+   لو المستخدم مسموحله بواحد بس ⇐ الزرار نفسه علطول؛ ولو أكتر ⇐ زرار واحد بيفتح قايمة صغيرة. */
+function hrRecordOptions(empId){
+  return [
+    can('hr.penalties') ? ['🚫 غياب', `openAbsenceModal('${empId}')`] : null,
+    hrCanAdvance() ? ['💰 سلفة', `openAdvanceModal('${empId}')`] : null,
+    hrCanReward() ? ['🎁 مكافأة', `openBonusModal('${empId}')`] : null,
+    can('hr.penalties') ? ['⚖️ جزاء', `openPenaltyModal('${empId}')`] : null,
+  ].filter(Boolean);
+}
+function hrRecordBtnHTML(empId){
+  const opts = hrRecordOptions(empId);
+  if(!opts.length) return '';
+  if(opts.length === 1) return `<button class="btn" onclick="${opts[0][1]}">${opts[0][0]}</button>`;
+  return `<button class="btn" onclick="openHrRecordMenu('${empId}')">➕ تسجيل</button>`;
+}
+function openHrRecordMenu(empId){
+  const e = DB.employees.find(x=>x.id===empId);
+  if(!e) return;
+  const opts = hrRecordOptions(empId);
+  if(!opts.length){ toast('مالكش صلاحية تسجيل غياب أو سلفة أو مكافأة أو جزاء', true); return; }
+  openModal(`
+    <h3>➕ تسجيل لـ ${escNote(e.name)}</h3>
+    <div style="display:flex;flex-direction:column;gap:10px;margin:14px 0">
+      ${opts.map(([lbl, go])=>`<button type="button" class="btn" style="width:100%;padding:14px;font-size:15px" onclick="${go}">${lbl}</button>`).join('')}
+    </div>
+    <button type="button" class="btn" style="width:100%" onclick="openEmployeeDetail('${empId}')">رجوع</button>
+  `);
 }
 function openAbsenceModal(empId){
   const e = DB.employees.find(x=>x.id===empId);
@@ -25348,10 +27496,14 @@ function defaultPayrollCycle(){
   return hrCycleOf(attDateStr(Date.now()));
 }
 let payrollPeriod = null;
+/* م254: payrollPeriod لما اتكتب من اختيار شهر المرتب (◀ ▶ · الافتراضي · لينكات الشهر) ⇐ true — تنبيهات الداشبورد (غياب عالي · سلف عالية ومفتاح مراجعتها م154)
+   تفضل على الدورة الحالية زي ما كانت، ومايتحركوش لما حد يتصفح شهور التقارير. اللي بيتكتب بالتاريخ جوه شاشة الرواتب (setPayrollFrom/To) ⇐ false والتنبيهات بتمشي وراه زي الأول.
+   كشف الرواتب والصرف والتقفيل لسه بيمشوا على getPayrollPeriod() */
+var payrollPeriodAuto = false;
 let payrollFilter = { emp:'', dept:'' };
 function getPayrollPeriod(){ if(!payrollPeriod) payrollPeriod = defaultPayrollCycle(); return payrollPeriod; }
-function setPayrollFrom(v){ getPayrollPeriod(); if(v) payrollPeriod.from = v; refreshContent(); }
-function setPayrollTo(v){ getPayrollPeriod(); if(v) payrollPeriod.to = v; refreshContent(); }
+function setPayrollFrom(v){ getPayrollPeriod(); if(v) payrollPeriod.from = v; payrollPeriodAuto = false; refreshContent(); }
+function setPayrollTo(v){ getPayrollPeriod(); if(v) payrollPeriod.to = v; payrollPeriodAuto = false; refreshContent(); }
 function setPayrollFilter(k, v){ payrollFilter[k] = v; refreshContent(); }
 function periodLabel(from, to){ return fmtDate(from)+' → '+fmtDate(to); }
 async function saveWorkingDays(){
@@ -25367,12 +27519,26 @@ async function saveWorkingDays(){
   await logAction('تعديل إعدادات الرواتب — أيام العمل: من '+oldWd+' إلى '+wd+' · يوم القفل: من '+oldCd+' إلى '+cd);
   toast('تم حفظ إعدادات الرواتب'); refreshContent();
 }
-function renderPayroll(){
-  const per = getPayrollPeriod();
-  const { from, to } = per;
-  const isOwner = isOwnerSession();
+/* م254: خانات «أيام العمل بالشهر» و«يوم قفل الرواتب» (لصاحب المركز بس) اتفصلت عن الشاشة عشان تروح ⚙️ الإعدادات —
+   renderPayroll() من غير opts لسه بيعرضها زي ما كانت، وخطوة ④ في شهر المرتب بتنادي renderPayroll({noSettings:true}) */
+function payrollSettingsHTML(){
+  if(!isOwnerSession()) return '';
   const wd = workingDays();
   const cycleDay = parseInt(DB.settings.payrollCycleDay,10)||25;
+  return `
+    <div class="grid g3" style="max-width:620px;margin-top:12px">
+      <div class="form-row" style="margin:0"><label class="f-label">أيام العمل بالشهر</label>
+        <input class="f" id="prWorkDays" type="number" min="1" max="31" step="0.5" value="${wd}"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">يوم قفل الرواتب</label>
+        <input class="f" id="prCycleDay" type="number" min="1" max="28" value="${cycleDay}"></div>
+      <div style="align-self:flex-end"><button class="btn btn-accent" style="width:100%" onclick="saveWorkingDays()">حفظ إعدادات الرواتب</button></div>
+    </div>`;
+}
+function renderPayroll(opts){
+  opts = opts || {};
+  const per = getPayrollPeriod();
+  const { from, to } = per;
+  const wd = workingDays();
   const depts = [...new Set(DB.employees.map(e=>e.dept).filter(Boolean))].sort(cmpAr);
   const emps = DB.employees
     .filter(e=>e.status!=='مستقيل' && e.status!=='أرشيف')
@@ -25403,14 +27569,7 @@ function renderPayroll(){
         </select></div>
     </div>
     <div class="muted" style="font-size:12.5px;margin-top:10px">كشف رواتب الفترة: <b style="color:var(--accent)">${periodLabel(from,to)}</b> · قيمة اليوم = الراتب الشهري ÷ <b>${wd}</b> يوم عمل</div>
-    ${isOwner?`
-    <div class="grid g3" style="max-width:620px;margin-top:12px">
-      <div class="form-row" style="margin:0"><label class="f-label">أيام العمل بالشهر</label>
-        <input class="f" id="prWorkDays" type="number" min="1" max="31" step="0.5" value="${wd}"></div>
-      <div class="form-row" style="margin:0"><label class="f-label">يوم قفل الرواتب</label>
-        <input class="f" id="prCycleDay" type="number" min="1" max="28" value="${cycleDay}"></div>
-      <div style="align-self:flex-end"><button class="btn btn-accent" style="width:100%" onclick="saveWorkingDays()">حفظ إعدادات الرواتب</button></div>
-    </div>`:''}
+    ${opts.noSettings ? '' : payrollSettingsHTML()}
   </div>
   ${(()=>{ const open = rows.filter(r=>!r.p.attClosed).length;   /* م217 */
     return `${hrPayBarHTML(rows, from, to)}<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
@@ -27272,7 +29431,7 @@ function highAdvanceEmployees(){
 /* موظفين غيابهم عالي: أيام غياب الدورة الحالية ≥ حد (افتراضي 3 أيام) */
 function highAbsenceEmployees(){
   const th = DB.settings.highAbsenceDays || 3;
-  const { from, to } = (typeof getPayrollPeriod==='function' ? getPayrollPeriod() : { from:'2000-01-01', to:'2999-01-01' });
+  const { from, to } = (typeof getPayrollPeriod==='function' ? (payrollPeriodAuto ? defaultPayrollCycle() : getPayrollPeriod()) : { from:'2000-01-01', to:'2999-01-01' });   /* م254: شهر اتختار من التابات مايحرّكش التنبيه */
   const inR = (d)=>{ const x=(d||'').slice(0,10); return x>=from && x<=to; };
   return DB.employees.filter(e=>e.status==='نشط').map(e=>{
     const days = (e.absences||[]).filter(a=>inR(a.date)).reduce((s,a)=>s+(a.days||1),0);
@@ -28576,7 +30735,7 @@ function followKey(section, key){ return String(section)+'::'+String(key); }
    قبل كده المراجعة كانت بتكتم الموظف للأبد: يتراجع في أغسطس، يسحب سلف تانية
    في سبتمبر، ولا يظهر ولا يتعد في أي حتة تاني. */
 function payrollCycleTag(){
-  try{ return (typeof getPayrollPeriod==='function' ? (getPayrollPeriod().from||'') : ''); }catch(e){ return ''; }
+  try{ return (typeof getPayrollPeriod==='function' ? ((payrollPeriodAuto ? defaultPayrollCycle() : getPayrollPeriod()).from||'') : ''); }catch(e){ return ''; }   /* م254: شهر اتختار من التابات مايحرّكش مفتاح المراجعة */
 }
 function followRecord(section, key){
   const k = followKey(section, key);
