@@ -354,6 +354,31 @@ tr:hover td{background:var(--surface-2);}
 .est-row{display:flex;gap:10px;align-items:center;padding:11px 13px;margin-bottom:7px;cursor:pointer}
 .est-row-mine{border-right:3px solid var(--accent-2)}
 .est-late{color:var(--accent-2)}
+/* م258: 🤖 فريق ماسترز — ورشة بكسل */
+.tm-wrap{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px;align-items:start}
+@media (max-width:900px){.tm-wrap{grid-template-columns:minmax(0,1fr)}}
+.tm-floor{position:relative;min-height:440px;border-radius:12px;background-color:#26262b;background-image:linear-gradient(rgba(242,212,16,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(242,212,16,.07) 1px,transparent 1px);background-size:24px 24px;border:3px solid #F2D410;overflow:hidden}
+.tm-dec{position:absolute;transform:translate(50%,0);font-size:13px;color:#F2D410;background:#33333a;border:2px solid #4a4a52;border-radius:8px;padding:8px 14px;white-space:nowrap;box-shadow:0 3px 0 #1a1a1e}
+.tm-ag{position:absolute;transform:translate(50%,0);background:none;border:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:1px;padding:4px;border-radius:10px;color:#fff;font-family:inherit}
+.tm-ag.sel{background:rgba(242,212,16,.18);outline:2px solid #F2D410}
+.tm-ag .tm-nm{font-size:12px;font-weight:700;text-shadow:0 1px 0 #000}.tm-ag .tm-lv{font-size:10px;color:#cfcfcf}
+.tm-bub,.tm-z,.tm-bang,.tm-off{font-size:10.5px;border-radius:8px;padding:1px 6px;white-space:nowrap;margin-bottom:2px}
+.tm-bub{background:#fff;color:#222}.tm-z{color:#aab;font-weight:700}.tm-bang{color:#fff;font-weight:800}.tm-off{background:#44444c;color:#ddd}
+.tm-ag.working .tm-sp{animation:tmWalk 5s ease-in-out infinite}
+.tm-ag.sleeping .tm-sp{animation:tmBreath 3s ease-in-out infinite;transform-origin:50% 100%}
+.tm-ag.sleeping .tm-z{animation:tmFloat 2.4s ease-in-out infinite}
+.tm-ag.alert .tm-bang{animation:tmBounce .9s ease-in-out infinite}
+.tm-ag.offline,.tm-ag.paused{opacity:.6}
+@keyframes tmWalk{0%,100%{transform:translateX(0)}25%{transform:translateX(26px) translateY(-2px)}50%{transform:translateX(0) translateY(0)}75%{transform:translateX(-26px) translateY(-2px)}}
+@keyframes tmBreath{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.92)}}
+@keyframes tmFloat{0%,100%{transform:translateY(0);opacity:.6}50%{transform:translateY(-6px);opacity:1}}
+@keyframes tmBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@media (prefers-reduced-motion:reduce){.tm-floor *{animation:none!important}}
+.tm-panel{padding:14px}.tm-xp{height:6px;background:var(--surface-2);border-radius:3px;margin:4px 0;overflow:hidden}.tm-xp>div{height:6px;border-radius:3px}
+.tm-g{font-weight:700;font-size:12.5px;margin:10px 0 4px;color:var(--muted)}
+.tm-f{padding:6px 10px;margin:6px 0;background:var(--surface-2);border-radius:8px}
+.tm-t{display:flex;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)}.tm-t.off{opacity:.55}
+.tm-h{font-size:12px;padding:5px 4px;border-bottom:1px solid var(--border);cursor:pointer}.tm-h.on{background:var(--surface-2)}
 .est-cnt{display:inline-block;background:var(--accent-2);color:#fff;border-radius:10px;padding:0 7px;font-size:11px;line-height:18px;margin-right:4px;font-weight:800}
 /* م240: الحجوزات */
 .ap-card{padding:12px 14px;margin-bottom:10px}
@@ -670,7 +695,9 @@ const TABLE_MAP = {
   wipSnapshots:'wip_snapshots',   /* م111: نسخ إقفال الأعمال تحت التنفيذ */
   empCustody:'emp_custody',       /* م137: عهدة الموظفين العينية */
   csCases:'cs_cases',             /* م143: خدمة العملاء — رضا وشكاوى */
-  repairEstimates:'repair_estimates'   /* م230: المقايسة على السيستم (تسعير المخزن واعتماد العميل) */
+  repairEstimates:'repair_estimates',   /* م230: المقايسة على السيستم (تسعير المخزن واعتماد العميل) */
+  /* م258: 🤖 فريق ماسترز — الوكلاء · المهام · التقارير (الوكيل بيكتبها بمفتاحه) · الحالة (الوكيل بس) · ردود سيف */
+  teamAgents:'team_agents', teamTasks:'team_tasks', teamReports:'team_reports', teamState:'team_state', teamFeedback:'team_feedback'
 };
 const DATA_KEYS = Object.keys(TABLE_MAP);
 const KV_KEYS = ['users','settings'];
@@ -1754,13 +1781,13 @@ async function outboxReplay(){
 }
 
 /* ======================= APP STATE ======================= */
-const DB = { customers:[], cars:[], jobs:[], inventory:[], stockMoves:[], invoices:[], expenses:[], suppliers:[], purchases:[], supplierReturns:[], inventoryCounts:[], warehouses:[], staff:[], finAccounts:[], finMoves:[], appointments:[], cannedServices:[], activityLog:[], attendance:[], wipSnapshots:[], empCustody:[], csCases:[], repairEstimates:[], users:null, settings:null };
+const DB = { customers:[], cars:[], jobs:[], inventory:[], stockMoves:[], invoices:[], expenses:[], suppliers:[], purchases:[], supplierReturns:[], inventoryCounts:[], warehouses:[], staff:[], finAccounts:[], finMoves:[], appointments:[], cannedServices:[], activityLog:[], attendance:[], wipSnapshots:[], empCustody:[], csCases:[], repairEstimates:[], teamAgents:[], teamTasks:[], teamReports:[], teamState:[], teamFeedback:[], users:null, settings:null };
 let session = null; // {role, name}
 let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v279';
+const APP_VERSION = 'v280';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -1770,7 +1797,7 @@ const ROLE_TABS = {
   warehouse:['dashboard','inventory','invanalysis','stockmoves','tools','suppliers'],
   accounts:['dashboard','jobs','openjobs','invoices','receivables','finance','expenses','suppliers','hr','tools','reports','services'],
   hr:['dashboard','hr'],
-  owner:['dashboard','notifications','customers','custservice','jobs','estimates','openjobs','appointments','inventory','invanalysis','stockmoves','tools','empcustody','suppliers','invoices','receivables','finance','expenses','hr','reports','services','activitylog','settings']
+  owner:['dashboard','notifications','customers','custservice','jobs','estimates','openjobs','appointments','inventory','invanalysis','stockmoves','tools','empcustody','suppliers','invoices','receivables','finance','expenses','hr','reports','team','services','activitylog','settings']
 };
 
 /* ============ نظام الصلاحيات متعدد المستويات (الملاحظة 32) ============
@@ -2177,7 +2204,7 @@ function visibleTabs(){
   if(!session) return [];
   if(isOwnerSession()) return ROLE_TABS.owner;
   // الملاحظة 41: أي شاشة ممنوحة بتظهر — حتى لو مش من شاشات القسم الافتراضية (شاشات إضافية)
-  return ROLE_TABS.owner.filter(t=>canScreen(t));
+  return ROLE_TABS.owner.filter(t=>t !== 'team' && canScreen(t));   /* م258: الفريق لصاحب المركز بس */
 }
 function firstVisibleTab(){
   const tabs = visibleTabs();
@@ -2627,7 +2654,10 @@ async function _loadAllDataCore(guarded){
      والمقايسات بس هي اللي بتقول «محتاجة تحديث» */
   const estWas230 = window._estTableOk;
   window._estTableOk = !!(data && Object.prototype.hasOwnProperty.call(data, 'repairEstimates'));
-  if(estWas230 === false && window._estTableOk && _rtChannel){ try{ sb.removeChannel(_rtChannel); }catch(e){} startRealtime(); }
+  /* م258: نفس الفكرة لجداول الفريق — من غير ملف SQL م258 الاشتراك في جداولها كان هيوقع القناة اللحظية لكل المركز */
+  const teamWas258 = window._teamTablesOk;
+  window._teamTablesOk = !!(data && Object.prototype.hasOwnProperty.call(data, 'teamAgents'));
+  if(((estWas230 === false && window._estTableOk) || (teamWas258 === false && window._teamTablesOk)) && _rtChannel){ try{ sb.removeChannel(_rtChannel); }catch(e){} startRealtime(); }
   DATA_KEYS.forEach(k=>{
     DB[k] = (data && data[k]) ? data[k] : keyDefault(k);
     _shadow[k] = _snapshot(k);
@@ -2805,6 +2835,7 @@ function startRealtime(){
     _rtChannel = ch;
     Object.entries(TABLE_MAP).forEach(([key, t])=>{
       if(key==='repairEstimates' && !estTableOk()) return;   /* م230: الجدول لسه ماتعملش ⇒ الاشتراك فيه كان هيوقع القناة كلها */
+      if(/^team/.test(key) && !teamTablesOk()) return;   /* م258: نفس الحكاية لجداول الفريق (ملف SQL م258 لسه ماتنفذش) */
       ch.on('postgres_changes', { event:'*', schema:'public', table:t }, p=>_applyRemote(key, p));
     });
     ch.on('postgres_changes', { event:'*', schema:'public', table:'kv_store' }, p=>{
@@ -3781,9 +3812,10 @@ function rtLabelInit(){
 /* ---------- شاشة البداية على الموبايل: مربعات حسب شغل كل موظف ---------- */
 const M_TAB_ICON234 = { dashboard:'🏠', notifications:'🔔', customers:'👥', custservice:'🎧', jobs:'🛠️', estimates:'📋', openjobs:'📊',
   appointments:'📅', inventory:'🗃️', invanalysis:'📈', stockmoves:'📦', tools:'🧰', empcustody:'🎒', suppliers:'🚚', invoices:'🧾',
-  receivables:'💳', finance:'🏦', expenses:'💸', hr:'👔', reports:'📑', services:'📚', activitylog:'🕒', settings:'⚙️' };
+  receivables:'💳', finance:'🏦', expenses:'💸', hr:'👔', reports:'📑', team:'🤖', services:'📚', activitylog:'🕒', settings:'⚙️' };
 function mTabLabel(t){
   if(t === 'estimates') return 'المقايسات';
+  if(t === 'team') return '🤖 الفريق';   /* م258 */
   if(t === 'hr') return session && session.role === 'reception' ? 'الإجازات والأذونات' : 'الموارد البشرية';
   return SCREEN_LABELS[t] || t;
 }
@@ -3883,11 +3915,12 @@ function shellHTML(){
     expenses: navItem('expenses','المصروفات',ICONS.wallet),
     hr: navItem('hr', session.role==='reception'?'الإجازات والأذونات':'الموارد البشرية', ICONS.users),
     reports: navItem('reports','التقارير',ICONS.chart),
+    team: navItem('team','🤖 الفريق'+((()=>{ const n=teamUnseenTotal(); return n?' ('+n+')':''; })()),ICONS.users),   /* م258 */
     services: navItem('services','قوائم الخدمات',ICONS.list),
     activitylog: navItem('activitylog','سجل العمليات',ICONS.clock),
     settings: navItem('settings','الإعدادات',ICONS.gear),
   };
-  const titles = {dashboard:'الرئيسية',notifications:'🔔 مركز الإشعارات والحوكمة',customers:'العملاء والسيارات',custservice:'🎧 خدمة العملاء ومتابعة الرضا',jobs:'أوامر الشغل',estimates:'📋 المقايسات — تسعير واعتماد',openjobs:'تقارير أوامر الشغل المفتوحة',appointments:'📅 الحجوزات',inventory:'المخزون',invanalysis:'📊 تحليل حركة المخزون',stockmoves:'حركة المخزن',tools:'العدد الخاصة (Special Tools)',empcustody:'🧰 عهدة الموظفين',suppliers:'الموردين',invoices:'الفواتير',receivables:'المديونيات والمستحقات',finance:'الخزنة والحسابات المالية',expenses:'المصروفات',hr:(session.role==='reception'?'الإجازات والأذونات':'الموارد البشرية (HR)'),reports:'التقارير',services:'قوائم الخدمات',activitylog:'سجل العمليات',settings:'الإعدادات',newPurchase:'فاتورة شراء مورد جديدة',inventoryCount:'جرد المخزن'};
+  const titles = {dashboard:'الرئيسية',notifications:'🔔 مركز الإشعارات والحوكمة',customers:'العملاء والسيارات',custservice:'🎧 خدمة العملاء ومتابعة الرضا',jobs:'أوامر الشغل',estimates:'📋 المقايسات — تسعير واعتماد',openjobs:'تقارير أوامر الشغل المفتوحة',appointments:'📅 الحجوزات',inventory:'المخزون',invanalysis:'📊 تحليل حركة المخزون',stockmoves:'حركة المخزن',tools:'العدد الخاصة (Special Tools)',empcustody:'🧰 عهدة الموظفين',suppliers:'الموردين',invoices:'الفواتير',receivables:'المديونيات والمستحقات',finance:'الخزنة والحسابات المالية',expenses:'المصروفات',hr:(session.role==='reception'?'الإجازات والأذونات':'الموارد البشرية (HR)'),reports:'التقارير',team:'🤖 فريق ماسترز',services:'قوائم الخدمات',activitylog:'سجل العمليات',settings:'الإعدادات',newPurchase:'فاتورة شراء مورد جديدة',inventoryCount:'جرد المخزن'};
 
   return `
   <div class="shell">
@@ -3980,6 +4013,7 @@ function renderTab(){
     case 'expenses': return renderExpenses();
     case 'hr': return renderHR();
     case 'reports': return renderReports();
+    case 'team': return isOwnerSession() ? renderTeam() : '';   /* م258 */
     case 'services': return renderCannedServices();
     case 'activitylog': return renderActivityLog();
     case 'settings': return renderSettings();
@@ -23258,6 +23292,452 @@ function repGroupColors(names){
   });
   return out;
 }
+/* =====================================================================
+   م258: 🤖 فريق ماسترز — وكلاء AI بيشتغلوا عن سيف (صاحب المركز بس)
+   الوكيل بيشتغل على الكمبيوتر (tools/team) وبيكتب تقريره وحالته بمفتاحه في
+   team_reports / team_state — السيستم بيقراهم بس. سيف بيكتب: الوكلاء · المهام · ردوده.
+   ===================================================================== */
+var teamSel = '';            // الوكيل المفتوح
+var teamSelReport = '';      // تقرير قديم مفتوح (فاضي = آخر تقرير)
+var teamHistoryOpen = false;
+const TEAM_ROLES = {
+  monitor:   { station:'cams',    place:'شاشات الكاميرات', icon:'🕵️', bubbles:['بقلّب في الفواتير…','بدوّر على الخصومات…','براجع الخزنة…','بشوف مين عمل إيه…'] },
+  collector: { station:'cash',    place:'مكتب الخزنة',     icon:'💰', bubbles:['بعدّ الفلوس…','بشوف مين متأخر…','بكتب رسايل التذكير…'] },
+  store:     { station:'shelves', place:'الرفوف',          icon:'📦', bubbles:['بعدّ الرفوف…','بشوف النواقص…','بقارن أسعار الموردين…'] },
+  custom:    { station:'bench',   place:'الطاولة',          icon:'🤖', bubbles:['شغال على مهامي…'] }
+};
+const TEAM_STATIONS = { cams:[14, 30], cash:[50, 30], shelves:[84, 30] };
+const TEAM_BENCHES = [[22, 74], [42, 74], [62, 74], [80, 74], [32, 54], [68, 54], [12, 54], [88, 54]];
+const TEAM_COLORS = ['#7F77DD', '#BA7517', '#1D9E75', '#D85A30', '#378ADD', '#D4537E'];
+const TEAM_CHARS = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'];
+const TEAM_SEV = { high:{ c:'var(--danger)', t:'🔴 مهم' }, warn:{ c:'#BA7517', t:'🟠 خلي بالك' }, info:{ c:'var(--success)', t:'🟢 للعلم' } };
+const TEAM_LINKS = { invoice:'الفاتورة', job:'أمر الشغل', customer:'العميل', expense:'المصروف', part:'الصنف', supplier:'المورد' };
+
+function _tmId(x){ x = String(x == null ? '' : x); return /^[\w-]{1,80}$/.test(x) ? x : ''; }
+function teamTablesOk(){ return window._teamTablesOk !== false; }   /* م258: false = ملف SQL م258 لسه ماتنفذش (زي estTableOk بتاعة م230) */
+function teamAgentsList(){ return (DB.teamAgents || []).slice().sort((a, b)=>String(a.createdAt || '').localeCompare(String(b.createdAt || ''))); }
+function teamStateOf(id){ return (DB.teamState || []).find(s=>s.id === id) || null; }
+function teamReportsOf(id){ return (DB.teamReports || []).filter(r=>r.agentId === id).sort((a, b)=>String(b.at).localeCompare(String(a.at))); }
+function teamLatestReport(id){ return teamReportsOf(id)[0] || null; }
+function teamFbOf(reportId, fid){ return (DB.teamFeedback || []).find(f=>f.reportId === reportId && f.fid === fid) || null; }
+/* أقل فرق بين معادين متتاليين (بيلف على نص الليل) — معاد واحد = 24 ساعة. بالدقايق */
+function teamInterval(agent){
+  const m = ((agent && agent.schedule && agent.schedule.times) || []).map(t=>{ const x = /^(\d{1,2}):(\d{2})$/.exec(String(t)); return x ? (+x[1]) * 60 + (+x[2]) : null; })
+    .filter(v=>v !== null).sort((a, b)=>a - b);
+  if(m.length < 2) return 1440;
+  let g = 1440;
+  for(let i = 0; i < m.length; i++){ const d = (i === m.length - 1 ? m[0] + 1440 : m[i + 1]) - m[i]; if(d > 0 && d < g) g = d; }
+  return g;
+}
+/* مواعيد الوكيل بالدقايق من نص الليل (مرتبة ومن غير تكرار) */
+function teamSlotMins(agent){
+  const m = ((agent && agent.schedule && agent.schedule.times) || []).map(t=>{ const x = /^(\d{1,2}):(\d{2})$/.exec(String(t)); return x ? (+x[1]) * 60 + (+x[2]) : null; }).filter(v=>v !== null);
+  return [...new Set(m)].sort((a, b)=>a - b);
+}
+/* أول ميعاد بعد وقت معين (بعده بالظبط مش معاه) — بيلف على الأيام */
+function teamNextSlot(agent, after){
+  const m = teamSlotMins(agent), a = new Date(after);
+  if(!m.length || isNaN(a)) return null;
+  for(let d = 0; d <= 2; d++) for(const mm of m){
+    const c = new Date(a.getFullYear(), a.getMonth(), a.getDate() + d, Math.floor(mm / 60), mm % 60);
+    if(c > a) return c;
+  }
+  return null;
+}
+/* م258: «مفيش اتصال» = فات الميعاد الجاي بعد آخر تشغيل ومعاه الفاصل اللي بعده (معاد واحد = يوم كامل).
+   كان بيقارن بـ 2× أقل فاصل ⇒ مع ميعاد 00:00 وبعده 12:00 كان بيقول مفيش اتصال كل صباح */
+function teamIsOffline(agent, last, now){
+  if(!last || isNaN(last)) return true;
+  const next = teamNextSlot(agent, last);
+  if(!next) return now - last > 2 * 1440 * 60000;
+  const after = teamNextSlot(agent, next);
+  return now > new Date(next.getTime() + (after ? after - next : 1440 * 60000));
+}
+function teamUnseen(agentId){
+  const r = teamLatestReport(agentId);
+  if(!r || r.status === 'failed') return 0;
+  return (r.findings || []).filter(f=>!teamFbOf(r.id, f.fid)).length;
+}
+function teamUnseenTotal(){ return teamAgentsList().reduce((s, a)=>s + teamUnseen(a.id), 0); }
+function teamXP(agentId){
+  /* م258: الوكيل بيبعت مجموعه التراكمي مع حالته (xp) — الحساب المحلي بيتقص لما التقارير القديمة تتشال من التحميل، فبناخد الأكبر */
+  const local = teamReportsOf(agentId).length + 2 * (DB.teamFeedback || []).filter(f=>f.agentId === agentId && f.verdict === 'seen').length;
+  const st = teamStateOf(agentId);
+  return Math.max(Number(st && st.xp) || 0, local);
+}
+function teamLevel(agentId){ return Math.floor(teamXP(agentId) / 20) + 1; }
+/* الحالة: شغال (طازة) ⇐ موقوف (إنت وقفته) ⇐ مفيش اتصال ⇐ لقى حاجات ⇐ نايم */
+function teamAgentState(agent, now){
+  now = now ? new Date(now) : new Date();
+  const st = teamStateOf(agent.id);
+  if(st && st.state === 'working' && st.stateAt && now - new Date(st.stateAt) < 45 * 60000) return 'working';
+  const unseen = teamUnseen(agent.id), paused = agent.active === false;
+  if(paused && !unseen) return 'paused';   /* م258: موقوف بإيدك مش «مفيش اتصال» */
+  const last = st && st.lastRunAt ? new Date(st.lastRunAt) : null;
+  if(!paused && teamIsOffline(agent, last, now)) return 'offline';
+  if(unseen > 0) return 'alert';
+  return 'sleeping';
+}
+function teamAgoText(iso, now){
+  if(!iso) return 'لسه ماشتغلش';
+  const t = new Date(iso);
+  if(isNaN(t)) return 'مش معروف';   /* م258: تاريخ بايظ ⇒ مفيش «من NaN يوم» */
+  const h = Math.floor((new Date(now || Date.now()) - t) / 3600000);
+  return h < 1 ? 'من أقل من ساعة' : h < 48 ? 'من ' + h + ' ساعة' : 'من ' + Math.floor(h / 24) + ' يوم';
+}
+/* شخصية بكسل 12×12 (مستطيلات بس) — 6 أشكال: B الجسم بلون الوكيل · Y نضارة صفرا · W العين · D غامق */
+const TEAM_PX = {
+  c1:['....DDDD....','...DBBBBD...','..DBBBBBBD..','..YYYYYYYY..','..YWDYYWDY..','..YYYYYYYY..','..DBBBBBBD..','..DBDDDDBD..','.DBBBBBBBBD.','.DBBBBBBBBD.','..DD....DD..','..DD....DD..'],
+  c2:['...YYYYYY...','..YYYYYYYY..','..DBBBBBBD..','..BWDBBWDB..','..BBBBBBBB..','..BBDDDDBB..','...BBBBBB...','..DYYYYYYD..','.DBBBBBBBBD.','.DBBBBBBBBD.','..DD....DD..','..DD....DD..'],
+  c3:['.....DD.....','....DDDD....','...DBBBBD...','..DBBBBBBD..','..BWDBBWDB..','..BBBBBBBB..','..BBBDDBBB..','...BBBBBB...','.DBBBBBBBBD.','.DBBYYYYBBD.','..DD....DD..','..DD....DD..'],
+  c4:['.....Y......','.....D......','...DBBBBD...','..DBBBBBBD..','..YYYYYYYY..','..YWDYYWDY..','..YYYYYYYY..','..DBDDDDBD..','.DBBBBBBBBD.','.DBBBBBBBBD.','..DD....DD..','..DD....DD..'],
+  c5:['..DDDDDDDD..','.DDDDDDDDDD.','..DBBBBBBD..','..BWDBBWDB..','..BBBBBBBB..','..BBDDDDBB..','...BBBBBB...','..DBBBBBBD..','.DBBYYYYBBD.','.DBBBBBBBBD.','..DD....DD..','..DD....DD..'],
+  c6:['...DD..DD...','..DBBDDBBD..','..DBBBBBBD..','..YYYYYYYY..','..YWDYYWDY..','..YYYYYYYY..','..DBBBBBBD..','..DBBDDBBD..','.DBBBBBBBBD.','.DBBBBBBBBD.','..DD....DD..','..DD....DD..']
+};
+function teamCharSVG(character, color, state){
+  const rows = TEAM_PX[character] || TEAM_PX.c1;
+  const col = /^#[0-9a-fA-F]{6}$/.test(String(color || '')) ? color : TEAM_COLORS[0];
+  const fill = { B:col, Y:'#F2D410', W:'#ffffff', D:'#2b2b2b' };
+  let rects = '';
+  rows.forEach((r, y)=>{ for(let x = 0; x < r.length; x++){ const c = r[x]; if(fill[c]) rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${state === 'offline' || state === 'paused' ? '#9a9890' : fill[c]}"/>`; } });
+  return `<svg class="tm-sp" viewBox="0 0 12 12" width="60" height="60" shape-rendering="crispEdges" aria-hidden="true">${rects}</svg>`;
+}
+function teamPlace(agent, idxCustom){
+  const role = TEAM_ROLES[agent.role] ? agent.role : 'custom';
+  const st = TEAM_STATIONS[TEAM_ROLES[role].station];
+  return st || TEAM_BENCHES[idxCustom % TEAM_BENCHES.length];
+}
+function teamAgentHTML(a, idxCustom, now){
+  const s = teamAgentState(a, now), [x, y] = teamPlace(a, idxCustom);
+  const n = teamUnseen(a.id), r = teamLatestReport(a.id);
+  const sev = r && (r.findings || []).some(f=>f.severity === 'high' && !teamFbOf(r.id, f.fid)) ? 'high' : 'warn';
+  const role = TEAM_ROLES[a.role] || TEAM_ROLES.custom;
+  const bubble = role.bubbles[Math.floor((Date.now() / 60000)) % role.bubbles.length];
+  const st = teamStateOf(a.id);
+  const tag = s === 'working' ? `<span class="tm-bub">${escNote(bubble)}</span>`
+    : s === 'sleeping' ? '<span class="tm-z">Zzz</span>'
+    : s === 'alert' ? `<span class="tm-bang" style="background:${sev === 'high' ? 'var(--danger)' : '#BA7517'}">❗ ${n}</span>`
+    : s === 'paused' ? '<span class="tm-off">⏸ موقوف</span>'
+    : `<span class="tm-off">مفيش اتصال ${escNote(teamAgoText(st && st.lastRunAt, now))}</span>`;
+  return `<button type="button" class="tm-ag ${s}${teamSel === a.id ? ' sel' : ''}" style="right:${x}%;top:${y}%" onclick="openTeamAgent('${_tmId(a.id)}')" title="${escAttr(a.name)}">
+    ${tag}${teamCharSVG(a.character, a.color, s)}<span class="tm-nm">${escNote(a.name)}</span><span class="tm-lv">مستوى ${teamLevel(a.id)}</span></button>`;
+}
+function teamTickerHTML(now){
+  const names = Object.fromEntries(teamAgentsList().map(a=>[a.id, a.name]));
+  const ev = (DB.teamReports || []).filter(r=>names[r.agentId]).sort((a, b)=>String(b.at).localeCompare(String(a.at))).slice(0, 3);
+  if(!ev.length) return '<div class="muted" style="font-size:12px">لسه مفيش تقارير — الوكلاء هيشتغلوا في مواعيدهم.</div>';
+  return ev.map(r=>`<div style="font-size:12.5px">• ${escNote(names[r.agentId])} ${r.status === 'failed' ? 'ماقدرش يكمّل' : (r.findings || []).length ? 'لقى ' + (r.findings || []).length + ' حاجة' : 'قال كله تمام ✅'} — ${fmtDateTime(r.at)}</div>`).join('');
+}
+function teamFindingHTML(r, f){
+  const fb = teamFbOf(r.id, f.fid), sv = TEAM_SEV[f.severity] || TEAM_SEV.info;
+  const lk = f.link && TEAM_LINKS[f.link.kind] && _tmId(f.link.id)
+    ? `<button class="btn btn-sm" onclick="teamOpenLink('${f.link.kind}','${_tmId(f.link.id)}')">↗ افتح ${TEAM_LINKS[f.link.kind]}</button>` : '';
+  let wa = '';
+  if(f.wa && f.wa.phone){
+    let ph = String(f.wa.phone).replace(/\D/g, '');
+    if(/^0\d{10}$/.test(ph)) ph = '2' + ph;
+    if(ph.length >= 8) wa = `<a class="btn btn-sm" target="_blank" rel="noopener" href="https://wa.me/${ph}?text=${encodeURIComponent(String(f.wa.text || ''))}">💬 واتساب (إنت اللي تبعت)</a>`;
+  }
+  const fid = _tmId(f.fid), rid = _tmId(r.id);
+  const act = fb ? `<span class="muted" style="font-size:11.5px">${fb.verdict === 'seen' ? '✓ شفتها' : '✗ قلت مش مظبوطة'}${fb.note ? ' — ' + escNote(fb.note) : ''}</span>`
+    : `<button class="btn btn-sm" onclick="teamGiveFeedback('${rid}','${fid}','seen')">✓ شفتها</button><button class="btn btn-sm" onclick="teamGiveFeedback('${rid}','${fid}','wrong')">✗ مش مظبوطة</button>`;
+  return `<div class="tm-f" style="border-right:3px solid ${sv.c}">
+    <div style="font-size:13.5px;line-height:1.7"><b style="color:${sv.c};font-size:11.5px">${sv.t}</b> ${escNote(f.text)}${f.staff ? ` <span class="tag" style="font-size:11px">👤 ${escNote(f.staff)}</span>` : ''}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${lk}${wa}${act}</div></div>`;
+}
+function teamReportHTML(r){
+  if(!r) return '<div class="empty" style="padding:16px">لسه مفيش تقرير — الوكيل هيشتغل في معاده.</div>';
+  const fs = r.findings || [], shown = fs.slice(0, 50), groups = {};
+  shown.forEach(f=>{ const g = f.group || 'عام'; (groups[g] = groups[g] || []).push(f); });
+  const unseen = fs.filter(f=>!teamFbOf(r.id, f.fid)).length;
+  return `<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <div style="font-weight:700">${r.status === 'failed' ? '⚠️ ماقدرش يكمّل' : '📋 التقرير'}</div><div class="muted" style="font-size:12px">${fmtDateTime(r.at)}</div></div>
+    <div style="font-size:14px;margin-bottom:8px">${escNote(r.summary || '')}</div>
+    ${Object.keys(groups).map(g=>`<div class="tm-g">${escNote(g)}</div>${groups[g].map(f=>teamFindingHTML(r, f)).join('')}`).join('')}
+    ${fs.length > 50 ? `<div class="muted" style="font-size:12px">و${fs.length - 50} كمان</div>` : ''}
+    ${unseen > 1 ? `<button class="btn btn-sm" style="margin-top:8px" onclick="teamSeenAll('${_tmId(r.id)}')">✓ شفت الكل (${unseen})</button>` : ''}`;
+}
+function teamPanelHTML(a, now){
+  if(!a) return '<div class="card muted" style="padding:16px;font-size:13px">دوس على أي وكيل في الورشة عشان تشوف تقريره ومهامه.</div>';
+  const st = teamStateOf(a.id), s = teamAgentState(a, now), xp = teamXP(a.id);
+  const reps = teamReportsOf(a.id);
+  const r = (teamSelReport && reps.find(x=>x.id === teamSelReport)) || reps[0] || null;
+  const role = TEAM_ROLES[a.role] || TEAM_ROLES.custom;
+  const stTxt = { working:'شغال دلوقتي…', sleeping:'نايم — آخر تقرير ' + (st && st.lastRunAt ? fmtDateTime(st.lastRunAt) : ''), alert:'لقى حاجات محتاجة تبص عليها', paused:'⏸ موقوف — شغّله من ⚙️ إعدادات الوكيل', offline:'مفيش اتصال ' + teamAgoText(st && st.lastRunAt, now) }[s];
+  return `<div class="card tm-panel">
+    <div style="display:flex;gap:10px;align-items:center">
+      ${teamCharSVG(a.character, a.color, s)}
+      <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:16px">${role.icon} ${escNote(a.name)}</div>
+        <div class="muted" style="font-size:12px">${escNote(stTxt)}${st && st.lastError ? ' · ⚠️ ' + escNote(st.lastError) : ''}</div>
+        <div class="tm-xp" title="${xp} نقطة"><div style="width:${Math.min(100, (xp % 20) * 5)}%;background:${escAttr(/^#[0-9a-fA-F]{6}$/.test(a.color || '') ? a.color : TEAM_COLORS[0])}"></div></div>
+        <div class="muted" style="font-size:11px">مستوى ${teamLevel(a.id)} · ${xp} نقطة · المواعيد: ${escNote(((a.schedule && a.schedule.times) || []).join(' · ') || '—')}${a.active === false ? ' · ⏸ موقوف' : ''}</div></div>
+    </div>
+    <div style="margin-top:12px">${teamReportHTML(r)}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn btn-sm" onclick="teamToggleHistory()">${teamHistoryOpen ? '▾' : '▸'} التقارير القديمة (آخر 30)</button>
+      <button class="btn btn-sm" onclick="openTeamAgentSettings('${_tmId(a.id)}')">⚙️ إعدادات الوكيل</button>
+    </div>
+    ${teamHistoryOpen ? `<div style="margin-top:8px">${reps.slice(0, 30).map(x=>`<div class="tm-h${r && x.id === r.id ? ' on' : ''}" onclick="teamOpenReport('${_tmId(x.id)}')">${fmtDateTime(x.at)} — ${x.status === 'failed' ? '⚠️ ماكمّلش' : (x.findings || []).length + ' حاجة'} · <span class="muted">${escNote(String(x.summary || '').slice(0, 70))}</span></div>`).join('') || '<div class="muted" style="font-size:12px">مفيش</div>'}</div>` : ''}
+    ${teamTasksHTML(a)}
+  </div>`;
+}
+function renderTeam(now){
+  if(!isOwnerSession()) return '<div class="empty">🔒 الشاشة دي لصاحب المركز بس</div>';
+  now = now ? new Date(now) : new Date();
+  if(!teamTablesOk()) return `<div class="card" style="padding:22px;text-align:center;max-width:620px;margin:0 auto">
+      <div style="font-size:40px">🤖</div><h3 style="margin:6px 0">فريق ماسترز</h3>
+      <p style="font-size:14px;line-height:1.9"><b>شغّل ملف SQL م258 الأول</b> — <span dir="ltr">db/تحديث-م258-فريق-الوكلاء.sql</span><br>Supabase ← SQL Editor ← الصق الملف ← Run.</p>
+      <p class="muted" style="font-size:12.5px;line-height:1.9">هيطلعلك «مفتاح الفريق» في آخر النتيجة: حطه في ملف على الديسك توب اسمه <b dir="ltr">masters-team-key.txt</b>.<br>وبعدها اعمل تحديث للصفحة وهتلاقي زرار البداية هنا.</p></div>`;
+  const ags = teamAgentsList();
+  if(!ags.length) return `<div class="card" style="padding:22px;text-align:center;max-width:620px;margin:0 auto">
+      <div style="font-size:40px">🤖</div><h3 style="margin:6px 0">فريق ماسترز</h3>
+      <p class="muted" style="font-size:13.5px;line-height:1.9">3 وكلاء AI بيشتغلوا عنك: <b>المراقب</b> (الفلوس والغلط والتزام الموظفين) · <b>المحصّل</b> (المتأخرين ورسايل الواتساب) · <b>أمين المخزن</b> (النواقص والأسعار).<br>بيقروا البيانات بس، ومابيعدّلوش أي حاجة. إنت اللي بتقرر.</p>
+      <p class="muted" style="font-size:12px">ملف SQL م258 اتنفّذ ✓ — اتأكد إن «مفتاح الفريق» محطوط في ملف masters-team-key.txt على الديسك توب.</p>
+      <button class="btn btn-accent" onclick="teamSeed()">🚀 ابدأ الفريق</button></div>`;
+  if(teamSel && !ags.some(a=>a.id === teamSel)) teamSel = '';
+  let ci = 0;
+  return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <div class="muted" style="font-size:12.5px">🏭 ورشة ماسترز — ${ags.length} وكيل · ${teamUnseenTotal()} حاجة مستنية تبص عليها</div>
+      <button class="btn btn-sm" onclick="openNewTeamAgent()">➕ وكيل جديد</button></div>
+    <div class="tm-wrap">
+      <div class="tm-floor no-rt">
+        <div class="tm-dec tm-cams" style="right:8%;top:6%">📹 الكاميرات</div><div class="tm-dec tm-cashd" style="right:44%;top:6%">🧾 الخزنة</div>
+        <div class="tm-dec tm-shelf" style="right:78%;top:6%">🗄️ الرفوف</div><div class="tm-dec tm-lift" style="right:40%;top:84%;font-size:18px">🚗 الرافعة</div>
+        <div class="tm-dec tm-door" style="right:4%;top:86%">🚪 الباب</div><div class="tm-dec" style="right:70%;top:86%">🔧 العدة</div><div class="tm-dec" style="right:94%;top:46%">🧰</div><div class="tm-dec" style="right:6%;top:52%">🧯</div>
+        ${ags.map(a=>teamAgentHTML(a, TEAM_STATIONS[(TEAM_ROLES[a.role] || {}).station] ? 0 : ci++, now)).join('')}
+      </div>
+      <div class="tm-side">${teamPanelHTML(ags.find(a=>a.id === teamSel), now)}</div>
+    </div>
+    <div class="card" style="margin-top:10px;padding:10px 12px"><div style="font-weight:700;font-size:13px;margin-bottom:4px">📣 آخر حاجة حصلت</div>${teamTickerHTML(now)}</div>`;
+}
+function openTeamAgent(id){
+  if(!isOwnerSession()){ toast('الفريق لصاحب المركز بس', true); return; }
+  if(!(DB.teamAgents || []).some(a=>a.id === id)) return;
+  teamSel = id; teamSelReport = ''; refreshContent();
+}
+function teamOpenReport(id){ if(!isOwnerSession()) return; teamSelReport = _tmId(id); refreshContent(); }
+function teamToggleHistory(){ if(!isOwnerSession()) return; teamHistoryOpen = !teamHistoryOpen; refreshContent(); }
+function teamOpenLink(kind, id){
+  if(!isOwnerSession() || !_tmId(id) || !Object.prototype.hasOwnProperty.call(TEAM_LINKS, kind)) return;
+  /* م258: بندوّر على السجل الأول (بالـid وبعدها برقمه — الوكيل ساعات بيكتب رقم الفاتورة/الأمر/المصروف) ولو مش موجود نقول بدل ما نرمي استثناء */
+  const find = (arr, noField) => { const L = arr || []; return L.find(x=>x && x.id === id) || (noField ? L.find(x=>x && x[noField] != null && String(x[noField]) === String(id)) : null) || null; };
+  const miss = () => toast('مش لاقي ' + TEAM_LINKS[kind] + ' دي', true);
+  if(kind === 'invoice'){ const inv = find(DB.invoices, 'invNo'); return inv && inv.jobId ? openWorkOrderReport(inv.jobId) : miss(); }
+  if(kind === 'job'){ const j = find(DB.jobs, 'jobNo'); return j ? openJobDetail(j.id) : miss(); }
+  if(kind === 'expense'){
+    const e = find(DB.expenses, 'expNo');
+    if(!e) return miss();
+    if(expPhotoCount(e)) return viewReceipt(e.id);
+    const what = e.description || e.note || e.category || '';
+    return toast('المصروف' + (e.expNo ? ' #' + e.expNo : '') + ' — ' + fmtDate(e.date) + ' — ' + money(e.amount) + (what ? ' — ' + what : '') + ' (مفيش صورة مرفقة)');
+  }
+  if(kind === 'part'){ const p = find(DB.inventory); return p ? openItemCard(p.id) : miss(); }
+  if(kind === 'supplier'){ const sp = find(DB.suppliers); return sp ? openSupplierDetail(sp.id) : miss(); }
+  if(kind === 'customer'){ const c = find(DB.customers); return c ? openCustomerHistory(c.id) : miss(); }
+}
+async function teamGiveFeedback(reportId, fid, verdict, note){
+  if(!isOwnerSession()){ toast('الفريق لصاحب المركز بس', true); return false; }
+  const r = (DB.teamReports || []).find(x=>x.id === reportId);
+  if(!r || !(r.findings || []).some(f=>f.fid === fid)) return false;
+  if(verdict === 'wrong' && note === undefined){
+    openModal(`<h3>✗ التنبيه ده مش مظبوط</h3><p class="muted" style="font-size:13px">قول للوكيل ليه (اختياري) — هيقراها المرة الجاية ومش هيكررها.</p>
+      <textarea class="f" id="tmWrongNote" rows="3" maxlength="300" placeholder="مثلاً: الخصم ده متفق عليه مع العميل"></textarea>
+      <div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-accent" onclick="teamGiveFeedback('${_tmId(reportId)}','${_tmId(fid)}','wrong',(document.getElementById('tmWrongNote')||{}).value||'')">حفظ</button><button class="btn" onclick="closeModal()">إلغاء</button></div>`);
+    return false;
+  }
+  const v = verdict === 'wrong' ? 'wrong' : 'seen';
+  const old = teamFbOf(reportId, fid);
+  const rec = { reportId, fid, agentId:r.agentId, verdict:v, note:String(note || '').slice(0, 300), by:actorName(), at:new Date().toISOString() };
+  if(old) Object.assign(old, rec); else DB.teamFeedback.push(Object.assign({ id:'tf_' + reportId + '_' + fid }, rec));   /* م258: id ثابت ⇒ الرد التاني على نفس الحاجة بيكتب فوق نفس الصف حتى لو الجهاز مش محمّله */
+  await saveKey('teamFeedback');
+  if(v === 'wrong') closeModal();
+  refreshContent();
+  return true;
+}
+async function teamSeenAll(reportId){
+  if(!isOwnerSession()) return false;
+  const r = (DB.teamReports || []).find(x=>x.id === reportId);
+  if(!r) return false;
+  const at = new Date().toISOString(), by = actorName();
+  (r.findings || []).filter(f=>!teamFbOf(r.id, f.fid)).forEach(f=>DB.teamFeedback.push({ id:'tf_' + r.id + '_' + f.fid, reportId:r.id, fid:f.fid, agentId:r.agentId, verdict:'seen', note:'', by, at }));
+  await saveKey('teamFeedback');
+  refreshContent();
+  return true;
+}
+
+/* ---------- إدارة الفريق (م258 — الخطوة 4) ---------- */
+const TEAM_DEFAULT = [
+  { id:'ag_monitor', name:'المراقب', role:'monitor', character:'c1', color:'#7F77DD', times:['12:00','14:00','16:00','18:00','20:00','22:00','00:00'], tasks:[
+    ['خصم أكبر من الحد على أي فاتورة', 10, '%'],
+    ['فاتورة اتلغت بعد ما اتدفعت، أو اتفتحت تاني بعد ما اتقفلت'],
+    ['قطعة اتباعت بأقل من تمن شرائها أو بمكسب أقل من الحد', 15, '%'],
+    ['أمر شغل مفيهوش حركة من مدة', 7, 'يوم'],
+    ['عربية اتسلّمت من غير فاتورة، أو أمر شغل اتلغى وفيه قطع اتصرفت'],
+    ['مصروف أكبر من ضعف متوسط بنده، أو تحصيل من غير فاتورة'],
+    ['حركة خزنة بعد 1 بالليل أو قبل 10 الصبح'],
+    ['جنب كل حاجة اكتب الموظف اللي عملها، وجمّع حاجات كل موظف في جزء «الموظفين»'] ] },
+  { id:'ag_store', name:'أمين المخزن', role:'store', character:'c2', color:'#BA7517', times:['09:00'], tasks:[
+    ['النواقص ومسودة الطلبية والمخزن الخارجي — بنفس منطق فحص الصبح'],
+    ['المخزون النايم اللي مااتحركش من مدة وقيمته', 60, 'يوم'],
+    ['أصناف رصيدها بالسالب، وهالك أو تسويات كتير على نفس الصنف أو نفس الموظف'],
+    ['مورد زوّد سعر صنف عن آخر مرة أكتر من الحد، أو نفس الصنف أرخص عند مورد تاني', 10, '%'],
+    ['سعر الشراء زاد وسعر البيع زي ما هو والمكسب نزل تحت الحد', 15, '%'] ] },
+  { id:'ag_collector', name:'المحصّل', role:'collector', character:'c3', color:'#1D9E75', times:['23:30'], tasks:[
+    ['العملاء اللي عليهم فلوس من أكتر من المدة، من الأكبر للأصغر', 7, 'يوم'],
+    ['لكل عميل متأخر رسالة واتساب مؤدبة فيها المبلغ ورقم الفاتورة (أنا اللي هبعت)'],
+    ['التحصيل النهارده بطرق الدفع ومقارنة بمتوسط آخر 7 أيام'],
+    ['العملاء اللي بيتأخروا دايماً (متوسط أيام الدفع)'] ] }
+];
+async function teamSeed(){
+  if(!isOwnerSession()){ toast('الفريق لصاحب المركز بس', true); return false; }
+  if(!teamTablesOk()){ toast('شغّل ملف SQL م258 في Supabase الأول (تحديث-م258-فريق-الوكلاء.sql) وبعدها ابدأ الفريق', true); return false; }
+  if((DB.teamAgents || []).length) return false;
+  const now = Date.now(), by = actorName();
+  TEAM_DEFAULT.forEach((d, i)=>{
+    DB.teamAgents.push({ id:d.id, name:d.name, role:d.role, character:d.character, color:d.color, schedule:{ times:d.times.slice() }, active:true, createdAt:new Date(now + i).toISOString() });
+    d.tasks.forEach(([text, limit, unit], j)=>DB.teamTasks.push(Object.assign({ id:uid('tt'), agentId:d.id, kind:'task', text, active:true, createdBy:by, createdAt:new Date(now + i * 100 + j).toISOString() }, limit != null ? { limit, unit } : {})));
+  });
+  await Promise.all([saveKey('teamAgents'), saveKey('teamTasks')]);
+  logAction('🤖 بدأ فريق ماسترز (المراقب · أمين المخزن · المحصّل)').catch(()=>{});
+  toast('🚀 الفريق جاهز — الوكلاء هيشتغلوا في مواعيدهم');
+  refreshContent();
+  return true;
+}
+function teamTasksOf(agentId, kind){ return (DB.teamTasks || []).filter(t=>t.agentId === agentId && (kind === 'staff_rule' ? t.kind === 'staff_rule' : t.kind !== 'staff_rule')).sort((a, b)=>String(a.createdAt).localeCompare(String(b.createdAt))); }
+function teamTaskRowHTML(t){
+  const id = _tmId(t.id);
+  return `<div class="tm-t${t.active === false ? ' off' : ''}">
+    <button class="btn btn-sm" title="${t.active === false ? 'موقوفة — دوس تشغّلها' : 'شغالة — دوس توقفها'}" onclick="teamTaskToggle('${id}')">${t.active === false ? '⏸' : '✓'}</button>
+    <div style="flex:1;font-size:13px">${escNote(t.text)}${t.limit != null ? ` <b class="tag" style="font-size:11px">الحد: ${escNote(t.limit)} ${escNote(t.unit || '')}</b>` : ''}</div>
+    <button class="btn btn-sm" onclick="openTeamTask('${id}')">✏️</button></div>`;
+}
+function teamTasksHTML(a){
+  const id = _tmId(a.id), tasks = teamTasksOf(a.id, 'task'), rules = a.role === 'monitor' ? teamTasksOf(a.id, 'staff_rule') : null;
+  return `<div class="tm-g" style="margin-top:14px">📝 مهام ${escNote(a.name)} (${tasks.filter(t=>t.active !== false).length} شغالة)</div>
+    ${tasks.map(teamTaskRowHTML).join('') || '<div class="muted" style="font-size:12px">مفيش مهام لسه</div>'}
+    <button class="btn btn-sm" style="margin-top:6px" onclick="openTeamTask('','${id}','task')">➕ مهمة جديدة</button>
+    ${rules ? `<div class="tm-g" style="margin-top:14px">👥 تعليماتك للموظفين (المراقب بيراجع مين ملتزم)</div>
+    ${rules.map(teamTaskRowHTML).join('') || '<div class="muted" style="font-size:12px">اكتب القواعد اللي إنت مدّيها لفريقك — مثلاً: «الاستقبال يكتب الموبايل والكيلومترات في كل أمر شغل»</div>'}
+    <button class="btn btn-sm" style="margin-top:6px" onclick="openTeamTask('','${id}','staff_rule')">➕ قاعدة جديدة</button>` : ''}`;
+}
+async function teamTaskToggle(id){
+  if(!isOwnerSession()) return false;
+  const t = (DB.teamTasks || []).find(x=>x.id === id);
+  if(!t) return false;
+  t.active = t.active === false;
+  await saveKey('teamTasks');
+  refreshContent();
+  return true;
+}
+function openTeamTask(id, agentId, kind){
+  if(!isOwnerSession()) return;
+  const t = id ? (DB.teamTasks || []).find(x=>x.id === id) : null;
+  if(id && !t) return;
+  const k = t ? t.kind : (kind === 'staff_rule' ? 'staff_rule' : 'task');
+  const units = ['', '%', 'يوم', 'ج.م'];
+  openModal(`<h3>${t ? '✏️ تعديل' : '➕'} ${k === 'staff_rule' ? 'قاعدة للموظفين' : 'مهمة'}</h3>
+    <div class="form-row"><label class="f-label">${k === 'staff_rule' ? 'القاعدة (بالعربي العادي)' : 'المهمة (بالعربي العادي)'}</label><textarea class="f" id="tmTaskText" rows="3" maxlength="400">${escNote(t ? t.text : '')}</textarea></div>
+    <div class="form-row" style="display:flex;gap:8px"><div style="flex:1"><label class="f-label">الحد (اختياري)</label><input class="f" id="tmTaskLimit" type="number" min="0" value="${t && t.limit != null ? escAttr(t.limit) : ''}"></div>
+      <div style="flex:1"><label class="f-label">الوحدة</label><select class="f" id="tmTaskUnit">${units.map(u=>`<option value="${u}" ${t && (t.unit || '') === u ? 'selected' : ''}>${u || '—'}</option>`).join('')}</select></div></div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-accent" onclick="teamTaskSave('${t ? _tmId(t.id) : ''}','${_tmId(agentId || (t && t.agentId))}','${k}')">حفظ</button>
+      ${t ? `<button class="btn" style="color:var(--danger)" onclick="teamTaskDelete('${_tmId(t.id)}')">🗑 مسح</button>` : ''}<button class="btn" onclick="closeModal()">إلغاء</button></div>`);
+}
+async function teamTaskSave(id, agentId, kind){
+  if(!isOwnerSession()) return false;
+  const text = String((document.getElementById('tmTaskText') || {}).value || '').trim().slice(0, 400);
+  if(!text){ toast('اكتب المهمة الأول', true); return false; }
+  const limRaw = String((document.getElementById('tmTaskLimit') || {}).value || '').trim();
+  const lim = limRaw === '' ? null : parseFloat(limRaw);
+  const unit = String((document.getElementById('tmTaskUnit') || {}).value || '');
+  let t = id ? (DB.teamTasks || []).find(x=>x.id === id) : null;
+  if(!t){
+    if(!(DB.teamAgents || []).some(a=>a.id === agentId)) return false;
+    t = { id:uid('tt'), agentId, kind:kind === 'staff_rule' ? 'staff_rule' : 'task', active:true, createdBy:actorName(), createdAt:new Date().toISOString() };
+    DB.teamTasks.push(t);
+  }
+  t.text = text;
+  if(lim !== null && isFinite(lim)){ t.limit = lim; t.unit = unit; } else { delete t.limit; delete t.unit; }
+  await saveKey('teamTasks');
+  logAction('🤖 ' + (id ? 'عدّل' : 'زوّد') + (t.kind === 'staff_rule' ? ' قاعدة موظفين' : ' مهمة') + ' للوكيل: ' + text.slice(0, 60)).catch(()=>{});
+  closeModal(); refreshContent();
+  return true;
+}
+function teamTaskDelete(id){
+  if(!isOwnerSession()) return;
+  const t = (DB.teamTasks || []).find(x=>x.id === id);
+  if(!t) return;
+  askConfirm('تمسح «' + escNote(t.text.slice(0, 60)) + '»؟', async ()=>{
+    const ix = DB.teamTasks.findIndex(x=>x.id === id); if(ix >= 0) DB.teamTasks.splice(ix, 1);
+    await saveKey('teamTasks');
+    logAction('🤖 مسح مهمة من الفريق: ' + t.text.slice(0, 60)).catch(()=>{});
+    closeModal(); refreshContent();
+  });
+}
+function teamParseTimes(s){
+  const out = [];
+  for(const p of String(s || '').split(/[\s,،؛;]+/).filter(Boolean)){
+    const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(p);
+    if(!m) return null;
+    out.push(String(+m[1]).padStart(2, '0') + ':' + m[2]);
+  }
+  return out.length ? [...new Set(out)].sort() : null;
+}
+function teamAgentFormHTML(a){
+  const ch = a ? a.character : 'c4', co = a ? a.color : TEAM_COLORS[3];
+  return `<div class="form-row"><label class="f-label">الاسم</label><input class="f" id="tmAgName" maxlength="30" value="${escAttr(a ? a.name : '')}"></div>
+    <div class="form-row"><label class="f-label">الشكل</label><div style="display:flex;gap:6px;flex-wrap:wrap">${TEAM_CHARS.map(c=>`<label style="cursor:pointer;text-align:center"><input type="radio" name="tmAgChar" value="${c}" ${c === ch ? 'checked' : ''}>${teamCharSVG(c, co, 'sleeping')}</label>`).join('')}</div></div>
+    <div class="form-row"><label class="f-label">اللون</label><div style="display:flex;gap:8px">${TEAM_COLORS.map(c=>`<label style="cursor:pointer"><input type="radio" name="tmAgColor" value="${c}" ${c === co ? 'checked' : ''}><span style="display:inline-block;width:18px;height:18px;border-radius:4px;background:${c}"></span></label>`).join('')}</div></div>
+    <div class="form-row"><label class="f-label">المواعيد (ساعات بالـ 24 · بينهم فاصلة) — مثلاً 09:00 أو 12:00, 18:00</label><input class="f" id="tmAgTimes" dir="ltr" value="${escAttr(a ? ((a.schedule && a.schedule.times) || []).join(', ') : '09:00')}"></div>
+    <div class="form-row"><label><input type="checkbox" id="tmAgActive" ${!a || a.active !== false ? 'checked' : ''}> شغال</label></div>`;
+}
+function _teamReadAgentForm(){
+  const name = String((document.getElementById('tmAgName') || {}).value || '').trim().slice(0, 30);
+  const pick = n => { const el = (typeof document.querySelector === 'function') ? document.querySelector('input[name="' + n + '"]:checked') : null; return el ? el.value : ''; };
+  const times = teamParseTimes((document.getElementById('tmAgTimes') || {}).value);
+  const activeEl = document.getElementById('tmAgActive');
+  return { name, character:TEAM_CHARS.includes(pick('tmAgChar')) ? pick('tmAgChar') : '', color:TEAM_COLORS.includes(pick('tmAgColor')) ? pick('tmAgColor') : '', times, active:activeEl ? !!activeEl.checked : true };
+}
+function openTeamAgentSettings(id){
+  if(!isOwnerSession()) return;
+  const a = (DB.teamAgents || []).find(x=>x.id === id);
+  if(!a) return;
+  openModal(`<h3>⚙️ إعدادات ${escNote(a.name)}</h3>${teamAgentFormHTML(a)}
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-accent" onclick="saveTeamAgentSettings('${_tmId(a.id)}')">حفظ</button><button class="btn" onclick="closeModal()">إلغاء</button></div>`);
+}
+async function saveTeamAgentSettings(id){
+  if(!isOwnerSession()) return false;
+  const a = (DB.teamAgents || []).find(x=>x.id === id);
+  if(!a) return false;
+  const f = _teamReadAgentForm();
+  if(!f.name){ toast('اكتب اسم الوكيل', true); return false; }
+  if(!f.times){ toast('المواعيد مش مظبوطة — اكتبها زي 09:00 أو 12:00, 18:00', true); return false; }
+  a.name = f.name; if(f.character) a.character = f.character; if(f.color) a.color = f.color;
+  a.schedule = { times:f.times }; a.active = f.active;
+  await saveKey('teamAgents');
+  logAction('🤖 عدّل إعدادات الوكيل ' + a.name).catch(()=>{});
+  closeModal(); refreshContent();
+  return true;
+}
+function openNewTeamAgent(){
+  if(!isOwnerSession()) return;
+  openModal(`<h3>➕ وكيل جديد</h3>${teamAgentFormHTML(null)}
+    <p class="muted" style="font-size:12px">بعد ما تحفظه: زوّدله مهامه من لوحته، وقولّي في الشات أعمله مهمة مجدولة على الكمبيوتر عشان يبدأ يشتغل.</p>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-accent" onclick="saveNewTeamAgent()">حفظ</button><button class="btn" onclick="closeModal()">إلغاء</button></div>`);
+}
+async function saveNewTeamAgent(){
+  if(!isOwnerSession()) return false;
+  const f = _teamReadAgentForm();
+  if(!f.name){ toast('اكتب اسم الوكيل', true); return false; }
+  if(!f.times){ toast('المواعيد مش مظبوطة — اكتبها زي 09:00 أو 12:00, 18:00', true); return false; }
+  const a = { id:uid('ag'), name:f.name, role:'custom', character:f.character || 'c4', color:f.color || TEAM_COLORS[3], schedule:{ times:f.times }, active:f.active, createdAt:new Date().toISOString() };
+  DB.teamAgents.push(a);
+  await saveKey('teamAgents');
+  logAction('🤖 وكيل جديد في الفريق: ' + a.name).catch(()=>{});
+  teamSel = a.id; closeModal(); refreshContent();
+  toast('الوكيل اتعمل — قولّي في الشات أعمله مهمة مجدولة على الكمبيوتر');
+  return true;
+}
+
 function renderCancellationAnalytics(){
   const cancelled = DB.jobs.filter(j=>j.status==='ملغاة');
   const totalJobs = DB.jobs.length;
@@ -32147,6 +32627,8 @@ async function importBackup(){
       const data = JSON.parse(text);
       for(const key of [...DATA_KEYS, ...KV_KEYS]){
         if(key==='repairEstimates' && !estTableOk()) continue;   /* م230 */
+        if(key==='teamReports' || key==='teamState') continue;   /* م258: للقراءة بس على السيستم (بيكتبهم مفتاح الفريق) — الحفظ كان هيترفض */
+        if(/^team/.test(key) && !teamTablesOk()) continue;       /* م258: ملف SQL الفريق لسه ماتنفذش */
         if(data[key]!==undefined){ DB[key] = data[key]; await saveKey(key, DB[key]); }
       }
       toast('تم استرجاع البيانات بنجاح'); render();
