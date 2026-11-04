@@ -1248,6 +1248,7 @@ async function _persistKey(key){
     if(error) throw error;
     if(dels.length > 200 && _loadGen === gen0 && _shadow[key]) part.forEach(id=>_shadow[key].delete(id));
   }
+  if(key === 'jobs') _protFlush260(ups);   /* م260: إشعار الصرف الضايع/الاسترداد المغلوب بعد نجاح الرفع بس */
   }catch(err){
     /* رفض حقيقي من القاعدة (صلاحية/قيد) ⇒ الشريط الأحمر — ومايترجعش يتحاول كل مرة الجهاز يفتح */
     if(obIds.length && !_isTransientErr(err)) await _obDel(obIds);
@@ -1283,7 +1284,8 @@ const MERGE_SUBARRAYS = {
   customers:  ['attachments'],
   employees:  ['salaryPays','advances','bonuses','penalties','absences','docs'],   /* م257: «📎 المستندات» — مستند اترفع من جهاز مايضيعش بحفظة من جهاز تاني، والمستند اللي صاحب المركز مسحه مايرجعش */
   suppliers:  ['recons'],   /* م241: مطابقات كشف المورد من جهازين مايمسحوش بعض */   /* م239: الصرف والسلف والجزاءات من أجهزة مختلفة مايمسحوش بعض */
-  expenses:   ['photos'],   /* م249: «📎 ضيف صورة» لنفس المصروف من جهازين في نفس الوقت */
+  expenses:   ['photos'],   /* م249: «📷 صورة» (ضيف صورة) لنفس المصروف من جهازين في نفس الوقت */
+  custodies:  ['uses'],     /* م263: سداد مورد من عهدة — استخدام اتسجل من جهاز مايضيعش بحفظة جهاز تاني (والمتاح بيتحسب من الاتنين) */
 };
 window._mergeRescues = 0;
 window._mergeBlocked = 0;    /* م203: بنود اتمنعت من الرجوع بعد ما اتشالت من جهاز تاني */
@@ -1309,6 +1311,159 @@ function _mergeCanon(v){
   if(v && typeof v === 'object') return '{' + Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+_mergeCanon(v[k])).join(',') + '}';
   return JSON.stringify(v === undefined ? null : v);
 }
+/* ============ م260: 🛡️ الطبقة التالتة — جهاز قديم مايقدرش يكتب فوق أمر شغل اتفوتر ============
+   حادثة أمر #0660 / فاتورة #0589: جهاز عنده نسخة من **قبل** ما المحاسب يسعّر ويفوتر حفظها بعد الفاتورة — والحفظ بيكتب صف الأمر كامل —
+   فالحالة رجعت «مستلمة» وأسعار البيع بقت = التكلفة وبنود اتمسحت رجعت. م259 بتمنع الصرف/الإضافة على أمر متفوتر، ودي بتمنع الكتابة فوقه.
+   لحظة حفظ أي أمر (نفس رحلة قراءة صف السيرفر — طلب واحد للفواتير لكل الأوامر اللي بتتحفظ، من غير مهلة مخصوصة): لو الأمر عليه فاتورة شغالة على السيرفر
+   **وصفه موجود هناك** ⇒ اللي بيتكتب بيحتفظ من صف السيرفر بـ:
+   • الحالة + حقول التسليم/الإقفال/الإلغاء (status · deliveredAt · closedAt · cancelled*) — إلا الانتقال المشروع «تم التسليم» بتاع الفوترة نفسها
+     (الجهاز اللي فوتر بيحفظ الأمر بعد الفاتورة بثواني والسيرفر لسه على حالته القديمة).
+   • قايمة البنود وخامات الدهان: السيرفر هو المرجع — البند/الخامة بيتاخد كامل · اللي عندنا بس بيتشال (ولو قطعة اتصرفت: سجل + إشعار) · اللي هناك بس بيرجع ·
+     وعلامات الشطب (_rm) بتبقى بتاعة السيرفر. استثناء للبنود: بنود الجهاز مطابقة للفاتورة نفسها (فوترة وهو أوفلاين · دمج أصناف بيغيّر partId) ⇒ بنوده هي اللي بتتحفظ.
+   • العربون اللي اتطبق على الفاتورة دي والتحصيل المنقول اللي اتطبق عليها: عمرهم ما يرجعوا «مفتوح/pending» (وإلا استرداد العربون كان هيصرف فلوسه تاني).
+   • باقي الحقول (سجل الأمر · ملاحظات العميل · إعادة الفتح…): قاعدة م203 — اللي الجهاز ماغيّرهوش وغيّروه على السيرفر بياخد بتاع السيرفر.
+   اللي بيتعدّل بعد الفوترة بشكل مشروع (ملاحظات · تعليقات فنية · استلام السيارة · المسؤول…) مابيتلمسش لو الجهاز هو اللي غيّره. الأمر اللي مالوش فاتورة
+   (أو فاتورته ملغاة — إعادة فتح) أو مالوش صف على السيرفر ⇒ الدمج العادي زي ما هو. والجهاز اللي مايعرفش الفاتورة بتتدمج عنده. مفيش مسح أو إصلاح لبيانات قديمة. */
+const INV_JOB_KEEP260 = ['status','deliveredAt','closedAt','cancelledAt','cancellationReason','cancellationNotes','cancelledCost'];
+window._invProtected = 0;
+function _protectInvoicedJob260(local, rem, base, inv, pre){
+  const out = { changed:false, lostEdit:false, lostItems:false, reverted:[], dropped:[], restored:[], lostStock:[], latePaint:[], refunded:[] };
+  const canon = _mergeCanon, cp = v=>JSON.parse(JSON.stringify(v));
+  const P0 = pre || local;   // نسخة الجهاز قبل الدمج العادي (اللي بياخد تعديلات السيرفر في نسخة الجهاز)
+  const byId = arr=>new Map((Array.isArray(arr) ? arr : []).filter(x=>x && x.id).map(x=>[x.id, x]));
+  const round3 = n=>Math.round(n * 1000) / 1000;
+  /* علامات الشطب (_rm): بعد ما قايمة السيرفر هي اللي اتكتبت، علاماته هي المرجع — علامة قديمة لبند رجع (أو خامة) كانت بتشيله تاني في كل حفظة (ورسالة «بند كان اتشال») */
+  const syncRm = f=>{
+    const remT = (rem._rm && Array.isArray(rem._rm[f])) ? rem._rm[f] : [];
+    const rm = (local._rm && typeof local._rm === 'object') ? local._rm : (local._rm = {});
+    if(remT.length) rm[f] = cp(remT); else delete rm[f];
+    if(!Object.keys(rm).length) delete local._rm;
+  };
+  /* (1) الحالة والتسليم والإقفال */
+  const fwd = local.status === 'تم التسليم' && rem.status !== 'تم التسليم' && rem.status !== 'ملغاة';   // الفوترة نفسها: السيرفر لسه على حالة ما قبل الفاتورة
+  INV_JOB_KEEP260.forEach(f=>{
+    if(fwd && (f === 'status' || f === 'deliveredAt')) return;
+    if(canon(local[f]) === canon(rem[f])) return;
+    if(base && canon(base[f]) !== canon(P0[f])) out.lostEdit = true;   // الموظف هو اللي غيّره على الجهاز ده
+    if(rem[f] === undefined) delete local[f]; else local[f] = cp(rem[f]);
+    out.changed = true; out.reverted.push(f);
+  });
+  /* (2) البنود — بند السيرفر بيتاخد كامل (الكمية ومعاها issues… مايختلفوش عن بعض) */
+  const locItems = Array.isArray(local.items) ? local.items : null, remItems = Array.isArray(rem.items) ? rem.items : null;
+  if(locItems && remItems && canon(locItems) !== canon(remItems) && !jobItemsVsInvoice(locItems, inv && inv.items, true).same){
+    const baseItems = (base && Array.isArray(base.items)) ? base.items : [];
+    const baseById = byId(baseItems), remById = byId(remItems), locById = byId(locItems);
+    const issuesOf = arr=>{ const st = new Set(); (arr || []).forEach(x=>{ (x && Array.isArray(x.issues) ? x.issues : []).forEach(i=>{ if(i && i.moveId) st.add(i.moveId); }); }); return st; };
+    const seenIss = issuesOf(baseItems), remIss = issuesOf(remItems);
+    /* الصرف اللي ضاع من الأمر (القطعة خرجت من المخزن/اتسجّلت مورّد وهي مش على الفاتورة): سطر جديد على الجهاز ده · أو صرفة جديدة اتجمّعت على سطر */
+    (Array.isArray(P0.items) ? P0.items : locItems).forEach(li=>{
+      if(!li || li.kind === 'service') return;
+      const ri = li.id ? remById.get(li.id) : null;
+      const fresh = (Array.isArray(li.issues) ? li.issues : []).filter(x=>x && x.moveId && !seenIss.has(x.moveId) && !remIss.has(x.moveId));
+      /* سطر جديد على الجهاز ده (مش في آخر نسخة شفناها) ⇒ كله ضايع · سطر السيرفر شاله (كان عندنا) ⇒ الصرفات الجديدة اللي اتجمّعت عليه بس */
+      if(!ri && !(li.id && baseById.has(li.id))){ out.lostStock.push({ name:li.name || li.id, qty:Number(li.qty) || 0, kind:li.kind }); return; }
+      if(fresh.length) out.lostStock.push({ name:li.name || li.id, qty:round3(fresh.reduce((a, x)=>a + (Number(x.qty) || 0), 0)), kind:li.kind });
+    });
+    const next = remItems.map(ri=>{
+      const li = ri && ri.id ? locById.get(ri.id) : null;
+      if(!li) out.restored.push(ri && (ri.name || ri.id));
+      else if(canon(li) !== canon(ri)) out.reverted.push('items.' + (li.name || li.id));
+      return cp(ri);
+    });
+    locItems.forEach(li=>{ if(li && (!li.id || !remById.has(li.id))) out.dropped.push(li.name || li.id); });
+    if(base && Array.isArray(base.items) && canon(base.items) !== canon(P0.items)){ out.lostEdit = true; out.lostItems = true; }   // الموظف عدّل بنود على الجهاز ده
+    local.items = next; syncRm('items');
+    out.changed = true;
+  }
+  /* (3) خامات الدهان — كارت الربحية بياخدها من الأمر (الفاتورة مابتشيلهاش، ومابتحركش مخزون). السيرفر هو المرجع للي عنده (بيرجّع اللي اتمسح غلط ويشيل اللي اتشال هناك)،
+     لكن خامة الجهاز ده سجّلها ولسه ماوصلتش (مش في آخر نسخة شفناها) بتفضل — دي تكلفة حقيقية اتصرفت (حتى لو الفاتورة طلعت قبل ما توصل). */
+  const locIC = Array.isArray(local.internalCosts) ? local.internalCosts : null, remIC = Array.isArray(rem.internalCosts) ? rem.internalCosts : null;
+  if(locIC && remIC){
+    const bIC = byId(base && base.internalCosts), rIC = byId(remIC), lIC = byId(locIC);
+    const keepIC = locIC.filter(ic=>ic && (!ic.id || (!rIC.has(ic.id) && !bIC.has(ic.id))));
+    const nextIC = remIC.map(ri=>cp(ri)).concat(keepIC);
+    if(canon(nextIC) !== canon(locIC)){
+      let edited = false;
+      remIC.forEach(ri=>{
+        const li = ri && ri.id ? lIC.get(ri.id) : null, bi = ri && ri.id ? bIC.get(ri.id) : null;
+        if(!li){ out.restored.push(ri && (ri.name || ri.id)); if(bi) edited = true; }                                   // الموظف مسحها على الجهاز ده
+        else if(canon(li) !== canon(ri)){ out.reverted.push('internalCosts.' + (li.name || li.id)); if(bi && canon(li) !== canon(bi)) edited = true; }   // الموظف عدّلها
+      });
+      locIC.forEach(ic=>{ if(ic && ic.id && !rIC.has(ic.id) && bIC.has(ic.id)) out.dropped.push(ic.name || ic.id); });
+      if(edited){ out.lostEdit = true; out.lostItems = true; }
+      local.internalCosts = nextIC; syncRm('internalCosts');
+      out.changed = true;
+    }
+    /* خامة اتسجلت بعد تاريخ الفاتورة: بتفضل (تكلفة حقيقية) بس صاحب الشغل يراجعها */
+    const invAt = inv && inv.date ? new Date(inv.date).getTime() : NaN;
+    keepIC.forEach(ic=>{ const at = ic && ic.date ? new Date(ic.date).getTime() : NaN; if(!isNaN(invAt) && !isNaN(at) && at > invAt) out.latePaint.push({ name:ic.name || ic.id, qty:Number(ic.qty) || 0, kind:'paint' }); });
+  }
+  /* (4) العربون: اللي اتطبق على الفاتورة دي عمره ما يرجع «مفتوح»/«مسترد» من نسخة قديمة (وإلا الاسترداد يصرف فلوس العربون تاني) · وغير كده: اللي الجهاز ماغيّرهوش وغيّروه هناك بياخد بتاع السيرفر · وعربون جديد من أي جهاز بيفضل */
+  const remDeps = Array.isArray(rem.deposits) ? rem.deposits : [], locDeps = Array.isArray(local.deposits) ? local.deposits : [];
+  if(remDeps.length){
+    const bD = byId(base && base.deposits), rD = byId(remDeps), lD = byId(locDeps);
+    const nextD = locDeps.map(ld=>{
+      const rd = ld && ld.id ? rD.get(ld.id) : null;
+      if(!rd) return ld;
+      if(rd.status === 'applied' && rd.appliedInvoiceId === inv.id && ld.status !== 'applied'){
+        if(ld.status === 'refunded' || ld.refund){ out.refunded.push({ amount:Number(ld.amount) || Number(rd.amount) || 0, depNo:ld.depNo || rd.depNo }); out.lostEdit = true; }   // استرداد اتسجل على الجهاز ده والعربون كان اتطبق على الفاتورة
+        return cp(rd);
+      }
+      const bd = bD.get(ld.id);
+      if(bd && canon(ld) === canon(bd) && canon(rd) !== canon(bd)) return cp(rd);
+      return ld;
+    });
+    remDeps.forEach(rd=>{ if(rd && rd.id && !lD.has(rd.id)) nextD.push(cp(rd)); });
+    if(canon(nextD) !== canon(locDeps)){ local.deposits = nextD; out.changed = true; out.reverted.push('deposits'); }
+  }
+  /* (5) باقي الحقول (سجل الأمر · ملاحظات العميل · التحصيل المنقول · إعادة الفتح…): قاعدة م203 — اللي الجهاز ماغيّرهوش وغيّروه على السيرفر بياخد بتاع السيرفر (مش بنكتب فوقه بنسخة قديمة) */
+  if(base){
+    const skip = new Set([...INV_JOB_KEEP260, ...(MERGE_SUBARRAYS.jobs || []), '_rm', 'deposits']);
+    new Set([...Object.keys(local), ...Object.keys(rem)]).forEach(k=>{
+      if(skip.has(k)) return;
+      if(canon(P0[k]) === canon(base[k]) && canon(rem[k]) !== canon(base[k])){
+        if(rem[k] === undefined) delete local[k]; else local[k] = cp(rem[k]);
+        out.changed = true; out.reverted.push(k);
+      }
+    });
+  }
+  /* التحصيل المنقول اللي اتطبق على الفاتورة دي: عمره ما يرجع «pending» (وإلا إعادة الفتح بتنقله مرتين) */
+  const rc = rem.payCarry;
+  if(rc && rc.status === 'applied' && rc.appliedInvoiceId === inv.id && canon(local.payCarry) !== canon(rc)){ local.payCarry = cp(rc); out.changed = true; out.reverted.push('payCarry'); }
+  return out;
+}
+/* م260: إشعار/سجل الصرف الضايع والاسترداد المغلوب بيتبعتوا **بعد نجاح رفع الأمر** (مش وقت الدمج): الرفع لو فشل واتعاد (أو اتسجّل على الجهاز واتعاد بعد كده) مايكرّرش الرسالة،
+   ولو الرفع ماوصلش أصلاً مفيش رسالة عن حاجة ماحصلتش. وكمان بنتفادى التكرار لو نفس الرسالة موجودة قبل كده لنفس الأمر (إعادة تشغيل من صندوق الصادر بتحسب نفس الخسارة تاني). */
+const _protPending260 = new Map();
+function _protQueue260(p){
+  const pr = p.pr;
+  if(!pr.lostStock.length && !pr.latePaint.length && !pr.refunded.length) return;
+  const e = _protPending260.get(p.id) || { id:p.id, jobNo:p.jobNo, invNo:p.invNo, stock:[], paint:[], refunds:[] };
+  const add = (arr, xs, keyOf)=>xs.forEach(x=>{ if(!arr.some(y=>keyOf(y) === keyOf(x))) arr.push(x); });
+  add(e.stock, pr.lostStock, x=>x.name + '|' + x.qty + '|' + x.kind); add(e.paint, pr.latePaint, x=>x.name + '|' + x.qty);
+  add(e.refunds, pr.refunded, x=>x.depNo + '|' + x.amount);
+  _protPending260.set(p.id, e);
+}
+function _protFlush260(ups){
+  if(!_protPending260.size) return;
+  const ids = new Set((ups || []).map(u=>u.id));
+  _protPending260.forEach((e, id)=>{
+    if(!ids.has(id)) return;
+    _protPending260.delete(id);
+    setTimeout(()=>{ try{
+      const texts = [];
+      if(e.stock.length) texts.push('⚠️ ' + e.stock.map(x=>x.name + ' × ' + x.qty).join(' · ') + ' ' + (e.stock.some(x=>x.kind === 'part') ? 'اتصرفت' : 'اتسجلت')
+        + ' على أمر #' + e.jobNo + ' بعد فاتورة #' + e.invNo + ' ومش عليها — مرتجع أو أمر جديد');
+      if(e.paint.length) texts.push('⚠️ ' + e.paint.map(x=>x.name + ' × ' + x.qty).join(' · ') + ' (خامات دهان) اتسجلت على أمر #' + e.jobNo + ' بعد فاتورة #' + e.invNo + ' — راجعها');
+      e.refunds.forEach(x=>texts.push('⚠️ استرداد عربون ' + money(x.amount) + ' (إيصال #' + x.depNo + ') على أمر #' + e.jobNo + ' اتسجّل على جهاز قديم، بس العربون كان اتطبق على فاتورة #' + e.invNo + ' — راجع الخزنة (الفلوس خرجت من الحساب)'));
+      texts.forEach(txt=>{
+        if(DB.notifications.some(n=>n.type === 'concurrent_merge' && n.refId === e.id && n.action === txt)) return;   // نفس الخسارة اتبلّغ عنها قبل كده
+        logAction('🛡️ ' + txt.replace(/^⚠️ /, ''));
+        notify('concurrent_merge', txt, { category:'system', refType:'job', refId:e.id, refNo:e.jobNo, priority:'high', system:true });
+      });
+    }catch(x){} }, 0);
+  });
+}
 async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
   const fields = MERGE_SUBARRAYS[key];
   if(!fields || !ups.length) return;
@@ -1331,22 +1486,46 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
       if(added){ rm[f] = [...cur]; touched.add(u.id); }
     });
   });
-  let remoteRows = null;
+  let remoteRows = null, invByJob = null;
   try{
     const ids = ups.map(u=>u.id);
     remoteRows = [];
+    const invRows = [];
+    let invReadOk = key === 'jobs' && !!TABLE_MAP.invoices && !!sb && typeof sb.from === 'function';
     /* م248: القراءة على دفعات (150 رقم) — دمج عملاء/أصناف بيعدّل مئات السجلات مرة واحدة والعنوان بيطول عن المسموح */
     for(let i=0; i<ids.length; i+=150){
-      const res = await sb.from(t).select('id,data').in('id', ids.slice(i, i+150));
+      const part = ids.slice(i, i+150);
+      /* م260: الأوامر — فواتيرها بتتقرا في نفس الرحلة (بالرقم الداخلي للأمر data->>jobId) عشان الحماية من الكتابة فوق أمر متفوتر.
+         من غير مهلة مخصوصة: مهلة الطلب العامة (15 ثانية) هي اللي بتقطع زي قراءة الأوامر اللي جنبها — المهلة القصيرة (5 ثواني) كانت على نت بطيء بتعلّم النت «واقع»
+         وتحوّل كل الجداول لصندوق الصادر 30 ثانية. بنقرا الصف كامل (id,data) — تحديد حقول jsonb بصيغة PostgREST مايتجرّبش هنا على القاعدة الحقيقية، وغلطة فيه = حماية متعطّلة بصمت. */
+      const invReq = invReadOk ? sb.from(TABLE_MAP.invoices).select('id,data').in('data->>jobId', part) : null;
+      const [res, ires] = await Promise.all([ sb.from(t).select('id,data').in('id', part), invReq ]);
       /* م179: القراءة فشلت (نت) ⇒ ماينفعش نكتب من غير دمج — كان بيكتب فوق تعديل
          الجهاز التاني (حادثة الكلاكس م100 كانت بترجع مع كل كبوة نت). نرمي الخطأ
          فالمحاولة تتعاد، ولو النت واقع فعلاً صندوق الصادر بيتولاها */
       if(res.error) throw res.error;
       remoteRows = remoteRows.concat(res.data || []);
+      if(ires){
+        if(ires.error){
+          /* نت/مهلة ⇒ نفس الإعادة. خطأ دائم من القاعدة (صلاحية/قيد) ⇒ مانوقفش حفظ الأوامر للأبد: نكمّل من غير الحماية دي وبنسجّل التحذير */
+          if(_isTransientErr(ires.error)) throw ires.error;
+          invReadOk = false; invRows.length = 0;
+          console.warn('[م260] قراءة فواتير الأمر من السيرفر فشلت (خطأ دائم) — الحفظ هيكمّل من غير حماية الأمر المتفوتر:', ires.error.message || ires.error.code);
+          try{ window._jobInvChk = { at: new Date().toISOString(), err: 'م260: قراءة فواتير الأمر عند حفظ الأوامر فشلت (خطأ دائم) — حماية الأمر المتفوتر متعطّلة: ' + String(ires.error.message || ires.error.code) }; }catch(e){}   // زي _jobInvNote259: الحارس الواقف بصمت يتلاحظ
+        } else invRows.push(...(ires.data || []));
+      }
+    }
+    if(invReadOk){
+      /* فاتورة ملغاة عندنا (إعادة فتح لسه ماوصلتش السيرفر) بتتجاهل — زي م259: الفاتورة مابترجعش من «ملغاة» لـ«شغالة» */
+      const cancelledHere = id=>{ const l = DB.invoices.find(i=>i.id === id); return !!(l && l.cancelled); };
+      invByJob = new Map();
+      invRows.forEach(r=>{ const x = r && r.data; if(x && x.id && x.jobId && !x.cancelled && !cancelledHere(x.id)) invByJob.set(x.jobId, x); });
     }
   }catch(e){ throw e; }
   const remote = new Map(remoteRows.map(r=>[r.id, r.data]));
+  const protectedJobs = [], invToMerge = new Map();
   const rescued = [], blocked = [];
+  const custKept = [], custAlert = [];   /* م263: العهد */
   ups.forEach(u=>{
     const rem = remote.get(u.id);
     if(!u.data) return;
@@ -1355,6 +1534,8 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
     let base = null;
     try{ const s0 = shadow.get(u.id); if(s0) base = JSON.parse(s0); }catch(e){}
     const remRm = (rem._rm && typeof rem._rm === 'object') ? rem._rm : {};
+    const invJ = invByJob && invByJob.get(u.id);
+    const pre260 = invJ ? JSON.parse(JSON.stringify(u.data)) : null;   /* م260: نسخة الجهاز قبل الدمج العادي — عشان نعرف الموظف عدّل ولا النسخة بس قديمة */
     fields.forEach(f=>{
       const localArr = Array.isArray(u.data[f]) ? u.data[f] : null;
       const remArr   = Array.isArray(rem[f]) ? rem[f] : null;
@@ -1436,8 +1617,45 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
         rescued.push({ key, rowId:u.id, field:f, name:(it.name||it.id) });
       });
     });
+    /* م263: عهدة اتقفلت من جهاز تاني وصفنا هنا طالع «مفتوح» (نسخة قديمة · صندوق صادر) ⇒ بتفضل مقفولة بتسويتها (زي INV_JOB_KEEP260 للأوامر)
+       — الحفظة الكاملة للصف كانت هتفتحها تاني والتسوية تتمسح. مفيش أي شاشة بتعيد فتح عهدة (اتأكدنا: الحالة بتتغير مرة واحدة open ⇒ closed بالتسوية)،
+       فمفيش استثناء لـ«إعادة فتح». استخدامات العهدة (uses) اتدمجت فوق زي أي مصفوفة؛ والفحص ده بيبلّغ المالك لو سداد وصل بعد الإقفال أو سحب زاد عن القيمة. */
+    if(key === 'custodies'){
+      if(rem.status === 'closed' && u.data.status !== 'closed'){
+        u.data.status = 'closed';
+        if(rem.settlement) u.data.settlement = JSON.parse(JSON.stringify(rem.settlement));
+        if(rem.closedAt) u.data.closedAt = rem.closedAt;
+        changed = true; custKept.push(u.data);
+      }
+      custAlert.push(u.data);
+    }
+    /* م260: الأمر المتفوتر على السيرفر ⇒ الحالة والبنود من صف السيرفر (بعد الدمج العادي فوق) */
+    if(invJ){
+      const pr = _protectInvoicedJob260(u.data, rem, base, invJ, pre260);
+      if(pr.changed){ changed = true; protectedJobs.push({ id:u.id, jobNo:u.data.jobNo, invNo:invJ.invNo, pr }); }
+      if(!DB.invoices.some(i=>i.id === invJ.id)) invToMerge.set(invJ.id, invJ);   // الجهاز مايعرفش الفاتورة دي
+    }
     if(changed && nextShadow) nextShadow.set(u.id, JSON.stringify(u.data));
   });
+  /* الجهاز القديم يتعرّف على الفاتورة (الأمر عنده «تم التسليم» بس من غير فاتورة فكان لسه ظاهر مفتوح) — نفس مسار المزامنة اللحظية، ومن غير ما نكتب فوق تعديل لسه ماوصلش */
+  if(invToMerge.size && !_unsavedKeys.has('invoices')) invToMerge.forEach(inv=>{ try{ _applyRemote('invoices', { eventType:'INSERT', new:{ id:inv.id, data:inv } }); }catch(e){} });
+  if(protectedJobs.length){
+    window._invProtected += protectedJobs.length;
+    console.warn('[م260] أمر متفوتر على السيرفر — اتحفظ بحالته وبنوده من السيرفر (نسخة الجهاز كانت قديمة):',
+      protectedJobs.map(p=>({ job:p.jobNo, invoice:p.invNo, fields:p.pr.reverted, droppedItems:p.pr.dropped, restoredItems:p.pr.restored, lostStock:p.pr.lostStock })));
+    const lost = protectedJobs.filter(p=>p.pr.lostEdit);
+    protectedJobs.forEach(_protQueue260);   // الإشعار والسجل بعد نجاح الرفع (في _persistKey)
+    setTimeout(()=>{ try{
+      lost.forEach(p=>toast('أمر #'+p.jobNo+' اتفوتر من جهاز تاني — '+(p.pr.lostItems ? 'التعديلات على بنوده ماتحفظتش' : 'تعديلاتك عليه ماتحفظتش'), true));
+      refreshContent();
+    }catch(e){} }, 0);
+  }
+  if(custKept.length || custAlert.length){
+    setTimeout(()=>{ try{
+      custKept.forEach(c=>custodyAlert263('custody_stale_write', '🛡️ جهاز بنسخة قديمة حاول يحفظ عهدة #'+c.custodyNo+' — '+custodyEmpName(c)+' كأنها لسه مفتوحة — العهدة اتقفلت من جهاز تاني وفضلت مقفولة بتسويتها'));
+      custAlert.forEach(custodyCheckAlerts263);
+    }catch(x){} }, 0);
+  }
   window._mergeBlocked += blocked.length;
   if(blocked.length) console.warn('م203: بند اتشال من جهاز تاني ومارجعش', blocked);
   const shownBlk = blocked.filter(r=>r.key !== 'employees');   /* م239: ملف الموظف — متوقع، ومن غير أسماء بنود تتقري */
@@ -1454,7 +1672,7 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
   /* م230: «وصلت/اتفتحت» في خط المقايسة الزمني بتتكتب من جهاز المستلم والتاني بيحفظ بعدها بثواني —
      ضمّها عادي ومتوقع، فمابنزعجش حد بيه (ولا إشعار لصاحب المركز) */
   window._mergeRescues += rescued.length;
-  const loud230 = rescued.filter(r=>!(r.key==='repairEstimates' && r.field==='events') && r.key !== 'employees');   /* م239: صرف من الحسابات + جزاء من الـHR على نفس الموظف = متوقع */
+  const loud230 = rescued.filter(r=>!(r.key==='repairEstimates' && r.field==='events') && r.key !== 'employees' && r.key !== 'custodies' && !(r.key==='expenses' && r.field==='photos'));   /* م262: صورة مصروف من جهاز تاني = متوقع، من غير شريط أحمر ولا إشعار */ /* م263: استخدامات العهدة بتتدمج بهدوء — الإشعار المفيد بتاعها (سداد بعد الإقفال/سحب زيادة) من custodyCheckAlerts263 */   /* م239: صرف من الحسابات + جزاء من الـHR على نفس الموظف = متوقع */
   if(loud230.length){
     const names = [...new Set(loud230.map(r=>r.name))].slice(0,4).join(' · ');
     console.warn('م100: اتنقذ ' + loud230.length + ' بند من المسح', loud230);
@@ -1787,7 +2005,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v280';
+const APP_VERSION = 'v283';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -2039,7 +2257,7 @@ const PERM_INFO = {
   'bill.edit':'تعديل فاتورة صادرة: وسيلة السداد · الخصم · الضريبة · الملاحظات · الرقم المرجعي. مايسمحش بتعديل البنود ولا الكميات نهائياً.',
   'bill.history':'عرض سجل الفاتورة الكامل (كل تعديل: مين وإمتى والقيمة قبل وبعد). عرض فقط.',
   'bill.print':'طباعة الفاتورة وتحميلها كملف. عرض فقط.',
-  'fin.expenses':'تسجيل مصروفات المركز. بتتخصم من الحساب المختار.',
+  'fin.expenses':'تسجيل مصروفات المركز. بتتخصم من الحساب المختار. وبتسمح كمان بإضافة صور (📷 صورة) على أي سطر في سجل المصروفات — مكافأة · سلفة · سداد مورد … — ما عدا المرتبات.',
   'exp.advance':'تسجيل سلف الموظفين من شاشة المصروفات (للمكودين وغير المكودين) وعرض تقارير السلفة. صلاحية مستقلة تماماً عن «الرواتب» — وworkflow السلف في الموارد البشرية زي ما هو مش بيتأثر.',   /* م166 */
   'fin.exp_delete':'حذف مصروف اتسجل بالغلط من شاشة «المصروفات» (لازم معاها الشاشة) — بسبب إلزامي. الفلوس بترجع للحساب اللي اتصرفت منه بسطر رجوع بتاريخ يوم الحذف، والسلفة بتتشال من ملف الموظف. المرتبات وسداد الموردين والاستهلاك الداخلي مابيتحذفوش من هنا. كل حذف بيتسجل وبيوصل إشعار لصاحب المركز.',   /* م250 */
   'fin.manage':'إنشاء الحسابات والخزن والتحويلات والإيداعات بينها. <b>مابتديش</b> حق تسوية الأرصدة ولا أرشفة الحسابات — دول صلاحيتين منفصلتين.',
@@ -2708,6 +2926,7 @@ async function syncSince(opts){
     const ch = data.changed || {}, dl = data.deleted || {};
     let n = 0;
     DATA_KEYS.forEach(k=>{ n += _applyDiff(k, ch[k], dl[k]); });
+    if(n) mvOnRemoteClose();   /* م259 */
     const kv = data.kv || {};
     KV_KEYS.forEach(k=>{ if(kv[k]){ DB[k] = kv[k]; n++; } });
     if(data.now) _syncCursor = data.now;
@@ -2874,6 +3093,8 @@ function _applyRemote(key, p){
     /* م164: إصدار وصل من جهاز تاني؟ نفحص تكرار الأرقام فوراً (مؤجّل 2.5ث) */
     if(key==='invoices' || key==='jobs' || key==='purchases') _scheduleDupScan();
     if(key==='repairEstimates') estInboxSoon();   /* م230: الرسالة تطلع حتى لو فيه نافذة مفتوحة */
+    if(key==='invoices' || key==='jobs') mvOnRemoteClose();   /* م259: الأمر المتثبّت في شاشة الصرف اتفوتر/اتلغى ⇒ الشاشة تتحدث فوراً */
+    if(key==='custodies' && p.eventType !== 'DELETE' && p.new && p.new.id){ const cid = p.new.id; setTimeout(()=>{ const cx = (DB.custodies||[]).find(x=>x.id===cid); if(cx) custodyCheckAlerts263(cx); }, 0); }   /* م263: تسوية من جهاز بنسخة قديمة مابتحسبش سداد العهدة ⇒ المالك يتبلّغ */
     _scheduleRtRefresh();
   }catch(e){ console.error('applyRemote', e); }
 }
@@ -3985,6 +4206,7 @@ async function refreshData(){
 function renderTab(){
   /* م211: الخروج من حركة المخزن بيشيل الأمر المتثبّت — عشان محدش يرجع يصرف على عربية قديمة بالغلط */
   if(currentTab !== 'stockmoves' && typeof mvPinnedJobId !== 'undefined' && mvPinnedJobId){ mvPinnedJobId = null; mvPinnedAt = 0; mvJobQuery = ''; }
+  if(currentTab !== 'stockmoves' && typeof mvGone259 !== 'undefined' && mvGone259) mvGone259 = null;   /* م259 */
   // حارس الصلاحيات: أي شاشة مش مسموح بيها ترفض حتى لو حد وصلها بأي طريقة
   const subTabs = ['newPurchase','inventoryCount'];   // شاشات فرعية بتتفتح من جوه المخزن
   if(!subTabs.includes(currentTab) && !canScreen(currentTab)){
@@ -5115,6 +5337,77 @@ function isJobClosed(job){
   if(job.status === 'ملغاة') return true;
   return DB.invoices.some(i=>i.jobId===job.id && !i.cancelled);
 }
+/* ============ م259: 🛡️ مفيش صرف على أمر اتفوتر من جهاز تاني ============
+   حادثة 26 أغسطس (أمر #0488): المحاسب فوتر الساعة 2:15 وجهاز أمين المخزن لسه ماوصلوش الفاتورة — isJobClosed
+   بتبص على فواتير **الجهاز نفسه** فقالت «مفتوح» والصرف عدّى الساعة 2:16 و2:52 (4 قطع ماتحاسبتش).
+   الحل: لحظة الصرف بنسأل السيرفر مباشرة عن فواتير **الأمر ده بالرقم الداخلي بس** — مش بالعربية ولا العميل ولا اللوحة
+   (أمر قديم متفوتر لنفس العربية ماينفعش يمنع أمر جديد مفتوح). لو لقينا فاتورة مش ملغاة ⇒ بندمجها في ذاكرة الجهاز
+   بنفس مسار المزامنة اللحظية (فالشاشات كلها تتحدث) ونرفض الصرف. النت واقع أو السيرفر ما ردش في 5 ثواني ⇒ الصرف
+   يكمّل عادي (قرار سيف: لما النت واقع محدش يقدر يفوتر أصلاً). */
+var _jobInvCheckMs = 5000;
+/* آخر نتيجة لفحص الفاتورة على السيرفر — window._jobInvChk = { at, err } (err = null لو الفحص نجح). لو الفحص فشل الصرف بيكمّل (أوفلاين)
+   بس الغلط بيتكتب في الكونسول وهنا، عشان حارس واقف بصمت (مثلاً صلاحية القراءة اتقفلت على السيرفر) يتلاحظ. */
+function _jobInvNote259(err){
+  try{
+    window._jobInvChk = { at: new Date().toISOString(), err: err ? String(err) : null };
+    if(err) console.warn('[م259] فحص فواتير الأمر على السيرفر فشل — الصرف/الإضافة هتكمّل (أوفلاين):', String(err));
+  }catch(e){}
+}
+async function jobInvoicedOnServer(jobId){
+  const offline = { invoiced:false, offline:true };
+  if(!jobId) return offline;
+  if(!sb || typeof sb.from !== 'function'){ _jobInvNote259('sb-missing'); return offline; }
+  let timer = null, res = null;
+  try{
+    res = await Promise.race([
+      sb.from(TABLE_MAP.invoices).select('id,data').eq('data->>jobId', jobId),
+      new Promise((_, rej)=>{ timer = setTimeout(()=>rej(new Error('timeout')), _jobInvCheckMs); })
+    ]);
+  }catch(e){ _jobInvNote259((e && e.message) || e); return offline; }
+  finally{ if(timer) clearTimeout(timer); }
+  if(!res || res.error || !Array.isArray(res.data)){ _jobInvNote259((res && res.error && (res.error.message || res.error.code)) || 'bad-reply'); return offline; }
+  _jobInvNote259(null);
+  /* الفاتورة مابترجعش من «ملغاة» لـ«شغالة» أبداً — فلو نسختها عندنا ملغاة تبقى هي الأحدث (مثلاً لسه معيدين الفتح والحفظ في الطريق للسيرفر)
+     ⇒ نتجاهل رد السيرفر عنها، ومانكتبش فوقها. فاتورة تانية جديدة على نفس الأمر (فوّتوه تاني) لسه بتمنع. */
+  const cancelledHere = (id)=>{ const l = DB.invoices.find(i=>i.id === id); return !!(l && l.cancelled); };
+  const hits = res.data.map(r=>r && r.data).filter(x=>x && x.id && x.jobId === jobId && !x.cancelled && !cancelledHere(x.id));
+  if(!hits.length) return { invoiced:false, offline:false };
+  const inv = hits[hits.length - 1];
+  /* دمج في ذاكرة الجهاز بنفس مسار المزامنة اللحظية — إلا لو على الجهاز تعديل في الفواتير لسه ماوصلش القاعدة (مانكتبش فوقه) */
+  try{ if(!_unsavedKeys.has('invoices')) _applyRemote('invoices', { eventType:'INSERT', new:{ id:inv.id, data:inv } }); }catch(e){}
+  return { invoiced:true, invNo:inv.invNo, offline:false, inv };
+}
+/* بيتنده لحظة الصرف/الإضافة/التعديل قبل أي تغيير على الأمر: true = اترفض (الرسالة اتقالت والشاشة اتحدّثت).
+   kind: 'issue' (صرف قطعة من المخزن — الافتراضي) · 'add' (بند/تكلفة جديدة: خدمة · قطعة خارجية · أعمال خارجية · خامة دهان)
+   · 'edit' (تعديل بند موجود — الكمية والسعر). م259 (تمديد): قرار سيف «مفيش حاجة تتضاف على أمر اتفوتر». */
+async function jobIssueBlocked(job, kind){
+  const tails = {
+    issue:['مفيش صرف عليه. لو القطعة لازم تتصرف افتح أمر شغل جديد', 'مفيش صرف عليه'],
+    add:['مفيش إضافة عليه. لو البند لازم يتضاف افتح أمر شغل جديد', 'مفيش إضافة عليه'],
+    edit:['مفيش تعديل على بنوده. لو محتاج تعدّل: «إعادة فتح» من شاشة الفواتير', 'مفيش تعديل على بنوده']
+  };
+  const tail = tails[kind] || tails.issue;
+  const r = await jobInvoicedOnServer(job.id);
+  const li = r.invoiced ? null : DB.invoices.find(i=>i.jobId===job.id && !i.cancelled);   // ممكن توصل بالمزامنة اللحظية وإحنا مستنيين السيرفر
+  if(!r.invoiced && !li){
+    if(job.status === 'ملغاة'){ toast('الأمر #'+job.jobNo+' اتلغى — '+tail[1], true); refreshContent(); return true; }
+    return false;
+  }
+  toast('الأمر #'+job.jobNo+' اتفوتر من شوية (فاتورة #'+(r.invoiced ? r.invNo : li.invNo)+') — '+tail[0], true);
+  refreshContent();
+  return true;
+}
+/* م260: نفس فحص السيرفر بس من غير فرع «الأمر الملغي» — للعمليات اللي لازم تفضل شغالة على الأمر الملغي (المرتجع · الاسترداد) وبتتمنع على المتفوتر بس.
+   true = اتمنعت (الرسالة اتقالت والشاشة اتحدّثت). النت واقع/السيرفر ما ردش ⇒ false (تكمّل). */
+async function jobInvoicedGuard260(job, tail, when){
+  const r = await jobInvoicedOnServer(job.id);
+  const live = r.invoiced ? r.inv : DB.invoices.find(i=>i.jobId===job.id && !i.cancelled);
+  if(!r.invoiced && !live) return false;
+  if(when && live && !when(live)) return false;   // when: شرط إضافي على الفاتورة الشغالة (مثلاً «طبّقت العربون ده فعلاً»)
+  toast('الأمر #'+job.jobNo+' اتفوتر من شوية (فاتورة #'+(r.invoiced ? r.invNo : live.invNo)+') — '+tail, true);
+  refreshContent();
+  return true;
+}
 function renderJobs(){
   let list = [...DB.jobs].filter(j=>!isJobClosed(j)).sort((a,b)=>new Date(b.receivedAt)-new Date(a.receivedAt));
   if(custSearchTerm){
@@ -5524,15 +5817,16 @@ function jobDetailHTML(jobId){
     })()}
   </div>
 
-  ${can('rep.profit') && job.items.length ? (()=>{
-    // ملخص التكاليف والربحية (نفس معادلات jobCostBreakdown — مفيش أي تغيير حسابي)
-    const b = jobCostBreakdown(job);
+  ${can('rep.profit') && (job.items.length || jobInvoiceOf(job)) ? (()=>{
+    /* ملخص التكاليف والربحية: أمر مش متفوتر ⇐ نفس معادلات jobCostBreakdown · أمر متفوتر (م260) ⇐ من بنود الفاتورة نفسها */
+    const b = jobProfitView(job);
     return `
   <div class="card" style="margin-bottom:6px">
     <label class="f-label">💰 ملخص التكاليف والربحية</label>
     <table style="margin-top:6px"><tbody>
       <tr><td>إجمالي تكلفة قطع الغيار (مخزن + خارجي)</td><td style="font-weight:700">${money(b.inParts + b.extParts)}</td></tr>
       <tr><td>إجمالي تكلفة المصنعيات الخارجية</td><td style="font-weight:700">${money(b.extWork)}</td></tr>
+      ${b.other > 0.005 ? `<tr><td>تكلفة بنود تانية</td><td style="font-weight:700">${money(b.other)}</td></tr>` : ''}
       <tr><td>🎨 إجمالي تكلفة خامات الدهان</td><td style="font-weight:700">${money(b.paint)}</td></tr>
       <tr><td style="font-weight:800">إجمالي التكلفة</td><td style="font-weight:800">${money(b.total)}</td></tr>
       ${b.discount>0?`
@@ -5541,6 +5835,7 @@ function jobDetailHTML(jobId){
       <tr><td style="font-weight:700">صافي المبيعات (بعد الخصم)</td><td style="font-weight:700">${money(b.netSales)}</td></tr>`:''}
       <tr><td style="font-weight:800">صافي الربح (${b.discount>0?'صافي مبيعات':'بيع'} − تكلفة)</td><td style="font-weight:800;${b.profit<0?'color:var(--danger)':'color:var(--accent)'}">${money(b.profit)} <span class="muted" style="font-size:11px">(${b.margin.toFixed(1)}%)</span></td></tr>
     </tbody></table>
+    ${jobProfitNoteHTML(b)}
   </div>`;
   })() : ''}
 
@@ -8670,6 +8965,7 @@ async function saveEditJobItem(jobId, itemId){
   if(!can('jobs.edit')){ toast('مالكش صلاحية تعديل أوامر الشغل', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
   if(job && isJobClosed(job)){ toast('الأمر ده اتفوتر أو اتلغى — مفيش تعديل على بنوده. لو محتاج تعدّل: «إعادة فتح» من شاشة الفواتير', true); return; }   /* م179ج */
+  if(job && await jobIssueBlocked(job, 'edit')) return;   /* م259: اتفوتر من جهاز تاني؟ (قبل البحث عن البند — الانتظار ممكن يبدّل بنود الأمر) */
   const it = job.items.find(i=>i.id===itemId);
   /* م203: البند اتشال (مرتجع/حذف) من جهاز تاني والنافذة لسه مفتوحة ⇒ مايترجعش بالتعديل */
   if(!it){ toast('البند ده اتشال من أمر الشغل (مرتجع أو حذف من جهاز تاني) — اعمل تحديث للبيانات', true); closeModal(); openJobDetail(jobId); return; }
@@ -8777,6 +9073,7 @@ function deletePaintCost(jobId, icId){
   const costTxt = can('rep.profit') ? ' — تكلفة ' + money(icPre.total) : '';
   askConfirmReason('شيل الخامة دي من أمر الشغل #' + jobPre.jobNo + '؟<br><span class="muted" style="font-size:12px">🎨 ' + _joEsc(icPre.name) + ' — ' + icPre.qty + ' ' + _joEsc(icPre.unit || '') + costTxt
     + '</span><br><span class="muted" style="font-size:12px">تكلفتها هتتشال من الأمر، وحركتها في «حركة المخزن» هتفضل ظاهرة ومكتوب عليها «اتلغت».</span>', async (reason)=>{
+    { const jchk260 = DB.jobs.find(j=>j.id===jobId); if(jchk260 && await jobInvoicedGuard260(jchk260, 'مفيش تعديل على بنوده. لو محتاج تعدّل: «إعادة فتح» من شاشة الفواتير')) return; }   /* م260: اتفوتر من جهاز تاني؟ (قبل أي أثر) */
     const job = DB.jobs.find(j=>j.id===jobId);
     const ic = job && (job.internalCosts || []).find(x=>x.id===icId);
     if(!ic){ toast('الخامة اتشالت من جهاز تاني', true); openJobDetail(jobId); return; }
@@ -8821,6 +9118,7 @@ function deleteJobItem(jobId, itemId){
   askConfirmReason('حذف البند ده من أمر الشغل #'+jobPre.jobNo+'؟<br><span class="muted" style="font-size:12px">'+desc.replace(/^ — /,'')+'</span>'
     +(wasIssued?`<br><span style="color:var(--danger);font-size:12px">⚠️ الكمية <b>مش هترجع</b> للمخزون — الحذف بيشيل البند من الأمر بس.<br>لو القطعة رجعت فعلاً، سجّلها بـ«↩ مرتجع عميل» عشان ترجع للمخزن بحركة موثقة.</span>`:''),
     async (reason)=>{
+    { const jchk260 = DB.jobs.find(j=>j.id===jobId); if(jchk260 && await jobInvoicedGuard260(jchk260, 'مفيش تعديل على بنوده. لو محتاج تعدّل: «إعادة فتح» من شاشة الفواتير')) return; }   /* م260: اتفوتر من جهاز تاني؟ (قبل أي أثر) */
     const job = DB.jobs.find(j=>j.id===jobId);
     const itNow236 = job.items.find(i=>i.id===itemId);
     const mvs236 = itNow236 ? jobItemMoves(job, itNow236) : [];   /* م236: قبل ما البند يتشال (الربط بترتيب البنود) */
@@ -8942,6 +9240,7 @@ async function saveDeposit(jobId){
   const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
   if(jobOpenDeposit(job)){ toast('فيه عربون مفتوح بالفعل على الأمر ده', true); return; }
   if(job.status==='ملغاة' || DB.invoices.some(i=>i.jobId===jobId && !i.cancelled)){ toast('الأمر ملغي أو متفوتر — مفيش عربون عليه', true); return; }   /* م179ج */
+  if(await jobInvoicedGuard260(job, 'مفيش عربون جديد عليه — الأمر اتفوتر، الباقي يتحصّل من الفاتورة')) return;   /* م260: اتفوتر من جهاز تاني؟ (قبل أي أثر) */
   const amount = Math.round((parseFloat((document.getElementById('depAmt')||{}).value)||0)*100)/100;
   const accId = (document.getElementById('depAcc')||{}).value;
   const notes = ((document.getElementById('depNotes')||{}).value||'').trim();
@@ -9061,6 +9360,9 @@ function openDepositRefundModal(jobId){
 async function saveDepositRefund(jobId){
   if(!can('jobs.deposit_refund')){ toast('مالكش صلاحية استرداد العربون', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId); if(!job) return;
+  /* م260: العربون ممكن يكون اتطبق على فاتورة من جهاز تاني وجهازنا لسه شايفه «مفتوح» — الاسترداد كان هيصرف فلوسه تاني. السيرفر الأول وقبل أي أثر. */
+  { const depPre260 = jobOpenDeposit(job);   // بنرفض بس لو الفاتورة الشغالة طبّقت العربون ده فعلاً (دفعة بـdepositId) — عربون مفتوح فعلاً بيتسترد عادي
+    if(depPre260 && await jobInvoicedGuard260(job, 'مفيش استرداد عربون عليه — العربون اتطبق على الفاتورة', inv=>(inv.payments || []).some(p=>p.depositId === depPre260.id))) return; }
   const dep = jobOpenDeposit(job);
   if(!dep){ toast('مفيش عربون مفتوح على الأمر ده', true); return; }
   const accId = (document.getElementById('depRefAcc')||{}).value;
@@ -9341,6 +9643,7 @@ async function saveServiceRow(jobId){
   const rework = (document.getElementById('svcRework')||{}).value==='yes';
   if(!name){ toast('اكتب اسم الخدمة', true); return; }
   const job = DB.jobs.find(j=>j.id===jobId);
+  if(job && await jobIssueBlocked(job, 'add')) return;   /* م259: اتفوتر من جهاز تاني؟ */
   job.items.push({id:uid('it'), kind:'service', name, qty:1, unitPrice:price,
     technicianId: techId, technician: techId ? techLabelOf(techId) : '',
     date:new Date().toISOString(), rework,
@@ -10945,6 +11248,20 @@ let mvFilters = { dateFrom:'', dateTo:'', supplierId:'', type:'', partId:'', job
    لحظياً. الأمر بيفضل مثبّت بعد كل صرف ومع تحديث الشاشة من جهاز تاني، وبيتشال
    بـ«تغيير الأمر» أو لما الأمر يتقفل أو لما تخرج من الشاشة (renderTab). */
 var mvPinnedJobId = null, mvPinnedAt = 0, mvJobQuery = '';
+/* م259: آخر أمر متثبّت اتقفل (اتفوتر/اتلغى) والموظف شايفه — البانر الأحمر بيفضل لحد ما يختار أمر تاني أو يخرج من الشاشة
+   (قبل كده كان بيظهر مرة واحدة ويختفي مع أول تحديث تاني للشاشة) */
+var mvGone259 = null;
+/* م259: فاتورة/تغيير وصل من جهاز تاني والأمر المتثبّت هنا بقى مقفول ⇒ الشاشة تتحدّث **فوراً** — حتى لو الموظف واقف في خانة بحث
+   (المحدّث العادي بيستنى لحد ما يسيب الخانة، وفي الوقت ده كان ممكن يدوس «صرف» على أمر متفوتر) */
+function mvOnRemoteClose(){
+  try{
+    if(!session || !loaded || currentTab !== 'stockmoves' || !mvPinnedJobId) return false;
+    const j = DB.jobs.find(x=>x.id===mvPinnedJobId);
+    if(j && !isJobClosed(j)) return false;
+    refreshContent();
+    return true;
+  }catch(e){ return false; }
+}
 function mvPinnedJob(){
   if(!mvPinnedJobId) return null;
   const j = DB.jobs.find(x=>x.id===mvPinnedJobId);
@@ -10953,7 +11270,7 @@ function mvPinnedJob(){
 function mvPinJob(jobId){
   const j = DB.jobs.find(x=>x.id===jobId);
   if(!j || isJobClosed(j)){ toast('الأمر ده اتقفل (اتفوتر أو اتلغى) — اختار أمر تاني', true); return; }
-  mvPinnedJobId = jobId; mvPinnedAt = Date.now(); mvJobQuery = '';
+  mvPinnedJobId = jobId; mvPinnedAt = Date.now(); mvJobQuery = ''; mvGone259 = null;
   refreshContent();
 }
 function mvUnpinJob(){
@@ -10968,7 +11285,7 @@ function mvPinFromJob(jobId){
   const j = DB.jobs.find(x=>x.id===jobId);
   if(!j || isJobClosed(j)){ toast('الأمر ده اتقفل — مفيش صرف عليه', true); return; }
   closeModal();
-  mvPinnedJobId = jobId; mvPinnedAt = Date.now(); mvJobQuery = '';
+  mvPinnedJobId = jobId; mvPinnedAt = Date.now(); mvJobQuery = ''; mvGone259 = null;
   goTab('stockmoves');
 }
 function mvJobSearchInput(v){
@@ -11037,12 +11354,17 @@ function renderStockMoves(){
   /* الملاحظة 66: نماذج الصرف تختفي لو الموظف مالوش الصلاحية — مايشوفش زرار بيرفضه */
   const canIssue = can('inv.issue'), canJobEdit = can('jobs.edit');
   const pj = mvPinnedJob();
-  let gone211 = '';
   if(mvPinnedJobId && !pj){   // اتفوتر/اتلغى من جهاز تاني والأمر متثبّت
     const old = DB.jobs.find(x=>x.id===mvPinnedJobId);
-    gone211 = old ? '#'+old.jobNo : '';
+    const inv259 = old ? DB.invoices.find(i=>i.jobId===old.id && !i.cancelled) : null;
+    mvGone259 = old ? { jobNo:old.jobNo, invNo: inv259 ? inv259.invNo : null } : null;   /* م259 */
     mvPinnedJobId = null; mvPinnedAt = 0;
   }
+  const g259 = (!pj && mvGone259) ? mvGone259 : null;
+  const goneHTML259 = !g259 ? '' : (g259.invNo != null
+    ? `<div id="mvGoneBanner" style="color:var(--danger);font-size:13.5px;font-weight:800;margin-bottom:8px;border:1px solid var(--danger);border-radius:8px;padding:7px 10px;background:rgba(220,50,50,.08)">⚠️ الأمر #${g259.jobNo} اتفوتر دلوقتي (فاتورة #${g259.invNo}) — مفيش صرف عليه<div style="font-size:11.5px;font-weight:600;margin-top:3px">لو القطعة لازم تتصرف افتح أمر شغل جديد، أو اختار أمر تاني من البحث.</div></div>`
+    : `<div style="color:var(--danger);font-size:12.5px;font-weight:700;margin-bottom:6px">⚠️ الأمر #${g259.jobNo} اتفوتر أو اتلغى — اختار أمر تاني</div>`);   /* م211 + م259 */
+  const offBtn259 = pj ? '' : ' disabled';   /* م259: من غير أمر متثبّت أزرار الصرف معطّلة (مش باهتة بس) */
   const jid = pj ? pj.id : '';
   const pcar = pj ? (DB.cars.find(c=>c.id===pj.carId)||{}) : {};
   const onLbl = pj ? ' على أمر #'+pj.jobNo+' — '+_joEsc(pcar.plate||'') : '';
@@ -11052,7 +11374,7 @@ function renderStockMoves(){
   <div class="section-head"><h3>📌 الصرف على أمر شغل</h3></div>
   ${pj ? mvPinnedHeaderHTML(pj) : `
   <div class="card" style="margin-bottom:14px;border:2px dashed var(--accent)">
-    ${gone211 ? `<div style="color:var(--danger);font-size:12.5px;font-weight:700;margin-bottom:6px">⚠️ الأمر ${gone211} اتفوتر أو اتلغى — اختار أمر تاني</div>` : ''}
+    ${goneHTML259}
     <label class="f-label">🔎 دوّر على أمر الشغل — رقم الأمر · اللوحة · اسم العميل · العربية · التليفون</label>
     <input class="f" id="mvJobSearch" autocomplete="off" placeholder="مثال: 0950 · 423 · كونتراك · دوبلو" value="${escAttr(mvJobQuery)}" oninput="mvJobSearchInput(this.value)">
     <div id="mvJobResults" style="max-height:340px;overflow-y:auto;margin-top:6px">${mvJobResultsHTML(mvJobQuery)}</div>
@@ -11073,7 +11395,7 @@ function renderStockMoves(){
       </div>
       <div class="form-row"><label class="f-label">الكمية</label><input class="f" id="mvQty" type="number" min="1" value="1"></div>
     </div>
-    <button class="btn btn-accent" onclick="saveStockOut()">${ICONS.arrows} صرف القطعة${onLbl}</button>
+    <button class="btn btn-accent" onclick="saveStockOut()"${offBtn259}>${ICONS.arrows} صرف القطعة${onLbl}</button>
   </div>`}
   ${!canJobEdit?'':`
   <div class="section-head"><h3 style="color:var(--accent-2)">🔩 صرف قطع غيار خارجية (شراء مباشر للعميل — بدون تكويد)</h3></div>
@@ -11094,7 +11416,7 @@ function renderStockMoves(){
       </div>
     </div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="exNote"></div>
-    <button class="btn" style="background:var(--accent-2);color:#fff;border:none" onclick="saveExtOutFromStock()">🔩 صرف القطعة الخارجية${onLbl}</button>
+    <button class="btn" style="background:var(--accent-2);color:#fff;border:none" onclick="saveExtOutFromStock()"${offBtn259}>🔩 صرف القطعة الخارجية${onLbl}</button>
     <div class="muted" style="font-size:11.5px;margin-top:8px">القطعة بتتضاف لفاتورة العميل بسعر البيع، وتكلفتها على أمر الشغل، ولو آجل بتتسجل مديونية على المورد — من غير أي تأثير على أرصدة المخزون.</div>
   </div>
   <div class="section-head"><h3 style="color:var(--accent)">🎨 صرف خامات دهان (تكلفة مباشرة — بدون تكويد وبدون خصم من المخزون)</h3></div>
@@ -11113,7 +11435,7 @@ function renderStockMoves(){
       <div class="form-row"><label class="f-label">تكلفة الوحدة</label><input class="f" id="pjCost" type="number" min="0" value="0"></div>
       <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="pjNote"></div>
     </div>
-    <button class="btn btn-accent" onclick="savePaintOut()">🎨 تحميل التكلفة${onLbl}</button>
+    <button class="btn btn-accent" onclick="savePaintOut()"${offBtn259}>🎨 تحميل التكلفة${onLbl}</button>
     <div class="muted" style="font-size:11.5px;margin-top:8px">التكلفة بتتسجل مباشرة على أمر الشغل وبتظهر في تقرير الربحية — من غير إنشاء صنف بالمخزن ولا تأثير على أي رصيد، ولا تظهر أبداً في فاتورة العميل.</div>
   </div>`}
   </div>
@@ -12483,6 +12805,7 @@ async function saveCustomerReturn(){
   if(jobInvoiceOf(job)){
     toast('الأمر #'+job.jobNo+' متفوتر — المرتجع على الأوامر المفتوحة بس. افتح الأمر الأول (🔄 إعادة فتح الأمر من شاشة الفواتير) وبعد المرتجع اصدر فاتورة جديدة', true); return;
   }
+  if(await jobInvoicedGuard260(job, 'المرتجع على الأوامر المفتوحة بس. افتح الأمر الأول (🔄 إعادة فتح الأمر من شاشة الفواتير) وبعد المرتجع اصدر فاتورة جديدة')) return;   /* م260: اتفوتر من جهاز تاني؟ (قبل أي أثر) */
   /* م206: السبب إجباري من قايمة أسباب المرتجعات (235 من 239 مرتجع كانوا «غير محدد») */
   const reason206 = returnReasonById(((document.getElementById('crReasonSel')||{}).value)||'');
   if(!reason206){ toast('اختار سبب المرتجع من القايمة', true); return; }
@@ -12576,15 +12899,17 @@ function workOrderReportHTML(jobId, opts){
   const parts = job.items.filter(it=>it.kind==='part');
   const services = job.items.filter(it=>it.kind==='service');
   const extItems = job.items.filter(it=>it.kind==='ext_part'||it.kind==='ext_work');
-  const partsCost = parts.reduce((s,it)=>s+it.qty*it.unitPrice,0);
-  const laborCost = services.reduce((s,it)=>s+it.qty*it.unitPrice,0);
+  /* م260: أمر متفوتر + صلاحية الربحية (والنسخة الكاملة بس — مش نسخة المخزن ولا خدمة العملاء) ⇒ أرقام الربحية من بنود الفاتورة نفسها */
+  const ip260 = (inv && can('rep.profit') && !(opts && opts.csMode)) ? jobInvoiceProfit(job) : null;
+  const partsCost = ip260 ? ip260.saleParts : parts.reduce((s,it)=>s+it.qty*it.unitPrice,0);
+  const laborCost = ip260 ? ip260.saleLabor : services.reduce((s,it)=>s+it.qty*it.unitPrice,0);
   // الربحية الحقيقية: الإيراد (بيع كل البنود) − التكلفة (شراء القطع الداخلية والخارجية والأعمال الخارجية + خامات الدهان)
   const paintCost = (job.internalCosts||[]).reduce((s,ic)=>s+ic.total,0);
-  const inPartsCost = parts.reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
-  const extPartsCost = job.items.filter(it=>it.kind==='ext_part').reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
-  const extWorkCost = job.items.filter(it=>it.kind==='ext_work').reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
-  const totalRevenue = job.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
-  const totalCost = inPartsCost + extPartsCost + extWorkCost + paintCost;
+  const inPartsCost = ip260 ? ip260.inParts : parts.reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
+  const extPartsCost = ip260 ? ip260.extParts : job.items.filter(it=>it.kind==='ext_part').reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
+  const extWorkCost = ip260 ? ip260.extWork : job.items.filter(it=>it.kind==='ext_work').reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
+  const totalRevenue = ip260 ? ip260.revenue : job.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
+  const totalCost = ip260 ? ip260.total : inPartsCost + extPartsCost + extWorkCost + paintCost;
   /* م129: الربحية بصافي المبيعات — الخصم بيقلل الإيراد (المعادلة الموحدة) */
   const pc129 = profitCore(totalRevenue, inv ? (inv.discount||0) : 0, totalCost);
   const paintItems = (job.internalCosts||[]).filter(ic=>ic.kind==='paint');   // م128: للنسختين
@@ -12736,6 +13061,7 @@ function workOrderReportHTML(jobId, opts){
       <tr><td>تكلفة قطع الغيار من المخزن</td><td>${money(inPartsCost)}</td></tr>
       <tr><td>تكلفة قطع الغيار الخارجية</td><td>${money(extPartsCost)}</td></tr>
       <tr><td>تكلفة الأعمال الخارجية</td><td>${money(extWorkCost)}</td></tr>
+      ${ip260 && ip260.other > 0.005 ? `<tr><td>تكلفة بنود تانية</td><td>${money(ip260.other)}</td></tr>` : ''}
       <tr><td>🎨 تكلفة خامات الدهان</td><td>${money(paintCost)}</td></tr>
     </tbody></table>
   </div>
@@ -12749,6 +13075,7 @@ function workOrderReportHTML(jobId, opts){
     ${stat(money(pc129.profit),'صافي الربح الحقيقي'+(inv?'':' المتوقع'), pc129.profit<0)}
     ${stat(pc129.margin.toFixed(1)+'%','هامش الربح'+(inv?'':' المتوقع'), pc129.profit<0)}
   </div>
+  ${ip260 ? jobProfitNoteHTML(ip260) : (inv && can('rep.profit') && !(opts && opts.csMode) && !(Array.isArray(inv.items) && inv.items.length) ? jobProfitNoteHTML({ oldInvoice:true }) : '')}
   <div class="card" style="margin-top:12px">
     <span class="muted" style="font-size:12px">👤 الموظف المسؤول عن أمر الشغل:</span>
     <span style="font-weight:800;margin-right:6px">${job.responsibleName||'غير محدد'}</span>
@@ -12803,6 +13130,65 @@ function jobCostBreakdown(job){
   const pc = profitCore(revenue, jobInvoiceDiscount(job), total);   // م129
   return { inParts, extParts, extWork, paint, total, revenue,
     discount: pc.discount, netSales: pc.net, profit: pc.profit, margin: pc.margin };
+}
+/* ============ م260: ربحية أمر شغل **متفوتر** = من الفاتورة نفسها ============
+   حادثة أمر #0660 / فاتورة #0589: جهاز عنده نسخة قديمة من الأمر حفظها بعد الفوترة فكتب فوق صف الأمر —
+   أسعار البيع بقت = التكلفة وبندين 90 زيادة رجعوا — فكارت الربحية (اللي بيقرا من بنود الأمر) طلع هامش ~0
+   مع إن العميل اتحاسب 13,500 والتكلفة 9,570 (ربح حقيقي 3,930). الفاتورة هي اللي اتحاسب بيها العميل بالظبط،
+   فربحية الأمر المتفوتر بتتحسب من بنودها (الكمية × سعر البيع/الشراء زي ما اتجمّدوا وقت الفوترة) وخصمها.
+   خامات الدهان بس من الأمر (الفاتورة مابتشيلهاش). الأمر اللي مش متفوتر: jobCostBreakdown زي ما هو.
+   ⚠️ ده عرض أمر واحد بس — computeProfitStats وتقرير الربحية وشاشة التقارير ولوحة الرئيسية ما اتلمسوش. */
+function jobItemsVsInvoice(jobItems, invItems, strict){
+  /* مقارنة بالرقم الداخلي للبند: ناقص من الأمر · زيادة في الأمر · أو كمية/سعر بيع/سعر شراء مختلف (سماح 0.005).
+     strict (للحماية م260): + اسم البند ونوعه */
+  const tol = 0.005, num = x=>Number(x)||0;
+  const keyOf = (x, i)=>(x && x.id) ? String(x.id) : '#'+i;
+  const a = new Map((Array.isArray(jobItems) ? jobItems : []).map((x, i)=>[keyOf(x, i), x]));
+  const b = new Map((Array.isArray(invItems) ? invItems : []).map((x, i)=>[keyOf(x, i), x]));
+  const diffs = [];
+  b.forEach((iv, k)=>{
+    const jv = a.get(k);
+    if(!jv){ diffs.push({ id:k, type:'missing', name:iv && iv.name }); return; }
+    if(Math.abs(num(jv.qty) - num(iv.qty)) > tol || Math.abs(num(jv.unitPrice) - num(iv.unitPrice)) > tol || Math.abs(num(jv.costPrice) - num(iv.costPrice)) > tol
+       || (strict && ((jv.kind || '') !== (iv.kind || '') || (jv.name || '') !== (iv.name || ''))))
+      diffs.push({ id:k, type:'changed', name:iv.name });
+  });
+  a.forEach((jv, k)=>{ if(!b.has(k)) diffs.push({ id:k, type:'extra', name:jv && jv.name }); });
+  return { same: diffs.length === 0, diffs };
+}
+function jobInvoiceProfit(job){
+  const inv = jobInvoiceOf(job);
+  if(!inv) return null;
+  const items = Array.isArray(inv.items) ? inv.items : [];
+  if(!items.length) return null;   // فاتورة قديمة من غير بنود (قبل ما البنود تتحفظ جواها): مفيش حاجة نحسب منها — jobProfitView بيرجع لأمر الشغل بملاحظة
+  const costOf = x=>(Number(x.qty) || 0) * (Number(x.costPrice) || 0);
+  const kindCost = k=>items.filter(x=>x.kind === k).reduce((s, x)=>s + costOf(x), 0);
+  const inParts = kindCost('part'), extParts = kindCost('ext_part'), extWork = kindCost('ext_work');
+  const other = items.reduce((s, x)=>s + costOf(x), 0) - inParts - extParts - extWork;   // نوع تاني بتكلفة (مفيش في الواقع — بس مايضيعش من الإجمالي)
+  const paint = (job.internalCosts || []).reduce((s, ic)=>s + (Number(ic.total) || 0), 0);
+  const discount = Number(inv.discount) || 0;
+  /* البيع من غير ضريبة: إجمالي البنود وقت الفوترة (subtotal) — ولو مش مسجّل: الإجمالي − الضريبة + الخصم */
+  const gross = (typeof inv.subtotal === 'number' && isFinite(inv.subtotal)) ? inv.subtotal : ((Number(inv.total) || 0) - (Number(inv.vatAmount) || 0) + discount);
+  const total = inParts + extParts + extWork + other + paint;
+  const pc = profitCore(gross, discount, total);
+  const cmp = jobItemsVsInvoice(job.items, items);
+  const saleOf = k=>items.filter(x=>x.kind === k).reduce((s, x)=>s + (Number(x.qty) || 0) * (Number(x.unitPrice) || 0), 0);
+  return { fromInvoice:true, inv, invNo:inv.invNo, inParts, extParts, extWork, other, paint, total, revenue:pc.gross,
+    discount:pc.discount, netSales:pc.net, profit:pc.profit, margin:pc.margin, saleParts:saleOf('part'), saleLabor:saleOf('service'),
+    changed:!cmp.same, diffs:cmp.diffs };
+}
+/* اللي كارت الربحية بيعرضه: من الفاتورة لو الأمر متفوتر، وإلا نفس jobCostBreakdown */
+function jobProfitView(job){
+  const inv = jobInvoiceOf(job);
+  if(inv && !(Array.isArray(inv.items) && inv.items.length)) return Object.assign(jobCostBreakdown(job), { fromInvoice:false, oldInvoice:true, invNo:inv.invNo });
+  return jobInvoiceProfit(job) || Object.assign(jobCostBreakdown(job), { fromInvoice:false });
+}
+/* سطر المصدر تحت كارت الربحية (+ تحذير لو سطور الأمر اتغيّرت بعد الفاتورة) */
+function jobProfitNoteHTML(b){
+  if(b && b.oldInvoice) return `<div class="muted" style="font-size:11.5px;margin-top:8px">🧾 الفاتورة دي قديمة ومافيهاش بنود — التكلفة من أمر الشغل</div>`;
+  if(!b || !b.fromInvoice) return '';
+  return `<div class="muted" style="font-size:11.5px;margin-top:8px">🧾 الربحية محسوبة من فاتورة #${b.invNo} (زي ما اتحاسب العميل)</div>`
+    + (b.changed ? `<div style="font-size:12px;margin-top:6px;color:var(--danger)">⚠️ سطور أمر الشغل اتغيّرت بعد الفاتورة (من أوامر الفترة اللي قبل الحماية) — الربحية هنا من الفاتورة</div>` : '');
 }
 function isOpenJob(j){
   // مفتوح = لسه ماتعملوش فاتورة سارية، ومش ملغي
@@ -13362,6 +13748,7 @@ async function saveExtOutFromStock(){
   if(!name){ toast('اكتب اسم القطعة', true); return; }
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
   if(payMethod==='آجل' && !supplierId){ toast('السداد الآجل لازم يتربط بمورد — اختار المورد', true); return; }
+  if(await jobIssueBlocked(job, 'add')) return;   /* م259: اتفوتر من جهاز تاني؟ */
   const car = DB.cars.find(c=>c.id===job.carId);
   // 1) بند في فاتورة العميل بسعر البيع + التكلفة على أمر الشغل
   job.items.push({id:uid('it'), kind:'ext_part', name, qty, unitPrice:sellPrice, costPrice, supplierId, payMethod, note,
@@ -13413,6 +13800,7 @@ async function savePaintOut(){
   if(!name){ toast('اكتب اسم الخامة', true); return; }
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
   if(unitCost<=0){ toast('اكتب تكلفة الوحدة', true); return; }
+  if(await jobIssueBlocked(job, 'add')) return;   /* م259: اتفوتر من جهاز تاني؟ */
   const car = DB.cars.find(c=>c.id===job.carId);
   // تكلفة مباشرة على أمر الشغل — بدون تكويد، بدون خصم مخزون، ولا تظهر أبداً في فاتورة العميل
   job.internalCosts = job.internalCosts || [];
@@ -13454,6 +13842,22 @@ async function issuePartToJob(job, p, qty, opts){
   opts = opts || {};
   const guard206 = resIssueGuard(p, job, qty);
   if(!guard206.ok){ toast(guard206.msg, true); return false; }
+  /* م259: كل مسارات الصرف على أمر (صرف عادي · محجوز · صرف الكل) بتعدّي من هنا — السيرفر بيتسأل قبل أي تعديل
+     (إلا «صرف الكل» اللي سأل مرة قبل اللفة: opts.serverChecked). وبعد الانتظار الحالة ممكن تكون اتغيّرت من جهاز تاني:
+     نعيد فحص الرصيد وحارس الحجوزات وباقي الحجز ده نفسه — عشان مايتصرفش مرتين ولا يتصرف قطعة اتحجزت لأمر تاني. */
+  if(!opts.serverChecked){
+    const qtyAtCheck259 = p.qty;
+    if(await jobIssueBlocked(job)) return false;
+    if(p.qty !== qtyAtCheck259 && qty > (Number(p.qty) || 0) + 1e-9){
+      toast('رصيد «'+p.name+'» اتغيّر وإنت بتصرف (المتاح دلوقتي '+p.qty+') — راجع الكمية وجرّب تاني', true); refreshContent(); return false;
+    }
+    const guard259 = resIssueGuard(p, job, qty);
+    if(!guard259.ok){ toast(guard259.msg, true); refreshContent(); return false; }
+    if(opts.resMoveId){
+      const rm259 = DB.stockMoves.find(x=>x.id===opts.resMoveId), left259 = rm259 ? resOpenQty(rm259) : 0;
+      if(left259 + 1e-9 < qty){ toast('الحجز ده اتغيّر وإنت بتصرف (المتبقي منه دلوقتي '+_r206(left259)+') — راجع وجرّب تاني', true); refreshContent(); return false; }
+    }
+  }
   const links206 = resLinksFor(p, job, qty, opts.resMoveId);
   const car = DB.cars.find(c=>c.id===job.carId);
   p.qty -= qty;
@@ -13705,7 +14109,7 @@ function jobResInvoiceWarnHTML(job){
     <div class="muted" style="font-size:11.5px;margin-top:3px">لو اتركبت في العربية اصرفها الأول من صندوق «📦 قطع وصلت للأمر ده» عشان تتحاسب في الفاتورة.</div></div>`;
 }
 /* الصرف بدوسة */
-async function _issueReservedCore(moveId){
+async function _issueReservedCore(moveId, serverChecked){
   const m = DB.stockMoves.find(x=>x.id===moveId);
   if(!resIsMove(m)){ toast('الحجز ده مش موجود', true); return 0; }
   const job = DB.jobs.find(j=>j.id===m.forJobId);
@@ -13717,7 +14121,7 @@ async function _issueReservedCore(moveId){
   if(open <= 0){ toast('القطعة دي اتصرفت خلاص', true); return 0; }
   const qty = Math.min(open, Number(p.qty)||0);
   if(qty <= 0){ toast('رصيد «'+p.name+'» في '+whName(partWhId(p))+' صفر — القطعة مش موجودة في المخزن (راجع الجرد)', true); return 0; }
-  const ok = await issuePartToJob(job, p, qty, { resMoveId:m.id, quiet:true,
+  const ok = await issuePartToJob(job, p, qty, { resMoveId:m.id, quiet:true, serverChecked:!!serverChecked,   /* م259 */
     logSuffix:' — 📦 قطعة محجوزة (فاتورة شراء #'+resPurNo(m)+')' });
   return ok ? qty : 0;
 }
@@ -13743,8 +14147,18 @@ async function issueAllReserved(jobId, back){
   if(!can('inv.issue')){ toast('مالكش صلاحية صرف القطع', true); return; }
   const list = openReservations({ jobId });
   if(!list.length){ toast('مفيش قطع محجوزة مستنية صرف على الأمر ده', true); return; }
+  /* م259: السيرفر بيتسأل مرة واحدة قبل اللفة (رسالة واحدة، ومن غير سؤال لكل قطعة) — القطع بعد كده بتتصرف بـ serverChecked */
+  const job259 = DB.jobs.find(j=>j.id===jobId);
+  let checked259 = false;
+  if(job259 && !isJobClosed(job259)){
+    if(await jobIssueBlocked(job259)){ _resBack(back || 'job', jobId); return; }
+    checked259 = true;
+  }
   let n = 0;
-  for(const r of list){ if(await _issueReservedCore(r.m.id)) n++; }
+  for(const r of list){
+    if(await _issueReservedCore(r.m.id, checked259)) n++;
+    else if(job259 && isJobClosed(job259)) break;   /* م259: الأمر اتقفل في نص اللفة ⇒ كفاية */
+  }
   if(n) toast('✅ اتصرف '+n+' من '+list.length+' قطعة محجوزة على الأمر');
   _resBack(back || 'job', jobId);
 }
@@ -14650,6 +15064,7 @@ async function saveExtItem(jobId, kind){
   if(!name){ toast('اكتب الاسم', true); return; }
   if(qty<=0){ toast('اكتب كمية صحيحة', true); return; }
   if(payMethod==='آجل' && !supplierId){ toast('السداد الآجل لازم يتربط بمورد — اختار المورد', true); return; }
+  if(await jobIssueBlocked(job, 'add')) return;   /* م259: اتفوتر من جهاز تاني؟ */
   const car = DB.cars.find(c=>c.id===job.carId);
   const kindTxt = kind==='ext_part'?'قطعة غيار خارجية':'أعمال خارجية';
   // 1) إضافة البند للفاتورة/أمر الشغل
@@ -15500,7 +15915,14 @@ function purReversePayEffect(p){
   }
   /* م125: صف «سداد فاتورة مورد» في السجل المالي الموحد بيتشال مع عكس الدفعة —
      السجل بيفضل دايماً مطابق للفواتير المعتمدة فعلاً */
-  DB.expenses = DB.expenses.filter(e=>!(expTxnType(e)==='purchase_payment' && e.purchaseId===p.id && e.payId===auto.id));
+  const gone = e=>expTxnType(e)==='purchase_payment' && e.purchaseId===p.id && e.payId===auto.id;
+  /* م262: صور الصف اللي بيتشال (إعادة فتح / تغيير طريقة الدفع) بتتحفظ على الفاتورة نفسها لحد ما الصف الجديد يتعمل — وبعدين بترجع عليه (purApplyPayEffect) */
+  const stash = DB.expenses.filter(gone).flatMap(e=>expPhotoList(e));
+  if(stash.length){
+    const have = new Set((p.payPhotos||[]).map(x=>x && x.id));
+    p.payPhotos = (p.payPhotos||[]).concat(stash.filter(x=>!have.has(x.id)).map(x=>Object.assign({}, x)));
+  }
+  DB.expenses = DB.expenses.filter(e=>!gone(e));
   p.payments = (p.payments||[]).filter(x=>!x.auto);
   return true;
 }
@@ -15523,11 +15945,14 @@ function purApplyPayEffect(p, accountId){
       const fm = addFinMove(acc.id, 'out', remaining, 'supplier', 'دفع فاتورة شراء #'+p.purchaseNo+' — '+supName(p.supplierId), { refPurchase:p.id });
       pay.finMoveId = fm.id;
       /* م125: صف تلقائي مقفول في السجل المالي الموحد — مربوط بالفاتورة والدفعة والحركة */
-      DB.expenses.push({ id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'purchase_payment',
+      const payRow = { id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'purchase_payment',
         category:'سداد فاتورة مورد', description:'سداد فاتورة شراء #'+p.purchaseNo+' — '+supName(p.supplierId),
         amount: remaining, date:new Date().toISOString(), payAccount:acc.name, accountId:acc.id,
         supplierId:p.supplierId, purchaseId:p.id, purchaseNo:p.purchaseNo,
-        payId:pay.id, finMoveId:fm.id, recordedBy:actorName(), system:true });
+        payId:pay.id, finMoveId:fm.id, recordedBy:actorName(), system:true };
+      /* م262: صور السداد القديم (لو الفاتورة اتفتحت من جديد) بترجع على الصف الجديد — مفيش صور ⇒ مفيش أي تغيير */
+      if(Array.isArray(p.payPhotos) && p.payPhotos.length){ payRow.photos = p.payPhotos.map(x=>Object.assign({}, x)); delete p.payPhotos; }
+      DB.expenses.push(payRow);
     }
   }
   p.payments = p.payments || [];
@@ -16043,7 +16468,7 @@ function supStmtTableHTML(supplierId){
   <tbody>
     ${r?`<tr style="font-weight:700"><td colspan="5">⏮ رصيد ما قبل الفترة</td><td>${money(prev)}</td></tr>`:''}
     ${rows.length? rows.map(x=>`<tr>
-      <td style="white-space:nowrap">${fmtDate(x.date)}</td><td>${x.type}</td><td class="muted" style="font-size:11.5px">${x.desc||'—'}</td>
+      <td style="white-space:nowrap">${fmtDate(x.date)}</td><td>${x.type}</td><td class="muted" style="font-size:11.5px">${escNote(x.desc)||'—'}</td>
       <td style="color:var(--danger)">${x.amount>0?money(x.amount):'—'}</td>
       <td style="color:var(--accent)">${x.amount<0?money(-x.amount):'—'}</td>
       <td style="font-weight:700">${money(x.running)}</td></tr>`).join('')
@@ -16905,7 +17330,7 @@ function supplierDetailHTML(supplierId){
     <tbody>${stmt.length? stmt.map(r=>`<tr>
       <td style="white-space:nowrap">${fmtDate(r.date)}</td>
       <td>${r.type}</td>
-      <td class="muted" style="max-width:240px;overflow:hidden;text-overflow:ellipsis">${r.desc||'—'}</td>
+      <td class="muted" style="max-width:240px;overflow:hidden;text-overflow:ellipsis">${escNote(r.desc)||'—'}</td>
       <td style="color:var(--danger)">${r.amount>0?money(r.amount):''}</td>
       <td style="color:var(--accent)">${r.amount<0?money(-r.amount):''}</td>
       <td style="font-weight:800;color:${r.running<0?'var(--accent)':''}">${money(Math.abs(r.running))}${r.running<0?' <span style="font-size:9px">دائن</span>':''}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">مفيش حركات</td></tr>'}
@@ -17486,8 +17911,8 @@ function openSupplierPaymentModal(supplierId){
     <div class="form-row"><label class="f-label">المبلغ المدفوع</label>
       <input class="f" id="supPayAmt" type="number" min="0" step="any" value="${b.liability}" oninput="supPayRecalc(${b.liability})"></div>
     <div class="card" id="supPayPreview" style="margin-bottom:12px"></div>
-    <div class="form-row"><label class="f-label">الدفع من حساب</label>
-      <select class="f" id="supPayAcc">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+    <div class="form-row"><label class="f-label">الدفع من</label>
+      <select class="f" id="supPayAcc">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}${custodyPayOptionsHTML()}</select></div>
     <!-- م106: بيانات السند — بتظهر في كشف حساب المورد -->
     <div class="grid g2">
       <div class="form-row"><label class="f-label">رقم السند (اختياري)</label>
@@ -17545,19 +17970,6 @@ async function saveSupplierPayment(supplierId){
   if(amount<=0 && discAmt<=0){ toast('اكتب مبلغ صحيح', true); return; }
   const bal = supplierBalance(supplierId).liability;   // المديونية علينا (م69)
   if(discAmt + amount > bal + 0.001){ toast('الخصم + المدفوع أكبر من المديونية علينا ('+money(bal)+')', true); return; }
-  const supForDisc = DB.suppliers.find(s=>s.id===supplierId);
-  if(discAmt>0){
-    supForDisc.ledger = supForDisc.ledger || [];
-    supForDisc.ledger.push({ id:uid('sled'), kind:'discount', amount:discAmt, reason:discReason,
-      date:new Date().toISOString(), by:actorName() });
-    await saveKey('suppliers', DB.suppliers);
-    await logAction('💸 خصم من المورد '+supForDisc.name+' بقيمة '+money(discAmt)+' — السبب: '+discReason);
-    pushNotif({ category:'financial', type:'supplier_discount', priority:'high', amount:discAmt,
-      action:'خصم من المورد '+supForDisc.name+' بقيمة '+money(discAmt)+' — '+discReason, refType:'expense' });
-  }
-  if(amount<=0){
-    closeModal(); toast('اتسجل الخصم '+money(discAmt)+' على حساب المورد'); refreshContent(); return;
-  }
   /* ============ م106: الفصل بين «دفعة على الحساب» و«فواتير محددة» ============
      قبل كده أي دفعة عامة كانت **بتتوزّع تلقائياً على أقدم الفواتير** وتعلّمها
      مسدّدة — من غير ما المحاسب يطلب. دلوقتي التوزيع مابيحصلش **إلا** لو
@@ -17567,69 +17979,132 @@ async function saveSupplierPayment(supplierId){
   const mode = supPayMode();
   const selIds = mode==='specific'
     ? [...document.querySelectorAll('.supPaySel:checked')].map(c=>c.value) : [];
-  if(mode==='specific'){
+  /* م263 (مراجعة): رفض «الفواتير المحددة» قبل أي كتابة — كان بعد كتابة الخصم فالرفض كان بيسيب خصم من غير سداد */
+  if(amount>0 && mode==='specific'){
     if(!can('sup.pay_specific')){ toast('مالكش صلاحية تسديد فواتير محددة', true); return; }
     if(!selIds.length){ toast('اختار فاتورة واحدة على الأقل — أو حوّل لـ«دفعة على الحساب»', true); return; }
   }
-  const accForNote = DB.finAccounts.find(a=>a.id===((document.getElementById('supPayAcc')||{}).value));
+  /* كل قيم الشاشة بتتقرا هنا — قبل أي await (النافذة ممكن تتقفل أثناء الانتظار) */
+  const payFromRaw = String((document.getElementById('supPayAcc')||{}).value||'');
   const voucherNo = ((document.getElementById('supPayVoucher')||{}).value||'').trim();
   const payNote = ((document.getElementById('supPayNote')||{}).value||'').trim();
-  const balBefore = Math.round(supplierBalance(supplierId).balance*100)/100;
-  const amountOriginal = Math.round(amount*100)/100;   // المبلغ قبل ما يتوزّع
+  const paidTotal = amount;   // المبلغ المكتوب (قبل ما يتوزّع)
+  /* م263: الدفع من عهدة موظف (الخيار «cus:<id>» في «الدفع من») — نفس صلاحية السداد من حساب (sup.pay فوق).
+     (1) نقرا صف العهدة من السيرفر ونتبنّى حالته (مقفولة؟ استخدامات جهاز تاني؟) — جهاز قديم كان بيسدد من عهدة اتقفلت من جهاز تاني
+         وحفظة الصف الكامل كانت بتفتحها تاني. النت واقع/المهلة (5 ثواني) ⇒ مرفوض (السداد من حساب عادي أوفلاين زي ما هو).
+     (2) من بعد القراءة لحد ما كل التعديلات في الذاكرة تخلص: **مفيش await** — التحقق والتعديل في نفس اللحظة. */
+  const payFromCus = payFromRaw.indexOf('cus:')===0;
+  let payCus = null;
+  if(payFromCus && amount>0){
+    const cusId = payFromRaw.slice(4);
+    if(!DB.custodies.find(c=>c.id===cusId)){ toast('العهدة دي مش مفتوحة', true); return; }
+    const rd = await custodyServerRow263(cusId);
+    if(!rd.ok){ toast('سداد من العهدة محتاج نت عشان نتأكد إن العهدة لسه مفتوحة — جرّب تاني أو ادفع من حساب', true); return; }
+    payCus = DB.custodies.find(c=>c.id===cusId);   // بعد الانتظار: السجل ممكن اتبدّل بالمزامنة اللحظية
+    if(!payCus){ toast('العهدة دي مش مفتوحة', true); return; }
+    if(rd.data) custodyAdoptServer263(payCus, rd.data);
+    if(payCus.status!=='open'){ toast('العهدة دي مش مفتوحة', true); refreshContent(); return; }
+    const availCus = custodyAvailable(payCus);
+    if(amount > availCus + 0.005){ toast('المتاح في العهدة #'+payCus.custodyNo+' '+money(availCus)+' بس', true); return; }
+    const bal2 = supplierBalance(supplierId).liability;   // المديونية ممكن اتغيّرت أثناء الانتظار
+    if(discAmt + amount > bal2 + 0.001){ toast('الخصم + المدفوع أكبر من المديونية علينا ('+money(bal2)+')', true); return; }
+  }
+  const payCusId = payCus ? payCus.id : null;
+  const accSel = payCusId ? null : DB.finAccounts.find(a=>a.id===payFromRaw);   /* من عهدة ⇒ مفيش حركة على أي حساب (الفلوس خرجت يوم إصدار العهدة) */
+  const payMethodName = payCus ? custodyPayLabel(payCus) : (accSel ? accSel.name : null);   /* طريقة الدفع في كشف المورد */
 
+  /* ===== كل التعديلات في الذاكرة مرة واحدة (من غير await) ===== */
+  const supObj = DB.suppliers.find(s=>s.id===supplierId);
+  const supNm = (supObj||{}).name;
+  if(discAmt>0){
+    supObj.ledger = supObj.ledger || [];
+    supObj.ledger.push({ id:uid('sled'), kind:'discount', amount:discAmt, reason:discReason,
+      date:new Date().toISOString(), by:actorName() });
+  }
   const paidInvoices = [];
-  if(mode==='specific'){
-    const set = new Set(selIds);
-    const purchases = DB.purchases.filter(p=>p.supplierId===supplierId && set.has(p.id))
-      .sort((a,b)=>new Date(a.date)-new Date(b.date));
-    for(const p of purchases){
-      if(amount<=0) break;
-      const paidSoFar = (p.payments||[]).reduce((s,x)=>s+x.amount,0);
-      const remaining = Math.round((p.total - paidSoFar)*100)/100;
-      if(remaining<=0) continue;   // مسدَّدة بالكامل — مابتتسددش تاني
-      const toPay = Math.min(remaining, amount);
-      p.payments = p.payments || [];
-      p.payments.push({id:uid('spay'), amount:toPay, date:new Date().toISOString()});
-      amount -= toPay;
-      paidInvoices.push('#'+p.purchaseNo+' ('+money(toPay)+')');
+  const paidInvDetail = [];   /* م263: تفصيل الفواتير اللي اتسددت (للاستخدام المسجّل على العهدة) */
+  let openingPaid = 0, supExp = null, cusNow = null, cusUse = null;
+  if(paidTotal>0){
+    const balBefore = Math.round(supplierBalance(supplierId).balance*100)/100;
+    const amountOriginal = Math.round(amount*100)/100;   // المبلغ قبل ما يتوزّع
+    if(mode==='specific'){
+      const set = new Set(selIds);
+      const purchases = DB.purchases.filter(p=>p.supplierId===supplierId && set.has(p.id))
+        .sort((a,b)=>new Date(a.date)-new Date(b.date));
+      for(const p of purchases){
+        if(amount<=0) break;
+        const paidSoFar = (p.payments||[]).reduce((s,x)=>s+x.amount,0);
+        const remaining = Math.round((p.total - paidSoFar)*100)/100;
+        if(remaining<=0) continue;   // مسدَّدة بالكامل — مابتتسددش تاني
+        const toPay = Math.min(remaining, amount);
+        p.payments = p.payments || [];
+        const spay = {id:uid('spay'), amount:toPay, date:new Date().toISOString()};
+        if(payCusId) spay.fromCustody = payCusId;   /* م263 */
+        p.payments.push(spay);
+        amount -= toPay;
+        paidInvoices.push('#'+p.purchaseNo+' ('+money(toPay)+')');
+        paidInvDetail.push({ purchaseId:p.id, purchaseNo:p.purchaseNo, amount:toPay });
+      }
+    }
+    /* الباقي (أو الدفعة كلها في الوضع العام) بيتسجّل كحركة «سداد دفعة» على
+       حساب المورد — ممنوع يضيع (م80). */
+    openingPaid = Math.round(amount*100)/100;
+    if(openingPaid > 0.005){
+      supObj.ledger = supObj.ledger || [];
+      supObj.ledger.push({ id:uid('sled'), kind:'payment', amount: openingPaid,
+        reason: mode==='general' ? 'سداد دفعة على الحساب'
+          : 'سداد على الرصيد الافتتاحي (الباقي بعد سداد الفواتير)',
+        method: payMethodName,
+        voucherNo: voucherNo || null, notes: payNote || null,
+        balanceBefore: balBefore,
+        balanceAfter: Math.round((balBefore - amountOriginal)*100)/100,
+        date:new Date().toISOString(), by:actorName() });
+    }
+    // خصم من الحساب المالي المختار
+    if(accSel) addFinMove(accSel.id, 'out', paidTotal, 'supplier', 'سداد مورد: '+supNm);
+    // also log as an expense so it reflects in accounts/reports
+    // م80: supplierId متسجّل على المصروف — عشان أي مراجعة تقدر تطابق المدفوع من الخزنة بالمحسوب على المورد
+    supExp = {id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'supplier_payment', category:'سداد مورد',
+      amount: paidTotal, note: supNm, description:'سداد للمورد '+supNm, supplierId,
+      accountId:accSel?accSel.id:null, payAccount:accSel?accSel.name:null, date:new Date().toISOString(),
+      recordedBy:actorName(), system:true};
+    /* م263: من عهدة ⇒ نفس الصف بالظبط بس payAccount «عهدة #N — الموظف» + fromCustody، والاستخدام بيتسجل على العهدة نفسها */
+    if(payCus){
+      cusNow = payCus;
+      supExp.payAccount = custodyPayLabel(cusNow); supExp.fromCustody = payCusId;
+    }
+    DB.expenses.push(supExp);
+    if(cusNow){
+      cusNow.uses = Array.isArray(cusNow.uses) ? cusNow.uses : [];
+      cusNow.uses.push(cusUse = { id:uid('cuse'), kind:'supplier_payment', name:'سداد '+supNm, expId:supExp.id, expNo:supExp.expNo, supplierId, supplierName:supNm,
+        invoices:paidInvDetail, amount:paidTotal, voucherNo:voucherNo||null, at:supExp.date, by:actorName() });
     }
   }
-  /* الباقي (أو الدفعة كلها في الوضع العام) بيتسجّل كحركة «سداد دفعة» على
-     حساب المورد — ممنوع يضيع (م80). */
-  const openingPaid = Math.round(amount*100)/100;
-  if(openingPaid > 0.005){
-    const supOB = DB.suppliers.find(s=>s.id===supplierId);
-    supOB.ledger = supOB.ledger || [];
-    supOB.ledger.push({ id:uid('sled'), kind:'payment', amount: openingPaid,
-      reason: mode==='general' ? 'سداد دفعة على الحساب'
-        : 'سداد على الرصيد الافتتاحي (الباقي بعد سداد الفواتير)',
-      method: accForNote ? accForNote.name : null,
-      voucherNo: voucherNo || null, notes: payNote || null,
-      balanceBefore: balBefore,
-      balanceAfter: Math.round((balBefore - amountOriginal)*100)/100,
-      date:new Date().toISOString(), by:actorName() });
+
+  /* ===== الحفظ ===== */
+  if(discAmt>0){
     await saveKey('suppliers', DB.suppliers);
+    await logAction('💸 خصم من المورد '+supNm+' بقيمة '+money(discAmt)+' — السبب: '+discReason);
+    pushNotif({ category:'financial', type:'supplier_discount', priority:'high', amount:discAmt,
+      action:'خصم من المورد '+supNm+' بقيمة '+money(discAmt)+' — '+discReason, refType:'expense' });
   }
+  if(paidTotal<=0){
+    closeModal(); toast('اتسجل الخصم '+money(discAmt)+' على حساب المورد'); refreshContent(); return;
+  }
+  if(openingPaid > 0.005) await saveKey('suppliers', DB.suppliers);
   if(mode==='specific') await saveKey('purchases', DB.purchases);
-  const paidTotal = parseFloat(document.getElementById('supPayAmt').value)||0;
-  const supNm = (DB.suppliers.find(s=>s.id===supplierId)||{}).name;
-  // خصم من الحساب المالي المختار
-  const accId = (document.getElementById('supPayAcc')||{}).value;
-  const acc = DB.finAccounts.find(a=>a.id===accId);
-  if(acc) addFinMove(acc.id, 'out', paidTotal, 'supplier', 'سداد مورد: '+supNm);
-  // also log as an expense so it reflects in accounts/reports
-  // م80: supplierId متسجّل على المصروف — عشان أي مراجعة تقدر تطابق المدفوع من الخزنة بالمحسوب على المورد
-  DB.expenses.push({id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'supplier_payment', category:'سداد مورد',
-    amount: paidTotal, note: supNm, description:'سداد للمورد '+supNm, supplierId,
-    accountId:acc?acc.id:null, payAccount:acc?acc.name:null, date:new Date().toISOString(),
-    recordedBy:actorName(), system:true});
-  await Promise.all([saveKey('expenses', DB.expenses), saveKey('finMoves', DB.finMoves)]);
-  await logAction('سداد '+money(paidTotal)+' للمورد '+supNm+(acc?' من '+acc.name:'')
+  await Promise.all([saveKey('expenses', DB.expenses), cusNow ? saveKey('custodies') : saveKey('finMoves', DB.finMoves)]);
+  /* م263 (مراجعة v283): تحديث لحظي لنفس العهدة من جهاز تاني وصل أثناء الحفظ بيكتب فوق السجل في الذاكرة — لو استخدامنا اختفى نرجّعه ونحفظ تاني */
+  if(cusNow && cusUse){ const cx = DB.custodies.find(c=>c.id===payCusId); if(cx && !custodyUses(cx).some(u=>u.id===cusUse.id)){ cx.uses = custodyUses(cx).concat([cusUse]); await saveKey('custodies'); } }
+  const fromTxt = accSel ? ' من '+accSel.name : (cusNow ? ' من '+custodyPayLabel(cusNow) : '');
+  await logAction('سداد '+money(paidTotal)+' للمورد '+supNm+fromTxt
     +(paidInvoices.length?' — فواتير: '+paidInvoices.join(' · '):'')
     +(openingPaid>0.005?' — على الرصيد الافتتاحي: '+money(openingPaid):''));
-  notify(selIds.length?'supplier_pay_specific':'supplier_pay', 'سداد '+money(paidTotal)+' للمورد '+supNm+(selIds.length?' (فواتير محددة: '+paidInvoices.join(' · ')+')':''),
+  notify(selIds.length?'supplier_pay_specific':'supplier_pay', 'سداد '+money(paidTotal)+' للمورد '+supNm+(cusNow?' (من '+custodyPayLabel(cusNow)+')':'')+(selIds.length?' (فواتير محددة: '+paidInvoices.join(' · ')+')':''),
     { category:'financial', refType:'supplier', refId:supplierId, amount:paidTotal });
-  closeModal(); toast('تم تسجيل الدفعة للمورد'+(acc?' وخصمها من '+acc.name:'')); refreshContent();
+  /* م263: الحفظ دمج استخدامات جهاز تاني ⇒ لو السحب عدّى قيمة العهدة المالك يتبلّغ */
+  if(cusNow){ const cn = DB.custodies.find(c=>c.id===payCusId) || cusNow; custodyCheckAlerts263(cn); }   /* سحب زيادة، أو العهدة اتقفلت من جهاز تاني أثناء الحفظ ⇒ المالك يتبلّغ */
+  closeModal(); toast('تم تسجيل الدفعة للمورد'+(accSel?' وخصمها من '+accSel.name:(cusNow?' من '+custodyPayLabel(cusNow):''))); refreshContent();
 }
 
 /* ---- الملاحظة 47: تسوية رصيد المورد (صاحب المركز فقط) — بتضيف حركة جديدة، عمرها ما تعدّل تاريخ ---- */
@@ -19036,6 +19511,16 @@ async function createInvoiceFromJob(jobId){
   }
   // ختم وقت واحد للفاتورة والتسليم — عشان مايبقاش بينهم فرق ثواني في التقارير (الملاحظة 59)
   if(job.status==='ملغاة'){ toast('الأمر ملغي — مفيش فوترة', true); return; }   /* م179ج */
+  /* ============ م260: مفيش فاتورة تانية لأمر اتفوتر من جهاز تاني ============
+     الفحص اللي فوق على فواتير **الجهاز نفسه** — محاسب جهازه قديم (الفاتورة لسه ماوصلتوش) كان يقدر يصدر فاتورة تانية لنفس الأمر.
+     دلوقتي قبل ما نحجز رقم فاتورة أو نغيّر أي حاجة: بنسأل السيرفر بالرقم الداخلي للأمر (نفس فحص م259). لقينا فاتورة شغالة ⇒
+     بنرفض من غير أي أثر (مفيش فاتورة ولا دفعة ولا تغيير حالة ولا رقم محجوز) والفاتورة بتندمج في ذاكرة الجهاز. النت واقع/الفحص ماردش ⇒ بنكمّل
+     (نفس قرار م259). فاتورة ملغاة عندنا لسه ماوصلتش السيرفر (إعادة فتح) بيتجاهلها الفحص — فإعادة الفوترة بتمشي. */
+  { const srv260 = await jobInvoicedOnServer(jobId);
+    if(srv260.invoiced){
+      toast('أمر #'+job.jobNo+' اتفوتر من جهاز تاني (فاتورة #'+srv260.invNo+') — مفيش فاتورة تانية عليه', true);
+      closeModal(); refreshContent(); return;
+    } }
   const invNo179 = await reserveNo('invNo', DB.invoices, 'invNo');   /* م164: حجز مركزي */
   /* م179ج: بعد الانتظار على الشبكة بنتأكد تاني — جهازين داسوا «إصدار» في نفس الثانيتين
      كانوا بيعملوا فاتورتين لنفس الأمر بأرقام مختلفة (والكاشف مش بيمسكها) */
@@ -19143,7 +19628,7 @@ function renderInvoices(){
   <div class="section-head"><h3>الفواتير (${DB.invoices.length})</h3></div>
   <div class="card" style="margin-bottom:16px">
     <div class="form-row"><label class="f-label">بحث ذكي</label>
-      <input class="f" placeholder="اسم عميل/شركة، رقم فاتورة، رقم أمر شغل، موبايل، رقم لوحة..." value="${invFilters.search}" oninput="invFilters.search=this.value;refreshInvTable()">
+      <input class="f" placeholder="اسم عميل/شركة، رقم فاتورة، رقم أمر شغل، موبايل، رقم لوحة..." value="${escAttr(invFilters.search)}" oninput="invFilters.search=this.value;refreshInvTable()">
     </div>
     <div class="grid g4">
       <div class="form-row"><label class="f-label">نوع العميل</label>
@@ -19165,7 +19650,10 @@ function renderInvoices(){
       <div class="form-row"><label class="f-label">من تاريخ</label><input class="f" type="date" value="${invFilters.dateFrom}" onchange="invFilters.dateFrom=this.value;refreshInvTable()"></div>
       <div class="form-row"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${invFilters.dateTo}" onchange="invFilters.dateTo=this.value;refreshInvTable()"></div>
     </div>
-    <button class="btn btn-sm" onclick="invFilters={search:'',status:'',custType:'',dateFrom:'',dateTo:''};refreshContent()">مسح الفلاتر</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="invFilters={search:'',status:'',custType:'',dateFrom:'',dateTo:''};refreshContent()">مسح الفلاتر</button>
+      <button class="btn btn-sm" onclick="exportInvoicesXLSX()" title="يطلّع ملف Excel بالفواتير اللي ظاهرة دلوقتي بالظبط (بنفس الفلتر)">⬇ Excel</button>
+    </div>
   </div>
   <div class="card" style="overflow-x:auto">
     <table>
@@ -19194,23 +19682,63 @@ function invoiceMatchesFilters(inv){
   }
   return true;
 }
+/* م261: القايمة اللي الشاشة عارضاها بالظبط (نفس الفلتر + الترتيب) — بتتشارك بين الجدول وتصدير Excel، عشان الاتنين مايختلفوش أبداً */
+function invFilteredList(){ return [...DB.invoices].filter(invoiceMatchesFilters).sort((a,b)=>new Date(b.date)-new Date(a.date)); }
+/* م261: اسم الوسيلة الموحّد للدفعة — عشان المجموعات ماتتفتتش برقم إيصال/فاتورة:
+   عربون مطبّق (depositId) ⇒ «عربون» · رصيد للعميل اتخصم (creditFromInvId) ⇒ «رصيد عميل» ·
+   تحصيل منقول من فاتورة ملغاة/اتفتحت (carriedFromInvId) ⇒ اسم الحساب اللي اتحصّل عليه، ولو مش لاقيه نص الوسيلة من غير « — منقول من فاتورة #…»
+   (ولو كان رصيد/فلوس للعميل اتنقلت ⇒ «رصيد عميل») · غير كده ⇒ الوسيلة المكتوبة ← اسم الحساب ← «غير محدد». */
+function invPayLabel(p){
+  const acc = p.accountId ? DB.finAccounts.find(x=>x.id===p.accountId) : null;
+  const accName = String((acc && acc.name) || '').trim();
+  if(p.depositId) return 'عربون';
+  if(p.creditFromInvId) return 'رصيد عميل';
+  if(p.carriedFromInvId){
+    if(accName) return accName;
+    const m = String(p.method || '').replace(/\s*—\s*منقول من فاتورة\s*#.*$/, '').trim();
+    if(/^(رصيد للعميل من فاتورة|فلوس للعميل)/.test(m)) return 'رصيد عميل';
+    return m || 'غير محدد';
+  }
+  return String(p.method || '').trim() || accName || 'غير محدد';
+}
+/* م261: وسائل الدفع على الفاتورة، مجمّعة بالاسم ومجموعة مبالغها، بالأكبر الأول (الاسم من invPayLabel).
+   المرتجع بالسالب بيتخصم من وسيلته، والمجموعة اللي صافيها صفر أو أقل بتختفي. بتخدم القايمة وعمود «طريقة الدفع» في Excel وإجماليات الوسائل. */
+function invPayBreakdown(inv){
+  const g = new Map();
+  ((inv && inv.payments) || []).forEach(p=>{
+    const a = Number(p && p.amount) || 0;
+    if(!a) return;
+    const label = invPayLabel(p);
+    g.set(label, (g.get(label) || 0) + a);
+  });
+  return [...g].map(([label, amount])=>({ label, amount:Math.round(amount*100)/100 })).filter(x=>x.amount > 0.005).sort((a,b)=>b.amount - a.amount);
+}
+/* السطر الصغير تحت «المدفوع» في القايمة: «5,000 كاش · 5,000 فيزا» (أرقام إنجليزي · اسم الوسيلة متهرّب) — جوه نفس الخانة فبيظهر في الجدول وكارت الموبايل */
+function invPayBdHTML(inv){
+  const t = invPayBreakdown(inv).map(x=>(Math.round(x.amount*100)/100).toLocaleString(NUM_LOCALE) + ' ' + escNote(x.label)).join(' · ');
+  return t ? `<div class="muted inv-pay-bd" style="font-size:11px;line-height:1.5;margin-top:2px">${t}</div>` : '';
+}
+/* م261: عميل/أمر/سيارة الفاتورة — الجدول وExcel بيقروا منها (م189: السيارة من أمر الشغل، ولو الأمر اتمسح بنرجع لسيارة الفاتورة) */
+function invCtx(inv){
+  const cust = DB.customers.find(c=>c.id===inv.customerId);
+  const job = inv.jobId ? DB.jobs.find(j=>j.id===inv.jobId) : null;
+  const carRow = DB.cars.find(c=>c.id === ((job && job.carId) || inv.carId));
+  return { cust, job, carRow };
+}
 function invRowsHTML(){
   const map = {unpaid:['غير محصلة','tag-unpaid'], partial:['محصلة جزئياً','tag-partial'], paid:['محصلة بالكامل','tag-paid']};
-  const list = [...DB.invoices].filter(invoiceMatchesFilters).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const list = invFilteredList();
   if(list.length===0) return `<tr><td colspan="10" class="empty">لا توجد فواتير مطابقة</td></tr>`;
   const k229 = pgKey('invs', [invFilters]);   /* م229 */
   return pgSlice(k229, list).map(inv=>{
-    const cust = DB.customers.find(c=>c.id===inv.customerId);
-    const job = inv.jobId ? DB.jobs.find(j=>j.id===inv.jobId) : null;
-    /* م189: نوع السيارة — من أمر الشغل، ولو الأمر اتمسح بنرجع لسيارة الفاتورة */
-    const carRow = DB.cars.find(c=>c.id === ((job && job.carId) || inv.carId));
+    const { cust, job, carRow } = invCtx(inv);
     const carTxt = carRow ? ([carRow.make, carRow.model].filter(Boolean).join(' ') || carRow.plate || '—') : '—';
     const paid = (inv.payments||[]).reduce((s,p)=>s+p.amount,0);
     const st = paymentStatus(inv);
     return `<tr>
-      <td>#${inv.invNo}</td><td>${cust?cust.name:'—'}</td><td>${(cust&&cust.custType)||'فرد'}</td>
-      <td>${job?'#'+job.jobNo:'—'}</td><td>${carTxt}</td><td>${fmtDate(inv.date)}</td>
-      <td>${money(inv.total)}</td><td>${money(paid)}</td>
+      <td>#${inv.invNo}</td><td>${cust?escNote(cust.name):'—'}</td><td>${(cust&&cust.custType)||'فرد'}</td>
+      <td>${job?'#'+job.jobNo:'—'}</td><td>${escNote(carTxt)}</td><td>${fmtDate(inv.date)}</td>
+      <td>${money(inv.total)}</td><td>${money(paid)}${invPayBdHTML(inv)}</td>
       <td>${inv.cancelled?'<span class="tag tag-cancel">ملغاة</span>':`<span class="tag ${map[st][1]}">${map[st][0]}</span>`}${custCreditTagHTML(inv)}</td>
       <td><div class="row-actions">${!inv.cancelled && st!=='paid' && can('bill.collect')?`<button class="btn btn-sm btn-accent" onclick="openPaymentModal('${inv.id}')">تحصيل</button>`:''}
       ${!inv.cancelled && can('bill.edit')?`<button class="btn btn-sm" onclick="openEditInvoice('${inv.id}')">✏️ تعديل</button> `:''}
@@ -19220,6 +19748,52 @@ function invRowsHTML(){
       ${can('bill.history')?`<button class="btn btn-sm" onclick="openInvoiceHistory('${inv.id}')">🕘 السجل</button>`:''}${job?`<button class="btn btn-sm" onclick="openWorkOrderReport('${job.id}')">📈 الربحية</button> `:''}${can('bill.print')?`<button class="btn btn-sm" onclick="printInvoice('${inv.id}')">🖨</button> <button class="btn btn-sm" onclick="downloadInvoice('${inv.id}')">⬇ تحميل</button>${inv.cancelled?'':` <button class="btn btn-sm" onclick="printExitPermit('${inv.id}')" title="إذن تصريح خروج السيارة">🚗 إذن خروج</button>`}`:''}</div></td>
     </tr>`;
   }).join('') + pgRowHTML(k229, list.length, 10, 'refreshInvTable()');
+}
+/* ============ م261: ⬇ Excel للفواتير — نفس اللي ظاهر في الشاشة بالظبط ============
+   نفس الفلتر (invFilteredList) · بكل السطور (مش أول 100 بس) · الأرقام خام من غير «ج.م» · بعدها سطر إجمالي (من غير الملغية)
+   وتحته «مجموع كل طريقة دفع» (من غير الملغية، بالأكبر الأول). عمود «طريقة الدفع» من invPayBreakdown نفسها. */
+function invPeriodText(){
+  const f = invFilters;
+  if(!f.dateFrom && !f.dateTo) return 'كل الفترات';
+  return (f.dateFrom ? fmtDate(f.dateFrom) : '…') + ' إلى ' + (f.dateTo ? fmtDate(f.dateTo) : '…');
+}
+function invoicesCSVContent(){
+  const list = invFilteredList();
+  const r2 = x => Math.round((+x || 0)*100)/100;
+  const rows = [['رقم الفاتورة','التاريخ','العميل','الموبايل','العربية','اللوحة','أمر الشغل','النوع','الإجمالي قبل الخصم','الخصم','الضريبة','الإجمالي','المدفوع','طريقة الدفع','الباقي','الحالة']];
+  const tot = { sub:0, disc:0, vat:0, total:0, paid:0, rest:0 }, byMethod = new Map();
+  let live = 0;
+  list.forEach(inv=>{
+    const { cust, job, carRow } = invCtx(inv);
+    const paid = r2((inv.payments||[]).reduce((s,p)=>s+(+p.amount||0),0));
+    const rest = inv.cancelled ? 0 : r2(Math.max((+inv.total||0) - paid, 0));
+    const bd = invPayBreakdown(inv);
+    /* فاتورة قديمة من غير subtotal: الإجمالي − الضريبة + الخصم (نفس بديل ربحية الفاتورة) */
+    const sub = (typeof inv.subtotal === 'number' && isFinite(inv.subtotal)) ? inv.subtotal : ((Number(inv.total) || 0) - (Number(inv.vatAmount) || 0) + (Number(inv.discount) || 0));
+    rows.push(['#'+inv.invNo, fmtDate(inv.date), cust ? cust.name : '', cust ? (cust.phone||'') : '',
+      carRow ? [carRow.make, carRow.model].filter(Boolean).join(' ') : '', carRow ? (carRow.plate||'') : '', job ? '#'+job.jobNo : '',
+      (cust && cust.custType) || 'فرد', r2(sub), r2(inv.discount), r2(inv.vatAmount), r2(inv.total), paid,
+      bd.map(x=>x.amount + ' ' + x.label).join(' · '), rest, inv.cancelled ? 'ملغية' : 'سارية']);
+    if(inv.cancelled) return;
+    live++;
+    tot.sub += sub; tot.disc += +inv.discount||0; tot.vat += +inv.vatAmount||0; tot.total += +inv.total||0; tot.paid += paid; tot.rest += rest;
+    bd.forEach(x=>byMethod.set(x.label, (byMethod.get(x.label)||0) + x.amount));
+  });
+  rows.push(['الإجمالي (' + live + ' فاتورة سارية)', '', '', '', '', '', '', '', r2(tot.sub), r2(tot.disc), r2(tot.vat), r2(tot.total), r2(tot.paid), '', r2(tot.rest), '']);
+  const methods = [...byMethod].map(([label, amount])=>({ label, amount:r2(amount) })).filter(x=>x.amount > 0.005).sort((a,b)=>b.amount - a.amount);
+  if(methods.length){
+    rows.push([], ['مجموع كل طريقة دفع', 'المبلغ']);
+    methods.forEach(m=>rows.push([m.label, m.amount]));
+  }
+  return { n:list.length, live, csv:_repCSV(rows) };
+}
+function exportInvoicesXLSX(){
+  if(!canScreen('invoices')){ toast('مالكش صلاحية شاشة الفواتير', true); return; }
+  const x = invoicesCSVContent(), lbl = invPeriodText();
+  if(!x.n){ toast('مفيش فواتير في الفلتر ده', true); return; }
+  downloadXLSXFromCSV(('الفواتير — ' + lbl + ' — ' + fmtDate(new Date().toISOString())).replace(/[\\/:*?"<>|]/g, '-'), x.csv);
+  logAction('⬇ تصدير Excel للفواتير — ' + lbl + ' (' + x.n + ' فاتورة)');
+  toast('اتصدّر ملف Excel — ' + x.n + ' فاتورة');
 }
 /* ================= الملاحظة 60: تعديل الفاتورة وإلغاؤها وسجلها الكامل =================
    القاعدة: بنود الفاتورة (القطع/الخدمات/الأعمال الخارجية/الدهانات/الكميات) ممنوع تعديلها
@@ -21034,7 +21608,7 @@ function expRowsHTML(){
       <td class="muted">${isOperatingExpense(e)?expGroupOf(e):'—'}</td>
       <td class="muted">${e.description||e.note||'—'}</td>
       <td style="font-weight:800">${money(e.amount)}</td>
-      <td class="muted">${e.payAccount||'—'}</td>
+      <td class="muted">${expPayAccText(e)}</td>
       <td class="muted" style="font-size:12px">${e.notes||'—'}</td>
       <td style="white-space:nowrap">${expCatBtn(e)}${expPhotoBtn(e)}${expSourceBtn(e)}${expDelBtn(e)}</td>
     </tr>`;
@@ -21092,28 +21666,39 @@ function openNewExpenseModal(){
       <div class="form-row"><label class="f-label">وسيلة الدفع / الحساب</label>
         <select class="f" id="expAcc">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
     </div>
-    <div class="form-row"><label class="f-label">📎 صورة الفاتورة (اختياري — لحد صورتين)</label><div id="expPhotos">${expPhotosHTML()}</div></div>
+    <div class="form-row"><label class="f-label">📷 صورة الفاتورة (اختياري — لحد صورتين)</label><div id="expPhotos">${expPhotosHTML()}</div></div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="expNotes"></div>
     <button class="btn btn-accent" id="expSaveBtn" style="width:100%" onclick="saveExpense()">حفظ المصروف وخصمه من الحساب</button>
   `);
 }
-/* ============ م249: 📎 صور فاتورة المصروف في «مخزن الصور» (نفس مكان صور التعليقات الفنية) ============
+/* ============ م249: 📷 صور فاتورة المصروف في «مخزن الصور» (نفس مكان صور التعليقات الفنية) ============
    كانت الصورة بتتحفظ جوه سطر المصروف في القاعدة نفسها ⇐ كل جهاز كان هيحمّلها مع كل فتحة للسيستم،
    وكانت بترفض أي صورة أكبر من 5 ميجا (صور الموبايلات الجديدة أكبر من كده).
    دلوقتي: بتتصغّر على الجهاز وتترفع لـ job-photos (فولدر exp/المصروف) — القاعدة بتشيل اللينك بس.
    • لحد صورتين للمصروف (قرار سيف) · مطبوع عليها «مصروف #الرقم · التاريخ · الساعة»
    • النت فاصل وقت الحفظ ⇐ المصروف مايتسجلش والفلوس ماتتخصمش
-   • «📎 ضيف صورة» بعدين للمصروف التشغيلي اللي ناقصه صور — لنفس اللي بيسجلوا المصروفات · مفيش مسح
+   • «📷 صورة» بعدين للمصروف اللي ناقصه صور — لنفس اللي بيسجلوا المصروفات · مفيش مسح
+     (م262: وعلى كل سطر في السجل — مكافأة · سلفة · سداد مورد · … — ما عدا المرتبات؛ شوف expPhotoAllowed)
    • الصور القديمة (e.receipt جوه القاعدة) بتفضل تظهر وبتتحسب من الصورتين */
 const EXP_MAX_PHOTOS = 2;
 var _expPh = null;   // { expId (null = مصروف جديد), newId, photos:[{ file, preview, at, up }] }
 function expPhotoList(e){ return ((e && e.photos) || []).filter(p=>p && p.url); }
 function expPhotoCount(e){ return expPhotoList(e).length + (e && e.receipt ? 1 : 0); }
-function expCanAddPhoto(e){ return !!e && can('fin.expenses') && expTxnType(e) === 'expense' && expPhotoCount(e) < EXP_MAX_PHOTOS; }
+/* م262 (قرار سيف): «📷 صورة» على كل سطر في سجل المصروفات — مصروف · مكافأة · سلفة · سداد مورد · سداد فاتورة شراء · عربون · رد فلوس · استهلاك داخلي …
+   اللي بيتسجّل من أي مصدر بيتصوّر بعدين من هنا (الإنشاء مااتغيّرش — مفيش خانة صور في المكافأة/السلفة/سداد المورد).
+   الاستثناء الوحيد: المرتبات ('salary' و'salary_settle') — مالهاش صور. نفس الصلاحية («تسجيل المصروفات») ونفس القواعد (لحد صورتين · ختم · مفيش مسح). */
+function expPhotoAllowed(e){ const t = e ? expTxnType(e) : ''; return !!t && t !== 'salary' && t !== 'salary_settle'; }
+function expCanAddPhoto(e){ return !!e && can('fin.expenses') && expPhotoAllowed(e) && expPhotoCount(e) < EXP_MAX_PHOTOS; }
+/* سجل العمليات: المصروف العادي زي ما كان من م249 · الباقي «📷 صورة على <نوع السطر> #رقمه — المبلغ» */
+function expPhotoLogText(e, n){
+  const one = n === 1;
+  if(expTxnType(e) === 'expense') return '📷 ' + (one ? 'صورة' : 'صورتين') + ' فاتورة لمصروف' + (e.expNo ? ' #' + e.expNo : '') + ' — ' + (e.category||'') + ' (' + money(e.amount) + ')';
+  return '📷 ' + (one ? 'صورة' : 'صورتين') + ' على ' + expTxnDef(e).label + (e.expNo ? ' #' + e.expNo : '') + ' — ' + money(e.amount);
+}
 function expPhotoBtn(e){
   const n = expPhotoCount(e);
-  if(n) return `<button class="btn btn-sm" title="صورة الفاتورة" onclick="viewReceipt('${e.id}')">📎${n > 1 ? ' ' + n : ''}</button>`;
-  return expCanAddPhoto(e) ? `<button class="btn btn-sm" onclick="openExpPhotoModal('${e.id}')">📎 ضيف صورة</button>` : '';
+  if(n) return `<button class="btn btn-sm" title="صورة الفاتورة" onclick="viewReceipt('${e.id}')">📷 ${n}</button>`;
+  return expCanAddPhoto(e) ? `<button class="btn btn-sm" onclick="openExpPhotoModal('${e.id}')">📷 صورة</button>` : '';
 }
 function expStampText(no, at){
   const d = new Date(at || Date.now());
@@ -21180,15 +21765,15 @@ function viewReceipt(id){
   openModal(`<h3>صورة الفاتورة — ${e.category||''}${e.expNo ? ' <span class="muted" style="font-size:12px">مصروف #' + e.expNo + '</span>' : ''}</h3>
     ${e.receipt ? `<img src="${e.receipt}" style="max-width:100%;border-radius:10px;margin-top:8px">` : ''}
     ${list.map(p=>`<img src="${escAttr(p.url)}" loading="lazy" alt="صورة الفاتورة" style="max-width:100%;border-radius:10px;margin-top:8px;display:block">`).join('')}
-    ${expCanAddPhoto(e) ? `<button class="btn" style="margin-top:12px" onclick="openExpPhotoModal('${e.id}')">📎 ضيف صورة تانية</button>` : ''}`);
+    ${expCanAddPhoto(e) ? `<button class="btn" style="margin-top:12px" onclick="openExpPhotoModal('${e.id}')">📷 ضيف صورة تانية</button>` : ''}`);
 }
 function openExpPhotoModal(id){
   const e = DB.expenses.find(x=>x.id===id);
   if(!e) return;
   if(!can('fin.expenses')){ toast('مالكش صلاحية تسجيل المصروفات', true); return; }
-  if(!expCanAddPhoto(e)){ toast(expTxnType(e) !== 'expense' ? 'الصور بتتضاف على المصروفات التشغيلية بس' : 'المصروف ده عليه صورتين خلاص', true); return; }
+  if(!expCanAddPhoto(e)){ toast(!expPhotoAllowed(e) ? 'المرتبات مالهاش صور' : 'المصروف ده عليه صورتين خلاص', true); return; }
   _expPh = { expId:id, photos:[] };
-  openModal(`<h3>📎 ضيف صورة للفاتورة${e.expNo ? ' — مصروف #' + e.expNo : ''}</h3>
+  openModal(`<h3>📷 ضيف صورة للفاتورة${e.expNo ? ' — مصروف #' + e.expNo : ''}</h3>
     <div class="muted" style="font-size:12.5px;margin-bottom:10px">${e.category||''} · ${money(e.amount)} · ${fmtDate(e.date)}</div>
     <div id="expPhotos">${expPhotosHTML()}</div>
     <div class="muted" style="font-size:11.5px;margin-top:8px">🔒 الصورة بعد الحفظ مابتتمسحش · التاريخ والساعة بيتطبعوا عليها</div>
@@ -21201,15 +21786,17 @@ async function saveExpPhotos(){
   let e = DB.expenses.find(x=>x.id===id);
   if(!e){ toast('المصروف ده مش موجود', true); return; }
   if(!_expPh.photos.length){ toast('صوّر الفاتورة الأول', true); return; }
-  if(expTxnType(e) !== 'expense' || expPhRoom() < 0){ toast('أقصى حاجة صورتين للمصروف — شيل صورة', true); return; }
+  if(!expPhotoAllowed(e)){ toast('المرتبات مالهاش صور', true); return; }
+  if(expPhRoom() < 0){ toast('أقصى حاجة صورتين للمصروف — شيل صورة', true); return; }
   let photos;
   try{ photos = await expUploadAll(id, e.expNo, document.getElementById('expPhSaveBtn'), '💾 حفظ'); }
   catch(err){ toast(expUploadErrText(err, ''), true); return; }
-  e = DB.expenses.find(x=>x.id===id) || e;   // بعد الرفع — نسخة الذاكرة الحالية
+  e = DB.expenses.find(x=>x.id===id);   // بعد الرفع — نسخة الذاكرة الحالية
+  if(!e){ _expPh = null; closeModal(); toast('سجل المصروف ده اتشال — الصورة ما اتحفظتش', true); refreshContent(); return; }   /* م262: اتحذف/اتشال وإحنا بنرفع ⇒ مفيش «تم الحفظ» كدب */
   e.photos = expPhotoList(e).concat(photos);
   _expPh = null;
   await saveKey('expenses');
-  await logAction('📎 ' + (photos.length === 1 ? 'صورة' : 'صورتين') + ' فاتورة لمصروف' + (e.expNo ? ' #' + e.expNo : '') + ' — ' + (e.category||'') + ' (' + money(e.amount) + ')');
+  await logAction(expPhotoLogText(e, photos.length));
   closeModal(); toast('تم حفظ صورة الفاتورة'); refreshContent();
 }
 /* ============ م250: ⬇ تصدير المصروفات Excel — نفس اللي ظاهر في الشاشة بالظبط ============
@@ -21335,7 +21922,7 @@ async function saveExpDelete(id, reason){
   await logAction('🗑 حذف مصروف ' + no + ' — ' + lbl + ' · ' + money(amt) + auditDetails([
     ['النوع', e.category], ['الوصف', e.description || e.note], ['تاريخ المصروف', fmtDate(e.date)], ['كان متصرف من', e.payAccount],
     ['سجّله', e.actor || e.recordedBy], ['الموظف', emp ? emp.name : (e.extEmpName || null)],
-    ['الفلوس رجعت لـ', fm ? acc.name : null], ['السبب', reason]]));
+    ['الفلوس رجعت لـ', fm ? acc.name : null], ['صور', expPhotoList(e).map(p=>p.url).join(' ') || null], ['السبب', reason]]));   /* م262: الصور فاضلة في المخزن — اللينكات هنا عشان الأثر مايضيعش */
   notify('expense_delete', '🗑 حذف مصروف ' + no + ' — ' + (e.category || lbl) + ' · ' + money(amt) + (fm ? ' (رجعت لـ' + acc.name + ')' : '') + ' — السبب: ' + reason,
     { category:'financial', amount:amt, reason, refType:'expense' });
   toast('اتحذف المصروف' + (fm ? ' و' + money(amt) + ' رجعت لـ' + acc.name : '')); refreshContent();
@@ -21362,7 +21949,7 @@ async function saveExpense(){
     if(ph.photos.length > EXP_MAX_PHOTOS){ toast('أقصى حاجة صورتين للمصروف — شيل صورة', true); return; }
     ph.newId = expId;
     try{ photos = await expUploadAll(expId, expNo, document.getElementById('expSaveBtn'), 'حفظ المصروف وخصمه من الحساب'); }
-    catch(err){ toast(expUploadErrText(err, ' — المصروف مااتسجلش والفلوس ماتخصمتش. جرّب تاني، أو شيل الصورة واحفظ وضيفها بعدين من «📎»'), true); return; }
+    catch(err){ toast(expUploadErrText(err, ' — المصروف مااتسجلش والفلوس ماتخصمتش. جرّب تاني، أو شيل الصورة واحفظ وضيفها بعدين من «📷 صورة»'), true); return; }
   }
   const date = dateVal ? new Date(dateVal+'T'+new Date().toTimeString().slice(0,8)).toISOString() : new Date().toISOString();
   DB.expenses.push({
@@ -21375,7 +21962,7 @@ async function saveExpense(){
   if(ph) _expPh = null;
   if(acc) addFinMove(acc.id, 'out', amount, 'expense', 'مصروف: '+cat.name+(description?' — '+description:''));
   await Promise.all([saveKey('expenses'), saveKey('finMoves')]);
-  await logAction('مصروف '+money(amount)+' — '+cat.name+(acc?' من '+acc.name:'')+(photos.length ? ' · 📎 '+(photos.length === 1 ? 'صورة' : 'صورتين')+' فاتورة' : ''));
+  await logAction('مصروف '+money(amount)+' — '+cat.name+(acc?' من '+acc.name:'')+(photos.length ? ' · 📷 '+(photos.length === 1 ? 'صورة' : 'صورتين')+' فاتورة' : ''));
   if(amount >= (DB.settings.largeExpenseThreshold||20000)){
     pushNotif({ category:'financial', type:'large_expense', priority: amount>=50000?'critical':'high', amount,
       action:'مصروف كبير: '+cat.name+(description?' — '+description:''), refType:'expense' });
@@ -21518,6 +22105,111 @@ function openCustodies(){ return DB.custodies.filter(c=>c.status==='open'); }
 function overdueCustodies(){ return openCustodies().filter(isCustodyOverdue); }
 function empOpenCustody(empId){ return DB.custodies.find(c=>c.employeeId===empId && c.status==='open'); }
 function custodyEmpName(c){ const e=DB.employees.find(x=>x.id===c.employeeId); return e?e.name:(c.employeeName||'—'); }
+/* ============ م263: سداد فاتورة مورد من عهدة موظف مفتوحة ============
+   الفلوس خرجت من الخزنة يوم إصدار العهدة، فالسداد من العهدة مالوش أي حركة على حساب — بيتسجّل:
+   • صف «سداد مورد» عادي (accountId:null · payAccount «عهدة #N — الموظف» · fromCustody) ⇒ مش مصروف تشغيلي زي أي سداد مورد.
+   • استخدام على العهدة نفسها c.uses[] (id · kind · expId · المورد · الفواتير · المبلغ) — مدموج بين الأجهزة (MERGE_SUBARRAYS.custodies).
+   المتاح = قيمة العهدة − اللي اتصرف منها. والتسوية بتعرض السدادات دي سطور ثابتة ومابتعملش لها مصروف تاني. */
+function custodyUses(c){ return (c && Array.isArray(c.uses)) ? c.uses.filter(u=>u && typeof u==='object') : []; }
+function custodySupplierUses(c){ return custodyUses(c).filter(u=>u.kind==='supplier_payment'); }
+function custodyUsed(c){ return Math.round(custodyUses(c).reduce((s,u)=>s+(+u.amount||0),0)*100)/100; }
+function custodyAvailable(c){ return Math.round(((+c.amount||0) - custodyUsed(c))*100)/100; }
+function custodyPayLabel(c){ return 'عهدة #'+c.custodyNo+' — '+custodyEmpName(c); }
+function custodyUsageText(c){ return 'المصروف منها لحد دلوقتي '+money(custodyUsed(c))+' · المتاح '+money(custodyAvailable(c)); }
+/* نص السطر الثابت لسداد مورد من العهدة (من غير الرمز والمبلغ) */
+function custodyUseText(u){
+  const inv = Array.isArray(u.invoices) ? u.invoices : [];
+  const sup = u.supplierName ? ' — '+u.supplierName : '';
+  /* الدفعة غطّت فواتير + باقي على الحساب (أكتر من الفواتير المحددة) ⇒ الاتنين يظهروا */
+  const rest = Math.round(((+u.amount||0) - inv.reduce((s,x)=>s+(+x.amount||0),0))*100)/100;
+  const onAcc = (inv.length && rest>0.005) ? ' + دفعة على الحساب' : '';
+  if(inv.length===1) return 'سداد فاتورة مورد #'+inv[0].purchaseNo+onAcc+sup;
+  if(inv.length>1) return 'سداد فواتير مورد '+inv.map(x=>'#'+x.purchaseNo).join(' · ')+onAcc+sup;
+  return 'سداد دفعة على حساب المورد'+sup;
+}
+/* ---- حماية الفلوس بين الأجهزة (مراجعة م263) ----
+   • custodyServerRow263: قراءة صف العهدة من السيرفر (مهلة 5 ثواني زي فحص فاتورة الأمر م259) — {ok:false} لو النت واقع/المهلة خلصت.
+   • custodyAdoptServer263: بتدخّل حالة السيرفر في سجل العهدة اللي في الذاكرة **في نفس الكائن**: المقفولة تتقفل (الحالة · التسوية · وقت الإقفال)
+     واستخدامات السيرفر بتتضم لاستخداماتنا (اللي ماوصلتش لسه بتفضل) — من غير ما نمسح حاجة.
+   • custodyAlert263: إشعار «السيستم» للمالك (حتى لو الجالس هو المالك) مرة واحدة لكل نص + سطر في سجل العمليات. */
+var _custodyReadMs = 5000;
+async function custodyServerRow263(custodyId){
+  const bad = { ok:false, data:null };
+  if(!custodyId || !sb || typeof sb.from !== 'function') return bad;
+  let timer = null, res = null;
+  try{
+    res = await Promise.race([
+      sb.from(TABLE_MAP.custodies).select('id,data').eq('id', custodyId),
+      new Promise((_, rej)=>{ timer = setTimeout(()=>rej(new Error('timeout')), _custodyReadMs); })
+    ]);
+  }catch(e){ return bad; }
+  finally{ if(timer) clearTimeout(timer); }
+  if(!res || res.error || !Array.isArray(res.data)) return bad;
+  const r = res.data.find(x=>x && x.id===custodyId);
+  return { ok:true, data:(r && r.data) || null };
+}
+function custodyAdoptServer263(c, srv){
+  if(!c || !srv || typeof srv!=='object') return false;
+  let changed = false;
+  const cp = v=>JSON.parse(JSON.stringify(v));
+  const srvUses = Array.isArray(srv.uses) ? srv.uses.filter(u=>u && u.id) : [];
+  const have = new Set(srvUses.map(u=>u.id));
+  const mine = custodyUses(c).filter(u=>u.id && !have.has(u.id));   // استخدام عندنا ولسه ماوصلش السيرفر
+  const merged = srvUses.concat(mine);
+  if(_mergeCanon(merged) !== _mergeCanon(custodyUses(c))){ c.uses = cp(merged); changed = true; }
+  if(srv.status==='closed' && c.status!=='closed'){
+    c.status = 'closed';
+    if(srv.settlement) c.settlement = cp(srv.settlement);
+    if(srv.closedAt) c.closedAt = srv.closedAt;
+    changed = true;
+  }
+  return changed;
+}
+function custodyAlert263(type, text){
+  try{
+    if((DB.notifications||[]).some(n=>n.type===type && n.action===text)) return false;
+    logAction('🛡️ '+text.replace(/^⚠️ /,''));
+    notify(type, text, { category:'financial', priority:'high', system:true, refType:'expense' });
+    return true;
+  }catch(e){ return false; }
+}
+/* بعد أي دمج/حفظ: العهدة المقفولة اتسجّل عليها سداد بعد التسوية (مجموع الاستخدامات ≠ اللي في التسوية) · أو المفتوحة اتسحب منها أكتر من قيمتها */
+function custodyCheckAlerts263(c){
+  if(!c || c.custodyNo===undefined) return;
+  const used = Math.round(custodySupplierUses(c).reduce((s,u)=>s+(+u.amount||0),0)*100)/100;
+  if(c.status==='closed'){
+    const stored = Math.round((+((c.settlement||{}).supplierPaymentsTotal)||0)*100)/100;
+    if(Math.abs(used - stored) > 0.005)
+      custodyAlert263('custody_late_use', '⚠️ سداد من عهدة #'+c.custodyNo+' — '+custodyEmpName(c)+' اتسجل بعد ما العهدة اتقفلت — راجع (المسجّل في التسوية '+money(stored)+' والمصروف فعلاً '+money(used)+')');
+  } else if(c.status==='open' && custodyAvailable(c) < -0.005){
+    custodyAlert263('custody_overdrawn', '⚠️ العهدة #'+c.custodyNo+' — '+custodyEmpName(c)+' اتصرف منها '+money(-custodyAvailable(c))+' أكتر من قيمتها ('+money(c.amount)+') — سداد من جهازين في نفس الوقت، لازم المالك يقفلها ويراجعها');
+  }
+}
+/* المصروف الثابت (سداد موردين) + بنود التسوية المضافة = المصروف الكلي من العهدة */
+function custodySettleTotals(c){
+  const fixed = custodySupplierUses(c);
+  const fixedTotal = Math.round(fixed.reduce((s,u)=>s+(+u.amount||0),0)*100)/100;
+  const linesTotal = Math.round(_custodyLines.reduce((s,l)=>s+l.amount,0)*100)/100;
+  const spent = Math.round((fixedTotal+linesTotal)*100)/100;
+  return { fixed, fixedTotal, linesTotal, spent, remaining: Math.round(((+c.amount||0) - spent)*100)/100 };
+}
+/* خيارات «الدفع من» في سداد المورد: العهد المفتوحة (المتعطّل = المتاح صفر) */
+function custodyPayOptionsHTML(){
+  const list = openCustodies().sort((a,b)=>(a.custodyNo||0)-(b.custodyNo||0));
+  if(!list.length) return '';
+  return `<optgroup label="عهد الموظفين المفتوحة">`+list.map(c=>{
+    const av = custodyAvailable(c);
+    return `<option value="cus:${c.id}"${av<=0.005?' disabled':''}>${escNote(custodyPayLabel(c))} (المتاح ${money(av)})</option>`;
+  }).join('')+`</optgroup>`;
+}
+/* سجل المصروفات: خانة «الحساب» — المصروف اللي من عهدة بيعرض «من عهدة #N — الموظف» */
+function expPayAccText(e){
+  if(e && e.fromCustody){
+    const c = DB.custodies.find(x=>x.id===e.fromCustody);
+    return 'من '+escNote(c ? custodyPayLabel(c) : (e.payAccount||'عهدة'));
+  }
+  return escNote(e && e.payAccount) || '—';
+}
 function renderCustodies(){
   const canCreate = can('fin.custody_create');
   const emps = [...DB.employees].filter(e=>e.status==='نشط').sort(cmpName);
@@ -21546,7 +22238,7 @@ function renderCustodies(){
   <div class="card" style="margin-bottom:16px">
     <div class="grid g4">
       <div class="form-row" style="margin:0"><label class="f-label">الموظف</label>
-        <select class="f" onchange="setCustodyFilter('emp',this.value)"><option value="">كل الموظفين</option>${allEmps.map(e=>`<option value="${e.id}" ${custodyFilter.emp===e.id?'selected':''}>${e.name}</option>`).join('')}</select></div>
+        <select class="f" onchange="setCustodyFilter('emp',this.value)"><option value="">كل الموظفين</option>${allEmps.map(e=>`<option value="${e.id}" ${custodyFilter.emp===e.id?'selected':''}>${escNote(e.name)}</option>`).join('')}</select></div>
       <div class="form-row" style="margin:0"><label class="f-label">الحالة</label>
         <select class="f" onchange="setCustodyFilter('status',this.value)"><option value="">الكل</option><option value="open" ${custodyFilter.status==='open'?'selected':''}>مفتوحة</option><option value="closed" ${custodyFilter.status==='closed'?'selected':''}>مقفولة</option></select></div>
       <div class="form-row" style="margin:0"><label class="f-label">مصدر الصرف</label>
@@ -21561,9 +22253,9 @@ function renderCustodies(){
       const over = isCustodyOverdue(c);
       return `<tr style="${over?'background:rgba(224,37,37,.10)':''}">
         <td style="font-weight:700;color:var(--accent)">#${c.custodyNo}</td>
-        <td style="font-weight:700">${custodyEmpName(c)}</td>
+        <td style="font-weight:700">${escNote(custodyEmpName(c))}</td>
         <td class="muted">${c.purpose||'—'}</td>
-        <td style="font-weight:800">${money(c.amount)}</td>
+        <td style="font-weight:800">${money(c.amount)}${c.status==='open'?`<div class="muted" style="font-size:11px;font-weight:400">${custodyUsageText(c)}</div>`:''}</td>
         <td class="muted">${c.sourceName||'—'}</td>
         <td style="white-space:nowrap;font-size:12px">${fmtDate(c.createdAt)}</td>
         <td style="${over?'color:var(--danger);font-weight:800':''}">${c.status==='open'?durationText(c.createdAt)+(over?' 🚨':''):'—'}</td>
@@ -21635,20 +22327,21 @@ function openSettleCustodyModal(custodyId){
 }
 function renderSettleModal(custodyId){
   const c = DB.custodies.find(x=>x.id===custodyId);
-  const spent = _custodyLines.reduce((s,l)=>s+l.amount,0);
-  const remaining = Math.round((c.amount - spent)*100)/100;
+  const { fixed, spent, remaining } = custodySettleTotals(c);   /* م263: سداد الموردين من العهدة = سطور ثابتة بتتحسب مع البنود */
   const catOpts = `<option value="">— اختار النوع —</option>`+ (typeof expCatOptionsHTML==='function' ? expCatOptionsHTML().replace('<option value="">— اختر نوع المصروف —</option>','') : DB.expenseCategories.map(ct=>`<option value="${ct.id}">${ct.name}</option>`).join(''));
   openModal(`
-    <h3>📤 تسوية عهدة #${c.custodyNo} <span class="muted" style="font-size:12px">— ${custodyEmpName(c)} — ${money(c.amount)}</span></h3>
+    <h3>📤 تسوية عهدة #${c.custodyNo} <span class="muted" style="font-size:12px">— ${escNote(custodyEmpName(c))} — ${money(c.amount)}</span></h3>
     <div class="grid g3" style="margin-bottom:12px">
       ${stat(money(c.amount),'قيمة العهدة')}
       ${stat(money(spent),'المصروفات المسجّلة', spent>c.amount)}
       ${stat(money(remaining),'المتبقي', remaining<0)}
     </div>
+    ${remaining < -0.005?`<div class="card" style="border:1px solid var(--danger);color:var(--danger);font-size:12.5px;font-weight:700;margin-bottom:10px">⚠️ المصروف فعلاً أكتر من قيمة العهدة بـ ${money(-remaining)} (سداد من جهازين في نفس الوقت) — مفيش مرتجع للخزنة، والتسوية دي للمالك بس.</div>`:''}
     <label class="f-label">بنود المصروفات الفعلية</label>
     <div class="card" style="margin:6px 0 10px">
       <table style="margin-bottom:8px"><tbody>
-      ${_custodyLines.length? _custodyLines.map((l,i)=>`<tr><td>${l.catName}</td><td class="muted" style="font-size:11.5px">${l.description||'—'}</td><td style="font-weight:700">${money(l.amount)}</td><td style="width:50px"><button class="btn btn-sm btn-danger" onclick="removeCustodyLine(${i})">حذف</button></td></tr>`).join('') : '<tr><td class="empty">مفيش بنود لسه — ضيف بند تحت</td></tr>'}
+      ${fixed.map(u=>`<tr style="background:var(--surface-2)"><td colspan="2">🧾 ${escNote(custodyUseText(u))} <span class="muted" style="font-size:11px">(مسجّل — ثابت)</span></td><td style="font-weight:700">${money(u.amount)}</td><td style="width:50px"></td></tr>`).join('')}
+      ${_custodyLines.length? _custodyLines.map((l,i)=>`<tr><td>${l.catName}</td><td class="muted" style="font-size:11.5px">${l.description||'—'}</td><td style="font-weight:700">${money(l.amount)}</td><td style="width:50px"><button class="btn btn-sm btn-danger" onclick="removeCustodyLine(${i})">حذف</button></td></tr>`).join('') : (fixed.length ? '' : '<tr><td class="empty">مفيش بنود لسه — ضيف بند تحت</td></tr>')}
       </tbody></table>
       <div class="grid g3">
         <div class="form-row" style="margin:0"><select class="f" id="clCat">${catOpts}</select></div>
@@ -21662,7 +22355,7 @@ function renderSettleModal(custodyId){
         <select class="f" id="clReturnAcc"><option value="">— اختار الحساب —</option>${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
       <div class="form-row"><label class="f-label">ملاحظات التسوية</label><input class="f" id="clNotes"></div>
     </div>`:`<div class="form-row"><label class="f-label">ملاحظات التسوية</label><input class="f" id="clNotes"></div>`}
-    <div class="muted" style="font-size:12px;margin-bottom:10px">البنود هتتحوّل لمصروفات حقيقية في التقارير، والمتبقي هيتضاف للحساب اللي تختاره.</div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">البنود هتتحوّل لمصروفات حقيقية في التقارير، والمتبقي هيتضاف للحساب اللي تختاره.${fixed.length?' سداد الموردين (🧾) اتسجّل أصلاً في مدفوعات الموردين — بيتحسب من العهدة ومش هيتكرر كمصروف.':''}</div>
     <button class="btn btn-accent" style="width:100%" onclick="saveSettleCustody('${custodyId}')">تأكيد التسوية وإقفال العهدة</button>
   `);
 }
@@ -21674,23 +22367,50 @@ function addCustodyLine(custodyId){
   if(!cat){ toast('اختار نوع المصروف', true); return; }
   if(amt<=0){ toast('اكتب مبلغ صحيح', true); return; }
   const c = DB.custodies.find(x=>x.id===custodyId);
-  const spent = _custodyLines.reduce((s,l)=>s+l.amount,0);
+  const spent = custodySettleTotals(c).spent;   /* م263: بما فيها سداد الموردين من العهدة */
   if(spent+amt > c.amount + 0.005){ toast('إجمالي البنود بيتعدّى قيمة العهدة ('+money(c.amount)+')', true); return; }
   _custodyLines.push({ categoryId:cat.id, catName:cat.name, group:cat.group, amount:amt, description:desc });
   renderSettleModal(custodyId);
 }
 function removeCustodyLine(i){ _custodyLines.splice(i,1); renderSettleModalById(); }
 function renderSettleModalById(){ const ov=document.getElementById('modalOverlay'); if(!ov) return; const m=ov.innerHTML.match(/saveSettleCustody\('([^']+)'\)/); if(m) renderSettleModal(m[1]); }
-async function saveSettleCustody(custodyId){
+async function saveSettleCustody(custodyId, opts){
+  opts = opts || {};   /* م263: opts.overOk (المالك أكّد إقفال عهدة مسحوب منها زيادة) · opts.notes (ملاحظات التسوية اتقرت قبل نافذة التأكيد) */
   if(!can('fin.custody_settle')){ toast('مالكش صلاحية تسوية العهد', true); return; }
-  const c = DB.custodies.find(x=>x.id===custodyId);
+  let c = DB.custodies.find(x=>x.id===custodyId);
   if(!c || c.status!=='open'){ toast('العهدة مش مفتوحة', true); return; }
-  const spent = _custodyLines.reduce((s,l)=>s+l.amount,0);
-  const remaining = Math.round((c.amount - spent)*100)/100;
+  /* قيم الشاشة بتتقرا هنا — قبل أي await */
+  const retAccSel = (document.getElementById('clReturnAcc')||{}).value;
+  const notes = opts.notes !== undefined ? opts.notes : ((document.getElementById('clNotes')||{}).value||'').trim();
+  /* م263 (مراجعة): قبل الحساب بنقرا صف العهدة من السيرفر (5 ثواني): جهاز تاني ممكن يكون سدد منها (استخداماته تدخل التسوية) أو قفلها (مانقفلهاش
+     مرتين ومانرجّعش المتبقي مرتين). النت واقع/المهلة ⇒ نكمّل بالبيانات المحلية زي ما كانت التسوية دايماً — والدمج وقت الحفظ بيبلّغ المالك لو سداد وصل بعدها. */
+  const rd = await custodyServerRow263(custodyId);
+  c = DB.custodies.find(x=>x.id===custodyId) || c;   // السجل ممكن اتبدّل بالمزامنة اللحظية أثناء الانتظار
+  if(rd.ok && rd.data){
+    if(rd.data.status==='closed' && c.status!=='closed'){
+      custodyAdoptServer263(c, rd.data);
+      toast('العهدة دي اتقفلت من جهاز تاني — اتسوّت خلاص', true); closeModal(); refreshContent(); return;
+    }
+    custodyAdoptServer263(c, rd.data);
+  }
+  if(c.status!=='open'){ toast('العهدة مش مفتوحة', true); return; }
+  /* ===== من هنا لحد تعديلات الذاكرة: مفيش await ===== */
+  /* م263: سداد الموردين من العهدة (c.uses) بيتحسب مصروف ثابت: داخل في الإجمالي والمتبقي ومتسجّل في التسوية — بس مابيتعملهوش مصروف تاني (متسجّل أصلاً كسداد مورد) */
+  const { fixed, fixedTotal, linesTotal, spent, remaining } = custodySettleTotals(c);
+  /* م263: سداد من جهازين في نفس اللحظة عدّى قيمة العهدة ⇒ المتبقي بالسالب. المالك بس هو اللي يقفلها (بتأكيد صريح)، ومفيش مرتجع للخزنة */
+  const overdrawn = remaining < -0.005 ? Math.round(-remaining*100)/100 : 0;
+  if(overdrawn){
+    if(!isOwnerSession()){ toast('العهدة مصروف منها أكتر من قيمتها بـ '+money(overdrawn)+' — لازم المالك يقفلها', true); return; }
+    if(!opts.overOk){
+      askConfirm('الموظف صرف <b>'+money(overdrawn)+'</b> زيادة عن قيمة العهدة ('+money(c.amount)+') — اتسدد منها <b>'+money(spent)+'</b>. مفيش فلوس هترجع للخزنة، والزيادة هتتسجل في التسوية. تقفل العهدة؟',
+        ()=>saveSettleCustody(custodyId, { overOk:true, notes }));
+      return;
+    }
+  }
   // لو فيه فلوس باقية لازم المستخدم يختار الحساب اللي هترجع له بإيده (مش شرط مصدر الصرف)
   let returnAccId = null, returnAccName = null;
   if(remaining>0.005){
-    returnAccId = (document.getElementById('clReturnAcc')||{}).value;
+    returnAccId = retAccSel;
     if(!returnAccId){ toast('اختار الحساب اللي المتبقي ('+money(remaining)+') هيرجع له', true); return; }
     const raChk = DB.finAccounts.find(a=>a.id===returnAccId);
     if(!raChk){ toast('الحساب اللي اخترته مش موجود', true); return; }
@@ -21712,39 +22432,54 @@ async function saveSettleCustody(custodyId){
     if(ra){ addFinMove(returnAccId, 'in', remaining, 'custody_return', 'استرجاع باقي عهدة #'+c.custodyNo+' — '+custodyEmpName(c)); returnAccName = ra.name; }
   }
   // 3) اقفل العهدة
-  const notes = ((document.getElementById('clNotes')||{}).value||'').trim();
   c.status = 'closed';
-  c.settlement = { lines: JSON.parse(JSON.stringify(_custodyLines)), totalExpenses: spent, remaining, returnedAccId:returnAccId, returnedAccName:returnAccName, notes, at:new Date().toISOString(), by:actorName() };
+  c.settlement = { lines: JSON.parse(JSON.stringify(_custodyLines)), totalExpenses: spent, remaining: overdrawn ? 0 : remaining, returnedAccId:returnAccId, returnedAccName:returnAccName, notes, at:new Date().toISOString(), by:actorName() };
+  if(fixed.length){ c.settlement.supplierPayments = JSON.parse(JSON.stringify(fixed)); c.settlement.supplierPaymentsTotal = fixedTotal; }   /* م263: totalExpenses = البنود + سداد الموردين */
+  if(overdrawn) c.settlement.overdrawn = overdrawn;   /* م263: المصروف فعلاً أكتر من قيمة العهدة بالمبلغ ده (remaining = 0 ومفيش مرتجع) */
   c.closedAt = new Date().toISOString();
   const saves = [saveKey('custodies'), saveKey('expenses')];
   if(remaining>0.005) saves.push(saveKey('finMoves'));
+  const stl263 = c.settlement, cAt263 = c.closedAt;
   await Promise.all(saves);
-  await logAction('تسوية عهدة #'+c.custodyNo+' — '+custodyEmpName(c)+': مصروفات '+money(spent)+(remaining>0.005?' + استرجاع '+money(remaining)+' لـ '+(returnAccName||'—'):'')+' ('+_custodyLines.length+' بند)');
+  /* م263 (مراجعة v283): تحديث لحظي من جهاز تاني (سداد من نفس العهدة) وصل أثناء الحفظ ممكن يرجّعها «مفتوحة» في الذاكرة ⇒ نرجّع الإقفال ونحفظ تاني،
+     ولو جهاز تاني سوّاها هو كمان (تسوية مرتين = استرجاع مرتين) المالك يتبلّغ */
+  if(c.status!=='closed'){ c.status = 'closed'; c.settlement = stl263; c.closedAt = cAt263; await saveKey('custodies'); }
+  else if(c.settlement && c.settlement.at !== stl263.at) custodyAlert263('custody_stale_write', '⚠️ العهدة #'+c.custodyNo+' — '+custodyEmpName(c)+' اتسوّت من جهازين في نفس الوقت — راجع حركات «استرجاع باقي عهدة» في الخزنة');
+  custodyCheckAlerts263(c);
+  await logAction('تسوية عهدة #'+c.custodyNo+' — '+custodyEmpName(c)+': مصروفات '+money(spent)+(remaining>0.005?' + استرجاع '+money(remaining)+' لـ '+(returnAccName||'—'):'')+' ('+_custodyLines.length+' بند'+(fixed.length?' + سداد موردين '+money(fixedTotal)+' ('+fixed.length+')':'')+')'
+    +(overdrawn?' — ⚠️ الموظف صرف '+money(overdrawn)+' زيادة عن قيمة العهدة (مفيش مرتجع)':''));
   pushNotif({ category:'financial', type:'custody_settle', priority:'medium', amount:spent,
-    action:'تسوية عهدة #'+c.custodyNo+' — '+custodyEmpName(c)+' (مصروفات '+money(spent)+(remaining>0.005?' + مرتجع '+money(remaining):'')+')', refType:'expense' });
+    action:'تسوية عهدة #'+c.custodyNo+' — '+custodyEmpName(c)+' (مصروفات '+money(spent)+(remaining>0.005?' + مرتجع '+money(remaining):'')+(overdrawn?' — زيادة عن العهدة '+money(overdrawn):'')+')', refType:'expense' });
   _custodyLines = [];
-  closeModal(); toast('تمت تسوية العهدة وإقفالها'+(spent>0?' — اتسجّل '+money(spent)+' مصروفات':'')); refreshContent();
+  closeModal(); toast('تمت تسوية العهدة وإقفالها'+(linesTotal>0?' — اتسجّل '+money(linesTotal)+' مصروفات':'')); refreshContent();
 }
 function openCustodyDetail(custodyId){
   const c = DB.custodies.find(x=>x.id===custodyId);
   if(!c) return;
   const st = c.settlement;
   openModal(`
-    <h3>👛 عهدة #${c.custodyNo} — ${custodyEmpName(c)}</h3>
+    <h3>👛 عهدة #${c.custodyNo} — ${escNote(custodyEmpName(c))}</h3>
     <div style="margin-bottom:10px">${custodyStatusTag(c.status)} <span class="muted" style="font-size:12px;margin-right:6px">${fmtDateTime(c.createdAt)} · بواسطة ${c.actor||'—'}</span></div>
     <table style="margin-bottom:14px"><tbody>
       <tr><td class="muted">القيمة</td><td style="font-weight:800">${money(c.amount)}</td></tr>
       <tr><td class="muted">الغرض</td><td>${c.purpose||'—'}</td></tr>
       <tr><td class="muted">المصدر</td><td>${c.sourceName||'—'}</td></tr>
       ${c.notes?`<tr><td class="muted">ملاحظات</td><td>${c.notes}</td></tr>`:''}
-      ${c.status==='open'?`<tr><td class="muted">مفتوحة من</td><td style="${isCustodyOverdue(c)?'color:var(--danger);font-weight:700':''}">${durationText(c.createdAt)}${isCustodyOverdue(c)?' 🚨 متأخرة':''}</td></tr>`:''}
+      ${c.status==='open'?`<tr><td class="muted">مفتوحة من</td><td style="${isCustodyOverdue(c)?'color:var(--danger);font-weight:700':''}">${durationText(c.createdAt)}${isCustodyOverdue(c)?' 🚨 متأخرة':''}</td></tr>
+      <tr><td class="muted">المصروف / المتاح</td><td style="font-weight:700">${custodyUsageText(c)}</td></tr>`:''}
     </tbody></table>
+    ${c.status==='open' && custodySupplierUses(c).length?`
+    <label class="f-label">🧾 سداد موردين من العهدة (ثابت — بيظهر في التسوية)</label>
+    <table style="margin:6px 0 12px"><tbody>${custodySupplierUses(c).map(u=>`<tr><td>🧾 ${escNote(custodyUseText(u))}</td><td class="muted" style="font-size:11.5px">${fmtDateTime(u.at)}</td><td style="font-weight:700">${money(u.amount)}</td></tr>`).join('')}</tbody></table>`:''}
     ${st?`
     <label class="f-label">تفاصيل التسوية (${fmtDateTime(st.at)} · ${st.by})</label>
     <table style="margin:6px 0 12px"><thead><tr><th>البند</th><th>الوصف</th><th>المبلغ</th></tr></thead>
-    <tbody>${st.lines.map(l=>`<tr><td>${l.catName}</td><td class="muted" style="font-size:11.5px">${l.description||'—'}</td><td style="font-weight:700">${money(l.amount)}</td></tr>`).join('')||'<tr><td class="empty">مفيش مصروفات</td></tr>'}</tbody></table>
+    <tbody>${(st.supplierPayments||[]).map(u=>`<tr><td colspan="2">🧾 ${escNote(custodyUseText(u))}</td><td style="font-weight:700">${money(u.amount)}</td></tr>`).join('')}${st.lines.map(l=>`<tr><td>${l.catName}</td><td class="muted" style="font-size:11.5px">${l.description||'—'}</td><td style="font-weight:700">${money(l.amount)}</td></tr>`).join('')||((st.supplierPayments||[]).length?'':'<tr><td class="empty">مفيش مصروفات</td></tr>')}</tbody></table>
     <div class="card"><div class="flex-between"><span>إجمالي المصروفات</span><span style="font-weight:800">${money(st.totalExpenses)}</span></div>
+    ${st.supplierPaymentsTotal>0.005?`<div class="flex-between muted" style="margin-top:4px;font-size:12px"><span>منها سداد موردين (🧾)</span><span>${money(st.supplierPaymentsTotal)}</span></div>`:''}
     ${st.remaining>0.005?`<div class="flex-between" style="margin-top:4px"><span>المرتجع لـ ${st.returnedAccName||'—'}</span><span style="font-weight:800;color:var(--accent)">${money(st.remaining)}</span></div>`:''}
+    ${st.overdrawn>0.005?`<div class="flex-between" style="margin-top:4px;color:var(--danger)"><span>⚠️ الموظف صرف زيادة عن العهدة (مفيش مرتجع)</span><span style="font-weight:800">${money(st.overdrawn)}</span></div>`:''}
+    ${Math.abs(custodySupplierUses(c).reduce((x,u)=>x+(+u.amount||0),0) - (+st.supplierPaymentsTotal||0))>0.005?`<div style="margin-top:6px;color:var(--danger);font-size:12.5px;font-weight:700">⚠️ فيه سداد موردين من العهدة بعد التسوية (المسجّل في التسوية ${money(+st.supplierPaymentsTotal||0)} والمصروف فعلاً ${money(custodySupplierUses(c).reduce((x,u)=>x+(+u.amount||0),0))}) — راجعه</div>`:''}
     ${st.notes?`<div class="muted" style="font-size:12px;margin-top:6px">📝 ${st.notes}</div>`:''}</div>
     `:`
     ${c.status==='open' && can('fin.custody_settle')?`<button class="btn btn-accent" style="width:100%" onclick="openSettleCustodyModal('${c.id}')">📤 تسوية العهدة</button>`:''}`}
@@ -28587,7 +29322,7 @@ function clrSnapshot(e, ds){
       + ' · جزاءات الشهر: ' + (pens.length ? pens.length + (seePen ? ' (' + money(penSum) + ')' : '') : 'لا يوجد')
       + ' · رصيد الإجازات المتبقي: ' + empLeaveStats(e.id).remaining + ' يوم',
     acc: 'سلف شهر المرتب (تُخصم من آخر مرتب): ' + (advs.length ? (seeAdv ? money(advSum) : 'يوجد سلف') : 'لا يوجد')
-      + ' · عهدة مالية مفتوحة: ' + (fin ? money(fin.amount) : 'لا يوجد')
+      + ' · عهدة مالية مفتوحة: ' + (fin ? money(fin.amount) + ' (' + custodyUsageText(fin) + ')' : 'لا يوجد')
       + ' · عجز عهدة: ' + (shortage > 0 ? money(shortage) : 'لا يوجد'),
   };
 }
@@ -29164,6 +29899,7 @@ const NOTIF_SEVERITY = {
   customer_edit:'medium', vehicle_edit:'medium', vehicle_owner:'high',
   item_archive:'medium', item_restore:'medium', item_edit:'medium',
   custody_settle:'medium', expense_edit:'medium', voucher_edit:'medium',
+  custody_late_use:'high', custody_overdrawn:'high', custody_stale_write:'high',   /* م263 */
   user_toggle:'medium', settings_change:'medium', tax_change:'high', payment_method:'medium',
   dup_customer:'medium', dup_item:'medium', dup_number:'high',   /* م164 */
   /* م179ب: أنواع مالية كانت من غير أولوية فبتنزل «متوسطة» */
@@ -31600,7 +32336,7 @@ function renderNotifications(){
   ${(P==='overCust' && overCust.length)?`
   <div class="section-head"><h3>👛 عهد مفتوحة متأخرة (+${CUSTODY_OVERDUE_HOURS} ساعة)</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>العهدة</th><th>الموظف</th><th>المبلغ</th><th>مفتوحة من</th><th></th></tr></thead>
-  <tbody>${overCust.map(c=>`<tr><td>#${c.custodyNo}</td><td style="font-weight:700">${custodyEmpName(c)}</td><td style="font-weight:800">${money(c.amount)}</td><td style="color:var(--danger);font-weight:800">${durationText(c.createdAt)}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="goTab('expenses')">↗ فتح التقرير</button></td></tr>`).join('')}</tbody></table></div>`:''}
+  <tbody>${overCust.map(c=>`<tr><td>#${c.custodyNo}</td><td style="font-weight:700">${escNote(custodyEmpName(c))}</td><td style="font-weight:800">${money(c.amount)}</td><td style="color:var(--danger);font-weight:800">${durationText(c.createdAt)}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="goTab('expenses')">↗ فتح التقرير</button></td></tr>`).join('')}</tbody></table></div>`:''}
   ${(P==='highAdv' && highAdv.length)?`
   <div class="section-head"><h3>💸 موظفين سلفهم عدّت ${s.highAdvancePct||50}% من صافي الأساسي (شهر المرتب الحالي)</h3></div>
   <div class="card" style="margin-bottom:18px"><table><thead><tr><th>الموظف</th><th>صافي الأساسي</th><th>إجمالي السلف</th><th>النسبة</th><th></th></tr></thead>
