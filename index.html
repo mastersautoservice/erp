@@ -660,6 +660,13 @@ body.busy button{pointer-events:none;opacity:.55;}
   .section-head > div{flex-wrap:wrap}
   .section-head .btn{white-space:nowrap}
 }
+/* م266: بحث ذكي في قوايم «نوع المصروف» */
+.ss-box{position:relative}
+.ss-list{position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:60;max-height:280px;overflow-y:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 12px 30px rgba(0,0,0,.35);padding:4px}
+.ss-g{font-size:11.5px;color:var(--muted);padding:7px 10px 3px;font-weight:700}
+.ss-it{padding:9px 12px;border-radius:8px;cursor:pointer;font-size:14px}
+.ss-it:hover,.ss-it.on{background:var(--surface-3);color:var(--accent)}
+.ss-empty{padding:10px 12px;color:var(--muted);font-size:13px}
 </style>
 </head>
 <body>
@@ -2005,7 +2012,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v283';
+const APP_VERSION = 'v288';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -3457,6 +3464,7 @@ function openModal(html, wide){
   ov.innerHTML = `<div class="modal${cls}" style="position:relative">
     <button class="modal-close" onclick="closeModal()">✕</button>${html}</div>`;
   document.body.appendChild(ov);
+  try{ ssEnhance(ov); }catch(e){}   /* م266: قوايم «نوع المصروف» بقى ليها بحث ذكي */
 }
 function closeModal(){
   const ov=document.getElementById('modalOverlay'); if(ov) ov.remove();
@@ -5719,7 +5727,8 @@ function jobDetailHTML(jobId){
   const job = DB.jobs.find(j=>j.id===jobId);
   const car = DB.cars.find(c=>c.id===job.carId)||{};
   const cust = DB.customers.find(c=>c.id===job.customerId)||{};
-  const total = job.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
+  const lv264 = jobLinesView(job), lines264 = lv264.items;   /* م264: الأمر المتفوتر ⇒ البنود من الفاتورة */
+  const total = lines264.reduce((s,it)=>s+it.qty*it.unitPrice,0);
   const hasInvoice = DB.invoices.some(i=>i.jobId===job.id && !i.cancelled);
   return `
   <h3>أمر شغل #${job.jobNo} — ${car.plate||'—'}</h3>
@@ -5787,7 +5796,7 @@ function jobDetailHTML(jobId){
       const cols = hasActCol ? 5 : 4;
       const stamps201 = jobItemStamps(job);   /* م201 */
       const rowHTML = it => `
-        <tr class="it-main"><td>${it.name} <span class="muted" style="font-size:11px">(${kindLabel(it)})</span>
+        <tr class="it-main"><td>${it.name} <span class="muted" style="font-size:11px">(${kindLabel(it)})</span>${stockNameHTML(it)}
         ${it.kind==='service' && (it.technicianId || it.technician) ? `<div style="font-size:11px;color:var(--accent)">👨‍🔧 الفني: ${itemTechLabel(it, job)}</div>` : ''}
         ${(it.kind==='ext_part'||it.kind==='ext_work') && can('rep.profit') ? `<div class="muted" style="font-size:11px">${it.supplierId?('المورد: '+((DB.suppliers.find(s=>s.id===it.supplierId)||{}).name||'—')+' · '):''}التكلفة: ${money(it.costPrice||0)} · ${it.payMethod||'كاش'}</div>` : ''}
         ${it.kind==='part' && it.costPrice!==undefined && can('rep.profit') ? `<div class="muted" style="font-size:11px">سعر الشراء: ${money(it.costPrice)}</div>` : ''}
@@ -5799,18 +5808,18 @@ function jobDetailHTML(jobId){
         </td>` : ''}
         </tr>
         <tr class="it-stamp-tr"><td colspan="${cols}">${itemStampHTML(stamps201.get(it.id), it)}</td></tr>`;   /* م201ب: سطر كامل بعرض الجدول عشان يفضل جنب بعض */
-      const partsItems = job.items.filter(it=>it.kind==='part'||it.kind==='ext_part');
-      const laborItems = job.items.filter(it=>it.kind!=='part'&&it.kind!=='ext_part');
+      const partsItems = lines264.filter(it=>it.kind==='part'||it.kind==='ext_part');
+      const laborItems = lines264.filter(it=>it.kind!=='part'&&it.kind!=='ext_part');
       const partsSale = partsItems.reduce((s,it)=>s+it.qty*it.unitPrice,0);
       const laborSale = laborItems.reduce((s,it)=>s+it.qty*it.unitPrice,0);
       const section = (title, items, sale) => items.length ? `
         <tr><td colspan="${cols}" style="background:var(--surface-2);font-weight:800;font-size:12.5px">${title} (${items.length})</td></tr>
         ${items.map(rowHTML).join('')}
         <tr><td colspan="${cols-1}" style="font-weight:700;font-size:12px" class="muted">إجمالي ${title}</td><td style="font-weight:800">${money(sale)}</td></tr>` : '';
-      return `
+      return `${jobLinesNoteHTML(lv264, { cost:can('rep.profit'), warn:can('rep.profit') })}
     <table class="items-table"><thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th>${hasActCol?'<th></th>':''}</tr></thead>
     <tbody>
-      ${job.items.length ? section('🔩 قطع الغيار', partsItems, partsSale) + section('🛠 الخدمات والمصنعيات', laborItems, laborSale)
+      ${lines264.length ? section('🔩 قطع الغيار', partsItems, partsSale) + section('🛠 الخدمات والمصنعيات', laborItems, laborSale)
         : `<tr><td colspan="${cols}" class="muted" style="text-align:center">مفيش بنود لسه</td></tr>`}
     </tbody></table>
     <div class="flex-between" style="margin-top:10px"><span>الإجمالي</span><span class="total-row">${money(total)}</span></div>`;
@@ -6457,15 +6466,16 @@ function notifyCustomerWhatsapp(jobId){
 function brandedJobHTML(job){
   const car = DB.cars.find(c=>c.id===job.carId)||{};
   const cust = DB.customers.find(c=>c.id===job.customerId)||{};
-  const total = job.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
+  const lines264 = jobLinesView(job).items;   /* م264: الأمر المتفوتر ⇒ الصورة اللي بتتطبع/تتبعت للعميل بأسعار الفاتورة */
+  const total = lines264.reduce((s,it)=>s+it.qty*it.unitPrice,0);
   const s = DB.settings;
   /* ============ الملاحظة 71: نسخة العميل من أمر الشغل — نفس تقسيمة فاتورة الصيانة ============
      قسمين بس: قطع الغيار / المصنعية والخدمات. البنود بأسمائها بس —
      **من غير أي مصدر أو تصنيف** (داخلي/خارجي) ولا اسم الفني ولا تكلفة ولا مورد.
      ده تعديل عرض وطباعة فقط — البيانات الداخلية (kind/costPrice/supplierId/الفني)
      كلها زي ما هي في القاعدة وبتظهر في التقارير والربحية والنسخة الداخلية. */
-  const jPartsItems = job.items.filter(it=>it.kind==='part'||it.kind==='ext_part');
-  const jLaborItems = job.items.filter(it=>it.kind!=='part'&&it.kind!=='ext_part');
+  const jPartsItems = lines264.filter(it=>it.kind==='part'||it.kind==='ext_part');
+  const jLaborItems = lines264.filter(it=>it.kind!=='part'&&it.kind!=='ext_part');
   const jPartsTotal = jPartsItems.reduce((sum,it)=>sum+it.qty*it.unitPrice,0);
   const jLaborTotal = jLaborItems.reduce((sum,it)=>sum+it.qty*it.unitPrice,0);
   const jRows = (items)=> items.map((it,i)=>`<tr><td style="width:34px;text-align:center">${i+1}</td><td>${it.name}</td><td>${it.unitPrice.toFixed(2)}</td><td>${it.qty}</td><td>${(it.qty*it.unitPrice).toFixed(2)}</td></tr>`).join('');
@@ -6506,7 +6516,7 @@ function brandedJobHTML(job){
       <tbody>
         ${jSection('قطع الغيار', jPartsItems, jPartsTotal)}
         ${jSection('المصنعية والخدمات', jLaborItems, jLaborTotal)}
-        ${job.items.length ? '' : '<tr><td colspan="5">لا توجد بنود</td></tr>'}
+        ${lines264.length ? '' : '<tr><td colspan="5">لا توجد بنود</td></tr>'}
       </tbody>
     </table>
     <div class="binv-totals"><div class="binv-grand"><span>الإجمالي</span><span>${total.toFixed(2)} ج.م</span></div></div>
@@ -12848,6 +12858,32 @@ function openWorkOrderReportFromCust(jobId, customerId){
    الفرق اللي كان محيّر: «تاريخ الإغلاق» كان بيعرض وقت تغيير الحالة لـ«تم التسليم»
    (خروج السيارة) — وده ممكن يكون قبل الفاتورة بأيام. دلوقتي التلاتة منفصلين وواضحين. */
 function jobInvoiceOf(job){ return DB.invoices.find(i=>i.jobId===job.id && !i.cancelled) || null; }
+/* م264: الأمر المتفوتر ⇒ بنوده وأسعارها بتتعرض من الفاتورة نفسها (زي ما اتحاسب العميل).
+   أوامر قديمة (قبل حماية م260) سطورها اتكتبت فوقها من جهاز قديم بعد الفاتورة (فاتورة #0746 / أمر #0840: البيع رجع = التكلفة) —
+   العرض من الفاتورة بيوريها صح من غير ما نلمس البيانات. فاتورة قديمة من غير بنود ⇒ سطور الأمر زي ما هي. */
+/* م265: قطعة من المخزن اسمها اتغيّر على الأمر/الفاتورة ⇒ سطر صغير باسمها الأصلي في المخزن (عشان تتلاقي في البحث). اسم الصنف في المخزن عمره ما بيتغيّر من هنا. */
+function stockNameHTML(it){
+  if(!it || it.kind!=='part' || !it.partId) return '';
+  const p = DB.inventory.find(x=>x.id===it.partId);
+  if(!p || String(p.name||'').trim()===String(it.name||'').trim()) return '';
+  return `<div class="muted" style="font-size:11px">📦 في المخزن: ${escNote(p.name)}</div>`;
+}
+function jobLinesView(job){
+  const inv = jobInvoiceOf(job);
+  if(!inv || !Array.isArray(inv.items) || !inv.items.length) return { items: job.items, fromInvoice:false };
+  const keyOf = (x, i)=>(x && x.id) ? String(x.id) : '#'+i;
+  const invKeys = new Set(inv.items.map(keyOf));
+  const extra = job.items.filter((x, i)=>!invKeys.has(keyOf(x, i)));   /* بنود على الأمر ومش في الفاتورة */
+  return { items: inv.items, fromInvoice:true, invNo: inv.invNo, changed: !jobItemsVsInvoice(job.items, inv.items).same, extra };
+}
+/* o.cost: يوري تكلفة البنود الزيادة · o.warn: يوري تنبيه «الأمر اتغيّر». التنبيه مش في نسخة خدمة العملاء (ممكن تتعرض قدام العميل)، ولا في تفاصيل الأمر لحد مالوش صلاحية الربحية (زي كارت م260). نسخة المخزن بتوريه لأنها أصلاً بتعرض التكلفة. */
+function jobLinesNoteHTML(v, o){
+  if(!v || !v.fromInvoice) return '';
+  const showCost = !!(o && o.cost), warn = !!(o && o.warn);
+  return `<div class="muted" style="font-size:11.5px;margin:-4px 0 12px">🧾 البنود والأسعار من فاتورة #${v.invNo} (زي ما اتحاسب العميل)</div>`
+    + (warn && v.changed ? `<div style="font-size:12px;margin:-6px 0 12px;color:var(--danger)">⚠️ سطور أمر الشغل اتغيّرت بعد الفاتورة (أمر من قبل الحماية) — المعروض هنا من الفاتورة${v.extra.length
+      ? ' · بنود على الأمر ومش في الفاتورة: ' + v.extra.map(x=>escNote(x.name) + (showCost ? ' (' + money((Number(x.qty) || 0) * (Number(x.costPrice) || 0)) + ' تكلفة)' : '')).join('، ') : ''}</div>` : '');
+}
 function jobBillBadge(job){
   const inv = jobInvoiceOf(job);
   if(job.status==='ملغاة') return `<span class="tag tag-cancel">🚫 أمر ملغي</span>`;
@@ -12896,9 +12932,16 @@ function workOrderReportHTML(jobId, opts){
   const car = DB.cars.find(c=>c.id===job.carId)||{};
   const cust = DB.customers.find(c=>c.id===job.customerId)||{};
   const inv = DB.invoices.find(i=>i.jobId===job.id && !i.cancelled);
-  const parts = job.items.filter(it=>it.kind==='part');
-  const services = job.items.filter(it=>it.kind==='service');
-  const extItems = job.items.filter(it=>it.kind==='ext_part'||it.kind==='ext_work');
+  const lv264 = jobLinesView(job), lines = lv264.items;   /* م264: الأمر المتفوتر ⇒ البنود من الفاتورة */
+  /* م265: التقرير قسمين بس — 🔩 قطع الغيار (المخزن + الخارجية) و🛠 المصنعيات (الداخلية + الأعمال الخارجية)، وجنب كل بند نوعه */
+  const partLines = lines.filter(it=>it.kind==='part'||it.kind==='ext_part');
+  const laborLines = lines.filter(it=>it.kind==='service'||it.kind==='ext_work');
+  const typeOf265 = it=>it.kind==='part' ? 'المخزن' : it.kind==='ext_part' ? 'قطعة غيار خارجية' : it.kind==='ext_work' ? 'أعمال خارجية' : 'داخلية';
+  const supOf265 = it=>{ const sup = it.supplierId ? DB.suppliers.find(x=>x.id===it.supplierId) : null; return `${sup?sup.name:'—'} <span class="muted" style="font-size:11px">(${it.payMethod||'كاش'})</span>`; };
+  const whoOf265 = it=>it.kind==='ext_work' ? supOf265(it) : ((it.technicianId||it.technician) ? itemTechLabel(it, job) : '—');
+  const parts = lines.filter(it=>it.kind==='part');
+  const services = lines.filter(it=>it.kind==='service');
+  const extItems = lines.filter(it=>it.kind==='ext_part'||it.kind==='ext_work');
   /* م260: أمر متفوتر + صلاحية الربحية (والنسخة الكاملة بس — مش نسخة المخزن ولا خدمة العملاء) ⇒ أرقام الربحية من بنود الفاتورة نفسها */
   const ip260 = (inv && can('rep.profit') && !(opts && opts.csMode)) ? jobInvoiceProfit(job) : null;
   const partsCost = ip260 ? ip260.saleParts : parts.reduce((s,it)=>s+it.qty*it.unitPrice,0);
@@ -12906,9 +12949,9 @@ function workOrderReportHTML(jobId, opts){
   // الربحية الحقيقية: الإيراد (بيع كل البنود) − التكلفة (شراء القطع الداخلية والخارجية والأعمال الخارجية + خامات الدهان)
   const paintCost = (job.internalCosts||[]).reduce((s,ic)=>s+ic.total,0);
   const inPartsCost = ip260 ? ip260.inParts : parts.reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
-  const extPartsCost = ip260 ? ip260.extParts : job.items.filter(it=>it.kind==='ext_part').reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
-  const extWorkCost = ip260 ? ip260.extWork : job.items.filter(it=>it.kind==='ext_work').reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
-  const totalRevenue = ip260 ? ip260.revenue : job.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
+  const extPartsCost = ip260 ? ip260.extParts : lines.filter(it=>it.kind==='ext_part').reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
+  const extWorkCost = ip260 ? ip260.extWork : lines.filter(it=>it.kind==='ext_work').reduce((s,it)=>s+it.qty*(it.costPrice||0),0);
+  const totalRevenue = ip260 ? ip260.revenue : lines.reduce((s,it)=>s+it.qty*it.unitPrice,0);
   const totalCost = ip260 ? ip260.total : inPartsCost + extPartsCost + extWorkCost + paintCost;
   /* م129: الربحية بصافي المبيعات — الخصم بيقلل الإيراد (المعادلة الموحدة) */
   const pc129 = profitCore(totalRevenue, inv ? (inv.discount||0) : 0, totalCost);
@@ -12930,16 +12973,13 @@ function workOrderReportHTML(jobId, opts){
   </div>
   ${jobDatesGridHTML(job)}
   <div style="margin-bottom:14px"><span class="muted" style="font-size:12px">الحالة:</span> <span class="tag ${STATUS_TAGCLASS[job.status]}">${job.status}</span></div>
-  <label class="f-label">الخدمات المنفذة</label>
-  <table class="items-table" style="margin-top:6px;margin-bottom:14px"><thead><tr><th>الخدمة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
-  <tbody>${services.length? services.map(it=>`<tr class="it-main"><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>${woStampRow(st208, it, 4, { noBy:true }, job)}`).join('') : `<tr><td colspan="4" class="empty">لا توجد خدمات</td></tr>`}</tbody></table>
-  <label class="f-label">قطع الغيار المركبة</label>
-  <table class="items-table" style="margin-top:6px;margin-bottom:14px"><thead><tr><th>القطعة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
-  <tbody>${parts.length? parts.map(it=>`<tr class="it-main"><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>${woStampRow(st208, it, 4, { noBy:true }, job)}`).join('') : `<tr><td colspan="4" class="empty">لا توجد قطع مصروفة</td></tr>`}</tbody></table>
-  ${extItems.length? `
-  <label class="f-label">قطع غيار وأعمال خارجية</label>
-  <table class="items-table" style="margin-top:6px;margin-bottom:14px"><thead><tr><th>البند</th><th>النوع</th><th>الكمية</th><th>الإجمالي</th></tr></thead>
-  <tbody>${extItems.map(it=>`<tr class="it-main"><td>${it.name}</td><td>${kindLabelFull(it)}</td><td>${it.qty}</td><td>${money(it.qty*it.unitPrice)}</td></tr>${woStampRow(st208, it, 4, { noBy:true }, job)}`).join('')}</tbody></table>` : ''}
+  ${jobLinesNoteHTML(lv264, { cost:false, warn:false })}
+  <label class="f-label">🔩 قطع الغيار</label>
+  <table class="items-table" style="margin-top:6px;margin-bottom:14px"><thead><tr><th>القطعة</th><th>النوع</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+  <tbody>${partLines.length? partLines.map(it=>`<tr class="it-main"><td>${it.name}</td><td>${typeOf265(it)}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>${woStampRow(st208, it, 5, { noBy:true }, job)}`).join('') : `<tr><td colspan="5" class="empty">لا توجد قطع غيار</td></tr>`}</tbody></table>
+  <label class="f-label">🛠 المصنعيات</label>
+  <table class="items-table" style="margin-top:6px;margin-bottom:14px"><thead><tr><th>المصنعية</th><th>النوع</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+  <tbody>${laborLines.length? laborLines.map(it=>`<tr class="it-main"><td>${it.name}</td><td>${typeOf265(it)}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>${woStampRow(st208, it, 5, { noBy:true }, job)}`).join('') : `<tr><td colspan="5" class="empty">لا توجد مصنعيات</td></tr>`}</tbody></table>
   ${paintItems.length? `
   <label class="f-label">🎨 خامات دهان مستخدمة</label>
   <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>الخامة</th><th>الكمية</th></tr></thead>
@@ -12973,16 +13013,13 @@ function workOrderReportHTML(jobId, opts){
   </div>
   ${jobDatesGridHTML(job)}
   <div style="margin-bottom:14px"><span class="muted" style="font-size:12px">الحالة:</span> <span class="tag ${STATUS_TAGCLASS[job.status]}">${job.status}</span></div>
-  <label class="f-label">قطع الغيار المصروفة من المخزن</label>
-  <table class="items-table" style="margin:6px 0 14px"><thead><tr><th>القطعة</th><th>الكمية</th><th>تكلفة الوحدة</th><th>الإجمالي</th></tr></thead>
-  <tbody>${parts.length? parts.map(it=>`<tr class="it-main"><td>${it.name}</td><td>${it.qty}</td><td>${money(it.costPrice||0)}</td><td>${money(it.qty*(it.costPrice||0))}</td></tr>${woStampRow(st208, it, 4, null, job)}`).join('') : `<tr><td colspan="4" class="empty">لا توجد قطع مصروفة</td></tr>`}</tbody></table>
-  ${extItems.length? `
-  <label class="f-label">قطع غيار وأعمال خارجية</label>
-  <table class="items-table" style="margin:6px 0 14px"><thead><tr><th>البند</th><th>النوع</th><th>المورد/الجهة</th><th>التكلفة</th></tr></thead>
-  <tbody>${extItems.map(it=>{
-    const sup = it.supplierId ? DB.suppliers.find(s=>s.id===it.supplierId) : null;
-    return `<tr class="it-main"><td>${it.name}</td><td>${kindLabelFull(it)}</td><td>${sup?sup.name:'—'} <span class="muted" style="font-size:11px">(${it.payMethod||'كاش'})</span></td><td>${money(it.qty*(it.costPrice||0))}</td></tr>${woStampRow(st208, it, 4, null, job)}`;
-  }).join('')}</tbody></table>` : ''}
+  ${jobLinesNoteHTML(lv264, { cost:true, warn:true })}
+  <label class="f-label">🔩 قطع الغيار</label>
+  <table class="items-table" style="margin:6px 0 14px"><thead><tr><th>القطعة</th><th>النوع</th><th>المورد/الجهة</th><th>الكمية</th><th>تكلفة الوحدة</th><th>الإجمالي</th></tr></thead>
+  <tbody>${partLines.length? partLines.map(it=>`<tr class="it-main"><td>${it.name}${stockNameHTML(it)}</td><td>${typeOf265(it)}</td><td>${it.kind==='ext_part' ? supOf265(it) : '—'}</td><td>${it.qty}</td><td>${money(it.costPrice||0)}</td><td>${money(it.qty*(it.costPrice||0))}</td></tr>${woStampRow(st208, it, 6, null, job)}`).join('') : `<tr><td colspan="6" class="empty">لا توجد قطع غيار</td></tr>`}</tbody></table>
+  <label class="f-label">🛠 المصنعيات</label>
+  <table class="items-table" style="margin:6px 0 14px"><thead><tr><th>المصنعية</th><th>النوع</th><th>الفني/الجهة</th><th>الكمية</th><th>التكلفة</th></tr></thead>
+  <tbody>${laborLines.length? laborLines.map(it=>`<tr class="it-main"><td>${it.name}</td><td>${typeOf265(it)}</td><td>${whoOf265(it)}</td><td>${it.qty}</td><td>${it.kind==='ext_work' ? money(it.qty*(it.costPrice||0)) : '—'}</td></tr>${woStampRow(st208, it, 5, null, job)}`).join('') : `<tr><td colspan="5" class="empty">لا توجد مصنعيات</td></tr>`}</tbody></table>
   ${paintItems.length? `
   <label class="f-label">🎨 خامات الدهان</label>
   <table style="margin:6px 0 14px"><thead><tr><th>الخامة</th><th>الكمية</th><th>التكلفة</th><th>بواسطة</th></tr></thead>
@@ -13031,21 +13068,16 @@ function workOrderReportHTML(jobId, opts){
   ${jobDatesGridHTML(job)}
   <div style="margin-bottom:14px"><span class="muted" style="font-size:12px">الحالة:</span> <span class="tag ${STATUS_TAGCLASS[job.status]}">${job.status}</span></div>
   ${(job.technicianId||job.technician) ? `<div class="muted" style="font-size:12.5px;margin-bottom:14px">الفني المسجّل على الأمر (سجل قديم): ${job.technicianId ? techLabelOf(job.technicianId) : job.technician}</div>` : ''}
-  <label class="f-label">الخدمات المنفذة</label>
-  <table class="items-table" style="margin-top:6px;margin-bottom:14px"><thead><tr><th>الخدمة</th><th>الفني المنفذ</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
-  <tbody>${services.length? services.map(it=>`<tr class="it-main"><td>${it.name}</td><td>${(it.technicianId||it.technician)?itemTechLabel(it, job):'—'}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>${woStampRow(st208, it, 5, null, job)}`).join('') : `<tr><td colspan="5" class="empty">لا توجد خدمات</td></tr>`}</tbody></table>
-  <label class="f-label">قطع الغيار المصروفة</label>
-  <table class="items-table" style="margin-top:6px;margin-bottom:14px"><thead><tr><th>القطعة</th><th>الكمية</th><th>سعر البيع</th><th>الإجمالي</th></tr></thead>
-  <tbody>${parts.length? parts.map(it=>`<tr class="it-main"><td>${it.name}
-      <div class="muted" style="font-size:11px">💸 التكلفة: ${money(it.costPrice||0)}${it.qty>1?' × '+it.qty+' = '+money(it.qty*(it.costPrice||0)):''}</div></td>
-    <td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>${woStampRow(st208, it, 4, null, job)}`).join('') : `<tr><td colspan="4" class="empty">لا توجد قطع مصروفة</td></tr>`}</tbody></table>
-  ${extItems.length? `
-  <label class="f-label">قطع غيار وأعمال خارجية</label>
-  <table class="items-table" style="margin-top:6px;margin-bottom:14px"><thead><tr><th>البند</th><th>النوع</th><th>المورد/الجهة</th><th>التكلفة</th><th>البيع</th></tr></thead>
-  <tbody>${extItems.map(it=>{
-    const sup = it.supplierId ? DB.suppliers.find(s=>s.id===it.supplierId) : null;
-    return `<tr class="it-main"><td>${it.name}</td><td>${kindLabelFull(it)}</td><td>${sup?sup.name:'—'} <span class="muted" style="font-size:11px">(${it.payMethod||'كاش'})</span></td><td>${money(it.qty*(it.costPrice||0))}</td><td>${money(it.qty*it.unitPrice)}</td></tr>${woStampRow(st208, it, 5, null, job)}`;
-  }).join('')}</tbody></table>` : ''}
+  ${jobLinesNoteHTML(lv264, { cost:true, warn:true })}
+  <label class="f-label">🔩 قطع الغيار</label>
+  <table class="items-table" style="margin-top:6px;margin-bottom:14px"><thead><tr><th>القطعة</th><th>النوع</th><th>الكمية</th><th>سعر البيع</th><th>الإجمالي</th></tr></thead>
+  <tbody>${partLines.length? partLines.map(it=>`<tr class="it-main"><td>${it.name}${stockNameHTML(it)}
+      <div class="muted" style="font-size:11px">💸 التكلفة: ${money(it.costPrice||0)}${it.qty>1?' × '+it.qty+' = '+money(it.qty*(it.costPrice||0)):''}${it.kind==='ext_part' ? ' · المورد: '+supOf265(it) : ''}</div></td>
+    <td>${typeOf265(it)}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>${woStampRow(st208, it, 5, null, job)}`).join('') : `<tr><td colspan="5" class="empty">لا توجد قطع غيار</td></tr>`}</tbody></table>
+  <label class="f-label">🛠 المصنعيات</label>
+  <table class="items-table" style="margin-top:6px;margin-bottom:14px"><thead><tr><th>المصنعية</th><th>النوع</th><th>الفني/الجهة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+  <tbody>${laborLines.length? laborLines.map(it=>`<tr class="it-main"><td>${it.name}${it.kind==='ext_work' ? `<div class="muted" style="font-size:11px">💸 التكلفة: ${money(it.qty*(it.costPrice||0))}</div>` : ''}</td>
+    <td>${typeOf265(it)}</td><td>${whoOf265(it)}</td><td>${it.qty}</td><td>${money(it.unitPrice)}</td><td>${money(it.qty*it.unitPrice)}</td></tr>${woStampRow(st208, it, 6, null, job)}`).join('') : `<tr><td colspan="6" class="empty">لا توجد مصنعيات</td></tr>`}</tbody></table>
   ${paintItems.length? `
   <label class="f-label">🎨 خامات الدهان (تكلفة داخلية — لا تظهر للعميل)</label>
   <table style="margin-top:6px;margin-bottom:14px"><thead><tr><th>الخامة</th><th>الكمية</th><th>التكلفة</th><th>بواسطة</th></tr></thead>
@@ -17778,8 +17810,8 @@ function openPurApprove(purchaseId){
        <input type="hidden" name="paMethod" value="${p.paymentMethod}">`}
     <div id="paSrcBox" style="display:${isCredit?'none':'block'}">
       <div class="form-row"><label class="f-label">مصدر الدفع (الحساب اللي هيتخصم منه)</label>
-        <select class="f" id="paSrcAcc">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
-      <div class="muted" style="font-size:11px;margin-bottom:6px">${purAutoPayment(p)&&purAutoPayment(p).finMoveId?'الفاتورة متخصومة بالفعل — الاعتماد هيسجّل المصدر.':'هيتخصم '+money(Math.max(0,p.total-purManualPaid(p)))+' من الحساب المختار.'}</div>
+        <select class="f" id="paSrcAcc" onchange="paSrcChanged267('${p.id}')">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}${can('sup.pay')?custodyPayOptionsHTML():''}</select></div>
+      <div class="muted" id="paSrcHint" style="font-size:11px;margin-bottom:6px">${purAutoPayment(p)&&purAutoPayment(p).finMoveId?'الفاتورة متخصومة بالفعل — الاعتماد هيسجّل المصدر.':'هيتخصم '+money(Math.max(0,p.total-purManualPaid(p)))+' من الحساب المختار.'}</div>
     </div>
     <div class="card" style="border-right:3px solid var(--accent-2);padding:8px 10px;margin-bottom:10px;font-size:11.5px">
       عند الاعتماد: النظام بيعكس الأثر المالي القديم ويطبّق الجديد — <b>بدون أي ازدواج</b>. آجل يرفع مديونية المورد، وكاش يخصم من الخزنة.</div>
@@ -17788,6 +17820,104 @@ function openPurApprove(purchaseId){
       ? `<button class="btn btn-accent" style="width:100%" onclick="purFinApprove('${p.id}')">✅ اعتماد مالي وإغلاق الفاتورة</button>`
       : `<div class="muted" style="font-size:12px">عندك صلاحية المراجعة بس — الاعتماد المالي والإغلاق محتاج صلاحية «الاعتماد المالي وإغلاق فاتورة المورد».</div>`}
   `, true);
+  try{ paSrcChanged267(p.id); }catch(e){}   /* م268: الجملة اللي تحت «مصدر الدفع» بتتظبط على الاختيار الافتراضي (لو مفيش حسابات = أول عهدة) */
+}
+/* ============ م267: الاعتماد المالي لفاتورة شراء كاش «من عهدة موظف» ============
+   طلب سيف: «أدوس كاش، وفي مصدر الدفع ألاقي العهد المفتوحة … يتخصم من العهدة تلقائي — ولو الفاتورة أكبر من العهدة مرفوض».
+   نفس آلية «سداد مورد من العهدة» (م263) بالظبط: الفلوس خرجت من الخزنة يوم إصدار العهدة ⇒ مفيش أي حركة على أي حساب.
+   • الفاتورة بتتقفل «كاش» من غير دفعة تلقائية — الدفعة المسجّلة عليها {fromCustody} زي السداد المحدد من العهدة.
+   • صف «سداد مورد» (accountId:null · payAccount «عهدة #N — الموظف» · fromCustody · purchaseId).
+   • استخدام على العهدة (kind:'supplier_payment') ⇒ في التسوية سطر ثابت ومابيتعملهوش مصروف تاني، والباقي يفضل متاح.
+   • لازم نت: قراءة صف العهدة من السيرفر قبل أي تعديل، ومن بعدها لحد آخر تعديل في الذاكرة مفيش await.
+   • إعادة فتح الفاتورة بعد كده مابتلمسش السداد ده (زي أي دفعة لمورد) — الاعتماد التاني بيخصم الفرق بس لو الفاتورة زادت. */
+function purCashNeed267(p){
+  if(!p) return 0;
+  const returned = (DB.supplierReturns||[]).filter(r=>r.invoiceId===p.id).reduce((s,r)=>s+(r.payableReduction||0),0);
+  return Math.max(0, Math.round((p.total - purManualPaid(p) - returned)*100)/100);
+}
+function paSrcChanged267(pid){
+  const p = DB.purchases.find(x=>x.id===pid), sel = document.getElementById('paSrcAcc'), hint = document.getElementById('paSrcHint');
+  if(!p || !sel || !hint) return;
+  const v = String(sel.value||'');
+  if(v.indexOf('cus:')===0){
+    const c = DB.custodies.find(x=>x.id===v.slice(4));
+    const need = purCashNeed267(p), av = c ? custodyAvailable(c) : 0, src = custodySrcName(c), lbl = c ? escNote(custodyPayLabel(c)) : 'العهدة';
+    const oldAuto = purAutoPayment(p);   /* م268: الفاتورة كانت اتخصمت من حساب ⇒ نقول إن الخصم ده هيرجع للحساب */
+    const back = (oldAuto && oldAuto.finMoveId) ? ' — والـ'+money(oldAuto.amount)+' اللي كانت اتخصمت من الحساب هترجع له' : '';
+    hint.innerHTML = need > av + 0.005
+      ? `<span style="color:var(--danger);font-weight:700">⛔ المتاح في ${lbl} ${money(av)} بس — والفاتورة محتاجة ${money(need)}. اختار حساب أو عهدة تانية.</span>`
+      : `هيتسجّل سداد ${money(need)} من ${lbl}${src?' (العهدة طالعة من '+escNote(src)+')':''} — <b>من غير خصم من أي حساب</b> (الفلوس خرجت يوم إصدار العهدة)${back}. الباقي في العهدة بعدها: ${money(Math.max(0, Math.round((av-need)*100)/100))}.`;
+  } else {
+    hint.textContent = purAutoPayment(p)&&purAutoPayment(p).finMoveId ? 'الفاتورة متخصومة بالفعل — الاعتماد هيسجّل المصدر.' : 'هيتخصم '+money(Math.max(0,p.total-purManualPaid(p)))+' من الحساب المختار.';
+  }
+}
+async function purFinApproveCus267(purchaseId, cusId, reason, wantMethod){
+  if(!can('pur.fin_approve')){ toast('مالكش صلاحية الاعتماد المالي وإغلاق الفاتورة', true); return; }
+  if(!can('sup.pay')){ toast('الدفع من عهدة محتاج صلاحية «سداد الموردين»', true); return; }
+  if(!DB.custodies.find(c=>c.id===cusId)){ toast('العهدة دي مش مفتوحة', true); return; }
+  /* م268 (مراجعة v287): مع صف العهدة بنقرا صف الفاتورة نفسها من السيرفر كمان — جهاز تاني اعتمدها أو دفع عليها
+     في نفس اللحظة ⇒ مرفوض بدل ما تتدفع مرتين (المسار ده محتاج نت أصلاً، فالقراءة دي مالهاش تكلفة زيادة) */
+  const [rd, rp] = await Promise.all([custodyServerRow263(cusId), purServerRow268(purchaseId)]);
+  if(!rd.ok || !rp.ok){ toast('الدفع من العهدة محتاج نت عشان نتأكد إن العهدة لسه مفتوحة — جرّب تاني أو اختار حساب', true); return; }
+  /* بعد الانتظار: السجلات ممكن اتبدّلت بالمزامنة اللحظية ⇒ نجيبها من جديد ونتحقق تاني */
+  const p = DB.purchases.find(x=>x.id===purchaseId);
+  if(!p){ toast('الفاتورة غير موجودة', true); return; }
+  if(purIsClosed(p) || (rp.data && purIsClosed(rp.data))){ toast('الفاتورة اتعمدت ماليًا واتقفلت (يمكن من جهاز تاني) — افتحها تاني', true); refreshContent(); return; }
+  if(rp.data && Math.abs(purManualPaid(rp.data) - purManualPaid(p)) > 0.005){ toast('اتسجّلت دفعة على الفاتورة دي من جهاز تاني — افتحها تاني وراجع المتبقي', true); refreshContent(); return; }
+  const cus = DB.custodies.find(c=>c.id===cusId);
+  if(!cus){ toast('العهدة دي مش مفتوحة', true); return; }
+  if(rd.data) custodyAdoptServer263(cus, rd.data);
+  if(cus.status!=='open'){ toast('العهدة دي اتقفلت — اختار حساب أو عهدة تانية', true); refreshContent(); return; }
+  /* ===== التحقق + كل التعديلات في الذاكرة مرة واحدة (من غير await) ===== */
+  const need = purCashNeed267(p);   // المتبقي على الفاتورة (من غير الدفعة الكاش التلقائية القديمة — دي هترجع لحسابها)
+  const av = custodyAvailable(cus);
+  if(need <= 0.005){ toast('الفاتورة مدفوعة بالكامل — مفيش حاجة تتخصم من العهدة', true); return; }
+  if(need > av + 0.005){ toast('المتاح في '+custodyPayLabel(cus)+' '+money(av)+' بس — والفاتورة محتاجة '+money(need)+' (مرفوض)', true); return; }
+  const oldMethod = p.paymentMethod, methodChanged = wantMethod !== oldMethod;
+  const beforeBal = supplierBalance(p.supplierId).balance;
+  const oldAuto = purAutoPayment(p);
+  const reversed = purReversePayEffect(p);   // دفعة كاش قديمة من حساب ⇒ ترجع للحساب (مفيش ازدواج)
+  p.paymentMethod = wantMethod;             // «كاش» — من غير دفعة تلقائية: المدفوع متسجّل من العهدة تحت
+  const supNm = supName(p.supplierId), now = new Date().toISOString(), by = actorName(), src = custodySrcName(cus);
+  const spay = { id:uid('spay'), amount:need, date:now, fromCustody:cus.id };
+  p.payments = p.payments || []; p.payments.push(spay);
+  const supExp = { id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'supplier_payment', category:'سداد مورد',
+    amount:need, note:supNm, description:'سداد فاتورة شراء #'+p.purchaseNo+' للمورد '+supNm, supplierId:p.supplierId,
+    accountId:null, payAccount:custodyPayLabel(cus), fromCustody:cus.id, purchaseId:p.id, purchaseNo:p.purchaseNo, payId:spay.id,
+    date:now, recordedBy:by, system:true };
+  /* م268 (مراجعة v287): صور إيصال الدفعة الكاش القديمة (purReversePayEffect بيشيلها على الفاتورة) بتنتقل على صف السداد من العهدة — زي purApplyPayEffect */
+  if(Array.isArray(p.payPhotos) && p.payPhotos.length){ supExp.photos = p.payPhotos.map(x=>Object.assign({}, x)); delete p.payPhotos; }
+  DB.expenses.push(supExp);
+  cus.uses = Array.isArray(cus.uses) ? cus.uses : [];
+  const cusUse = { id:uid('cuse'), kind:'supplier_payment', name:'سداد '+supNm, expId:supExp.id, expNo:supExp.expNo, supplierId:p.supplierId, supplierName:supNm,
+    invoices:[{ purchaseId:p.id, purchaseNo:p.purchaseNo, amount:need }], amount:need, voucherNo:null, at:now, by, viaApprove:true };
+  cus.uses.push(cusUse);
+  const changes = [];
+  if(methodChanged) changes.push({ field:'طريقة الدفع', before:oldMethod, after:wantMethod });
+  changes.push({ field:'مصدر الدفع', before:'—', after:escNote(custodyPayLabel(cus)+(src?' (العهدة طالعة من '+src+')':''))+' — '+money(need) });   /* م268: سجل الفاتورة بيتعرض HTML ⇒ الأسامي متأمّنة */
+  if(reversed && oldAuto && oldAuto.finMoveId) changes.push({ field:'الدفعة الكاش القديمة', before:money(oldAuto.amount)+' مخصومة من حساب', after:'رجعت للحساب — واتدفعت من العهدة' });
+  changes.push({ field:'الحالة', before: purStatus(p)==='pending' ? 'بانتظار المراجعة / الاعتماد (Level 1)'
+    : 'تمت المراجعة'+(p.approvedBy?' بواسطة '+p.approvedBy:'')+' — بانتظار الاعتماد المالي (Level 2)', after:'معتمدة مالياً ومقفولة (Level 3)' });
+  p.status = 'approved'; p.finApproved = true; p.finApprovedBy = by; p.finApprovedAt = now;
+  const afterBal = supplierBalance(p.supplierId).balance;
+  const debtImpact = Math.round((afterBal - beforeBal)*100)/100;
+  changes.push({ field:'مديونية المورد', before:money(beforeBal),
+    after:money(afterBal)+(Math.abs(debtImpact)>0.009?' ('+(debtImpact>0?'+':'−')+money(Math.abs(debtImpact))+')':' (بدون تغيير)') });
+  purLog(p, 'fin_approved', changes, reason);
+  /* ===== الحفظ ===== */
+  await Promise.all([saveKey('purchases', DB.purchases), saveKey('expenses', DB.expenses), saveKey('custodies')]
+    .concat(reversed ? [saveKey('finMoves', DB.finMoves)] : []));
+  /* زي م263: تحديث لحظي لنفس العهدة من جهاز تاني أثناء الحفظ ممكن يكتب فوق استخدامنا ⇒ نرجّعه ونحفظ تاني */
+  { const cx = DB.custodies.find(c=>c.id===cus.id); if(cx && !custodyUses(cx).some(u=>u.id===cusUse.id)){ cx.uses = custodyUses(cx).concat([cusUse]); await saveKey('custodies'); } }
+  await logAction('🟢 اعتماد مالي لفاتورة شراء #'+p.purchaseNo+auditDetails([
+    ['المورد', supNm], ['طريقة الدفع', wantMethod+(methodChanged?' (كانت '+oldMethod+')':'')],
+    ['الدفع من', custodyPayLabel(cus)+(src?' — العهدة طالعة من '+src:'')], ['المبلغ', money(need)],
+    ['مديونية المورد', money(beforeBal)+' ← '+money(afterBal)], ['السبب', reason||'—']]));
+  await logAction('سداد '+money(need)+' للمورد '+supNm+' من '+custodyPayLabel(cus)+' — فواتير: #'+p.purchaseNo+' ('+money(need)+')');
+  notify('purchase_approve', 'اعتماد مالي لفاتورة شراء #'+p.purchaseNo+' — '+supNm+' (كاش من '+custodyPayLabel(cus)+')'+(methodChanged?' [تغيّرت من '+oldMethod+']':''),
+    { category:'financial', refType:'purchase', refId:p.id, refNo:p.purchaseNo, amount:p.total });
+  { const cn = DB.custodies.find(c=>c.id===cus.id) || cus; custodyCheckAlerts263(cn); }   /* سحب زيادة أو اتقفلت من جهاز تاني أثناء الحفظ ⇒ المالك يتبلّغ */
+  closeModal(); toast('تم الاعتماد المالي — واتخصم '+money(need)+' من '+custodyPayLabel(cus)); refreshContent();
 }
 function paToggleSrc(){
   const m = (document.querySelector('input[name="paMethod"]:checked')||{}).value;
@@ -17804,10 +17934,16 @@ async function purFinApprove(purchaseId){
   const reason = ((document.getElementById('paReason')||{}).value||'').trim();
   const wantMethod = ((document.querySelector('input[name="paMethod"]:checked')||{}).value) || p.paymentMethod;
   const isCredit = wantMethod === 'آجل';
-  const srcAcc = isCredit ? null : ((document.getElementById('paSrcAcc')||{}).value || null);
+  let srcAcc = isCredit ? null : ((document.getElementById('paSrcAcc')||{}).value || null);
   if(!isCredit && !srcAcc){ toast('اختار مصدر الدفع (الحساب)', true); return; }
   const methodChanged = wantMethod !== p.paymentMethod;
   if(methodChanged && !can('pur.pay_method')){ toast('مالكش صلاحية تغيير طريقة الدفع', true); return; }
+  /* م267: مصدر الدفع = عهدة موظف مفتوحة («cus:<id>») ⇒ مسار خاص: الفاتورة تتقفل كاش والمبلغ يتسجّل سداد من العهدة */
+  if(!isCredit && String(srcAcc).indexOf('cus:')===0){
+    const need267 = purCashNeed267(p);
+    if(need267 > 0.005) return purFinApproveCus267(p.id, String(srcAcc).slice(4), reason, wantMethod);
+    srcAcc = null;   /* مفيش متبقي على الفاتورة ⇒ اعتماد عادي من غير أي خصم */
+  }
   const oldMethod = p.paymentMethod;
   const beforeBal = supplierBalance(p.supplierId).balance;
   // القاعدة الذهبية: عكس القديم ثم تطبيق الجديد (بدون ازدواج)
@@ -18373,6 +18509,75 @@ function smartMatch(term, parts){
   if(!q) return true;
   const hay = normSearch(Array.isArray(parts) ? parts.filter(x=>x!==null && x!==undefined && x!=='').join(' ') : parts);
   return q.split(' ').every(w=>hay.includes(w));
+}
+/* ============================================================
+   م266 — بحث ذكي في قوايم «نوع المصروف» (طلب سيف: «لستة طويلة قوي، عايز أكتب ويظهر علطول»)
+   أي <select data-ss> جوه نافذة: بيتحط فوقه خانة بحث، والـselect الأصلي بيفضل موجود ومخفي —
+   كل الكود اللي بيقرا .value منه شغال زي ما هو. البحث بـ smartMatch (أ/إ/ا · ة/ه · ى/ي) في الاسم والمجموعة.
+   ============================================================ */
+function ssEnhance(root){
+  if(!root || !root.querySelectorAll) return;
+  root.querySelectorAll('select[data-ss]').forEach(sel=>{ try{ ssMake(sel); }catch(e){ console.warn('ss', e); } });
+}
+function ssItems(sel){
+  const out = [];
+  sel.querySelectorAll('option').forEach(o=>{
+    if(!o.value) return;
+    const p = o.parentNode;
+    const g = p && String(p.tagName||'').toUpperCase()==='OPTGROUP' ? (p.getAttribute('label')||'') : '';
+    out.push({ v:o.value, t:String(o.textContent||'').trim(), g });
+  });
+  return out;
+}
+/* الفلترة لوحدها (عشان تتختبر من غير متصفح) */
+function ssFilter(items, q){ return items.filter(x=>smartMatch(q, [x.t, x.g])); }
+function ssMake(sel){
+  if(!sel || sel.getAttribute('data-ss-on')) return;
+  sel.setAttribute('data-ss-on', '1');
+  const items = ssItems(sel);
+  const box = document.createElement('div'); box.className = 'ss-box';
+  sel.parentNode.insertBefore(box, sel);
+  const inp = document.createElement('input');
+  inp.className = 'f ss-in'; inp.type = 'text';
+  inp.setAttribute('autocomplete', 'off');
+  inp.setAttribute('placeholder', '🔎 اكتب جزء من اسم النوع…');
+  const list = document.createElement('div'); list.className = 'ss-list'; list.style.display = 'none';
+  box.appendChild(inp); box.appendChild(list); box.appendChild(sel);
+  sel.style.display = 'none';
+  const cur = () => items.find(x=>x.v === sel.value);
+  const showCur = () => { const c = cur(); inp.value = c ? c.t : ''; };
+  let hits = [], hi = 0;
+  const draw = () => {
+    const c = cur();
+    const q = (c && inp.value === c.t) ? '' : inp.value;   /* فاتح والاسم المختار مكتوب = اعرض الكل */
+    hits = ssFilter(items, q); hi = 0;
+    let g = null;
+    list.innerHTML = hits.length ? hits.map((x, i)=>{
+      const head = x.g !== g ? ((g = x.g) ? `<div class="ss-g">${escNote(x.g)}</div>` : '') : '';
+      return head + `<div class="ss-it${i === hi ? ' on' : ''}" data-i="${i}">${escNote(x.t)}</div>`;
+    }).join('') : `<div class="ss-empty">مفيش نوع بالاسم ده</div>`;
+    list.style.display = 'block';
+  };
+  const mark = () => list.querySelectorAll('.ss-it').forEach(el=>el.classList.toggle('on', +el.getAttribute('data-i') === hi));
+  const pick = i => {
+    const x = hits[i]; if(!x) return;
+    sel.value = x.v; showCur(); list.style.display = 'none';
+    try{ sel.dispatchEvent(new Event('change', { bubbles:true })); }catch(e){}
+  };
+  inp.addEventListener('focus', ()=>{ draw(); try{ inp.select(); }catch(e){} });
+  inp.addEventListener('input', draw);
+  inp.addEventListener('keydown', e=>{
+    if(e.key === 'ArrowDown'){ e.preventDefault(); if(list.style.display === 'none') draw(); hi = Math.min(hits.length - 1, hi + 1); mark(); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); hi = Math.max(0, hi - 1); mark(); }
+    else if(e.key === 'Enter'){ e.preventDefault(); pick(hi); }
+    else if(e.key === 'Escape'){ list.style.display = 'none'; showCur(); }
+  });
+  list.addEventListener('mousedown', e=>{
+    const it = e.target && e.target.closest ? e.target.closest('.ss-it') : null;
+    if(it){ e.preventDefault(); pick(+it.getAttribute('data-i')); }
+  });
+  inp.addEventListener('blur', ()=>setTimeout(()=>{ list.style.display = 'none'; showCur(); }, 150));
+  showCur();
 }
 /* مسافة تحرير بسيطة بسقف (للأخطاء الإملائية) */
 function editDist(a,b,max){
@@ -21093,6 +21298,15 @@ function openAccountDetail(accId){
         ${acc.archivedReason?'<br>السبب: '+acc.archivedReason:''}</div>
       ${can('fin.archive')?`<button class="btn btn-sm" style="margin-top:7px" onclick="restoreFinAccount('${accId}')">♻️ رجّع الحساب للاستخدام</button>`:''}
     </div>`:''}
+    ${can('fin.manage')?`
+    <!-- م266: تعديل اسم الخزنة / الحساب (نفس صلاحية إنشاء الحسابات) — الحركات مربوطة بالـid فمفيش حاجة بتتكسر -->
+    <div class="card" style="padding:11px 13px;margin-bottom:14px">
+      <label class="f-label" style="display:block;margin-bottom:6px">✏️ تعديل اسم الحساب</label>
+      <div class="grid g2">
+        <div class="form-row" style="margin:0"><input class="f" id="accNewName" maxlength="60" value="${escAttr(acc.name)}"></div>
+        <div style="align-self:flex-end"><button class="btn" style="width:100%" onclick="renameFinAccount('${accId}')">حفظ الاسم</button></div>
+      </div>
+    </div>`:''}
     ${can('fin.adjust')?`
     <!-- م87: تعديل الرصيد بقى بحركة تسوية موثقة بدل تعديل صامت للرصيد الافتتاحي -->
     <div class="card" style="padding:11px 13px;margin-bottom:14px">
@@ -21103,7 +21317,7 @@ function openAccountDetail(accId){
       </div>
       <div class="grid g2">
         <div class="form-row" style="margin:0"><label class="f-label">الرصيد الصحيح</label>
-          <input class="f" id="adjTarget" type="number" step="any" value="${accBalance(accId)}"
+          <input class="f" id="adjTarget" type="number" step="any" value="${Math.round(accBalance(accId)*100)/100}"
             oninput="previewAccAdjust('${accId}')"></div>
         <div style="align-self:flex-end"><button class="btn btn-accent" style="width:100%" onclick="saveAccBalanceAdjust('${accId}')">تسجيل التسوية</button></div>
       </div>
@@ -21126,6 +21340,25 @@ function openAccountDetail(accId){
       <td>${m.type==='in'?'<span class="tag tag-paid">+</span>':'<span class="tag tag-unpaid">−</span>'} ${money(m.amount)}</td>
       <td class="muted" style="font-size:11.5px">${m.note||'—'}</td></tr>`).join('') : '<tr><td class="empty">لا توجد حركات</td></tr>'}</tbody></table>
   `);
+}
+/* م266: تغيير اسم خزنة / حساب مالي (طلب سيف: «في خزن المحاسب دخلها عايز اغير اسمها»).
+   الحركات والمصروفات والتحصيلات مربوطة بـ accountId، فبتظهر بالاسم الجديد علطول.
+   إيصالات قليلة محفوظ فيها الاسم وقتها (إيداعات/مرتبات اتصرفت) بتفضل بالاسم القديم زي ما اتطبعت. */
+async function renameFinAccount(accId){
+  if(!can('fin.manage')){ toast('مالكش صلاحية إدارة الحسابات المالية', true); return; }
+  const acc = DB.finAccounts.find(a=>a.id===accId);
+  if(!acc){ toast('الحساب مش موجود', true); return; }
+  const name = String((document.getElementById('accNewName')||{}).value||'').trim().replace(/\s+/g,' ');
+  const old = acc.name;
+  if(!name){ toast('اكتب اسم الحساب', true); return; }
+  if(name.length > 60){ toast('الاسم طويل قوي (60 حرف بالكتير)', true); return; }
+  if(name === old){ toast('مفيش تغيير في الاسم', true); return; }
+  if(DB.finAccounts.some(a=>a.id!==accId && normSearch(a.name)===normSearch(name))){ toast('يوجد حساب بنفس الاسم', true); return; }
+  acc.name = name;
+  acc.renamedAt = new Date().toISOString(); acc.renamedBy = actorName();
+  await saveKey('finAccounts', DB.finAccounts);
+  await logAction('✏️ تغيير اسم حساب مالي'+auditDetails([['من', old], ['إلى', name], ['النوع', acc.kind||'—']]));
+  closeModal(); toast('تم تغيير اسم الحساب'); refreshContent();
 }
 async function saveOpeningBalance(accId){
   // م88: تعديل الأرصدة بقى صلاحية مستقلة — مش تابعة لإدارة الحسابات
@@ -21658,7 +21891,7 @@ function openNewExpenseModal(){
     <h3>مصروف جديد <span class="muted" style="font-size:12px">— رقم العملية #${nextNoVal}</span></h3>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">التاريخ</label><input class="f" id="expDate" type="date" value="${today}"></div>
-      <div class="form-row"><label class="f-label">نوع المصروف</label><select class="f" id="expCatSel">${expCatOptionsHTML()}</select></div>
+      <div class="form-row"><label class="f-label">نوع المصروف</label><select class="f" id="expCatSel" data-ss>${expCatOptionsHTML()}</select></div>
     </div>
     <div class="form-row"><label class="f-label">وصف المصروف</label><input class="f" id="expDesc" placeholder="مثال: فاتورة كهرباء شهر يوليو"></div>
     <div class="grid g2">
@@ -22115,6 +22348,12 @@ function custodySupplierUses(c){ return custodyUses(c).filter(u=>u.kind==='suppl
 function custodyUsed(c){ return Math.round(custodyUses(c).reduce((s,u)=>s+(+u.amount||0),0)*100)/100; }
 function custodyAvailable(c){ return Math.round(((+c.amount||0) - custodyUsed(c))*100)/100; }
 function custodyPayLabel(c){ return 'عهدة #'+c.custodyNo+' — '+custodyEmpName(c); }
+/* م267: العهدة طالعة من أنهي خزنة/حساب (مصدر الصرف وقت الإصدار) — بالاسم الحالي للحساب لو اتغيّر (م266) */
+function custodySrcName(c){
+  if(!c) return '';
+  const a = c.sourceAccountId ? (DB.finAccounts||[]).find(x=>x.id===c.sourceAccountId) : null;
+  return (a && a.name) || c.sourceName || '';
+}
 function custodyUsageText(c){ return 'المصروف منها لحد دلوقتي '+money(custodyUsed(c))+' · المتاح '+money(custodyAvailable(c)); }
 /* نص السطر الثابت لسداد مورد من العهدة (من غير الرمز والمبلغ) */
 function custodyUseText(u){
@@ -22146,6 +22385,22 @@ async function custodyServerRow263(custodyId){
   finally{ if(timer) clearTimeout(timer); }
   if(!res || res.error || !Array.isArray(res.data)) return bad;
   const r = res.data.find(x=>x && x.id===custodyId);
+  return { ok:true, data:(r && r.data) || null };
+}
+/* م268: نفس قراءة م263 لصف فاتورة شراء (نفس المهلة) — بيستخدمها الاعتماد من العهدة عشان جهازين مايدفعوش نفس الفاتورة */
+async function purServerRow268(purchaseId){
+  const bad = { ok:false, data:null };
+  if(!purchaseId || !sb || typeof sb.from !== 'function') return bad;
+  let timer = null, res = null;
+  try{
+    res = await Promise.race([
+      sb.from(TABLE_MAP.purchases).select('id,data').eq('id', purchaseId),
+      new Promise((_, rej)=>{ timer = setTimeout(()=>rej(new Error('timeout')), _custodyReadMs); })
+    ]);
+  }catch(e){ return bad; }
+  finally{ if(timer) clearTimeout(timer); }
+  if(!res || res.error || !Array.isArray(res.data)) return bad;
+  const r = res.data.find(x=>x && x.id===purchaseId);
   return { ok:true, data:(r && r.data) || null };
 }
 function custodyAdoptServer263(c, srv){
@@ -22198,15 +22453,18 @@ function custodyPayOptionsHTML(){
   const list = openCustodies().sort((a,b)=>(a.custodyNo||0)-(b.custodyNo||0));
   if(!list.length) return '';
   return `<optgroup label="عهد الموظفين المفتوحة">`+list.map(c=>{
-    const av = custodyAvailable(c);
-    return `<option value="cus:${c.id}"${av<=0.005?' disabled':''}>${escNote(custodyPayLabel(c))} (المتاح ${money(av)})</option>`;
+    const av = custodyAvailable(c), src = custodySrcName(c);   /* م267: + الخزنة اللي العهدة طالعة منها */
+    return `<option value="cus:${c.id}" data-avail="${av}"${av<=0.005?' disabled':''}>${escNote(custodyPayLabel(c))}${src?' · من '+escNote(src):''} (المتاح ${money(av)})</option>`;
   }).join('')+`</optgroup>`;
 }
-/* سجل المصروفات: خانة «الحساب» — المصروف اللي من عهدة بيعرض «من عهدة #N — الموظف» */
+/* سجل المصروفات: خانة «الحساب» — المصروف اللي من عهدة بيعرض «من عهدة #N — الموظف»
+   + م267 (طلب سيف): تحتها «العهدة طالعة من: <الخزنة/الحساب>» عشان يعرف أصل الفلوس بسرعة */
 function expPayAccText(e){
   if(e && e.fromCustody){
     const c = DB.custodies.find(x=>x.id===e.fromCustody);
-    return 'من '+escNote(c ? custodyPayLabel(c) : (e.payAccount||'عهدة'));
+    const src = custodySrcName(c);
+    return 'من '+escNote(c ? custodyPayLabel(c) : (e.payAccount||'عهدة'))
+      + (src ? `<div class="muted" style="font-size:11px">العهدة طالعة من: ${escNote(src)}</div>` : '');
   }
   return escNote(e && e.payAccount) || '—';
 }
@@ -22256,7 +22514,7 @@ function renderCustodies(){
         <td style="font-weight:700">${escNote(custodyEmpName(c))}</td>
         <td class="muted">${c.purpose||'—'}</td>
         <td style="font-weight:800">${money(c.amount)}${c.status==='open'?`<div class="muted" style="font-size:11px;font-weight:400">${custodyUsageText(c)}</div>`:''}</td>
-        <td class="muted">${c.sourceName||'—'}</td>
+        <td class="muted">${escNote(custodySrcName(c))||'—'}</td>
         <td style="white-space:nowrap;font-size:12px">${fmtDate(c.createdAt)}</td>
         <td style="${over?'color:var(--danger);font-weight:800':''}">${c.status==='open'?durationText(c.createdAt)+(over?' 🚨':''):'—'}</td>
         <td>${custodyStatusTag(c.status)}</td>
@@ -22344,7 +22602,7 @@ function renderSettleModal(custodyId){
       ${_custodyLines.length? _custodyLines.map((l,i)=>`<tr><td>${l.catName}</td><td class="muted" style="font-size:11.5px">${l.description||'—'}</td><td style="font-weight:700">${money(l.amount)}</td><td style="width:50px"><button class="btn btn-sm btn-danger" onclick="removeCustodyLine(${i})">حذف</button></td></tr>`).join('') : (fixed.length ? '' : '<tr><td class="empty">مفيش بنود لسه — ضيف بند تحت</td></tr>')}
       </tbody></table>
       <div class="grid g3">
-        <div class="form-row" style="margin:0"><select class="f" id="clCat">${catOpts}</select></div>
+        <div class="form-row" style="margin:0"><select class="f" id="clCat" data-ss>${catOpts}</select></div>
         <div class="form-row" style="margin:0"><input class="f" id="clDesc" placeholder="وصف (اختياري)"></div>
         <div class="form-row" style="margin:0;display:flex;gap:4px"><input class="f" id="clAmt" type="number" min="0" placeholder="المبلغ"><button class="btn" onclick="addCustodyLine('${custodyId}')">➕</button></div>
       </div>
@@ -22463,7 +22721,7 @@ function openCustodyDetail(custodyId){
     <table style="margin-bottom:14px"><tbody>
       <tr><td class="muted">القيمة</td><td style="font-weight:800">${money(c.amount)}</td></tr>
       <tr><td class="muted">الغرض</td><td>${c.purpose||'—'}</td></tr>
-      <tr><td class="muted">المصدر</td><td>${c.sourceName||'—'}</td></tr>
+      <tr><td class="muted">المصدر</td><td>${escNote(custodySrcName(c))||'—'}</td></tr>
       ${c.notes?`<tr><td class="muted">ملاحظات</td><td>${c.notes}</td></tr>`:''}
       ${c.status==='open'?`<tr><td class="muted">مفتوحة من</td><td style="${isCustodyOverdue(c)?'color:var(--danger);font-weight:700':''}">${durationText(c.createdAt)}${isCustodyOverdue(c)?' 🚨 متأخرة':''}</td></tr>
       <tr><td class="muted">المصروف / المتاح</td><td style="font-weight:700">${custodyUsageText(c)}</td></tr>`:''}
@@ -28505,7 +28763,7 @@ function staffCatFields(cat, fallback){ return cat ? { category:cat.name, catego
 function expDayISO(day){ const d = new Date(String(day || '').slice(0, 10) + 'T' + new Date().toTimeString().slice(0, 8)); return isNaN(d) ? new Date().toISOString() : d.toISOString(); }
 function staffCatFieldHTML(id, selId, onchange){
   return `<div class="form-row"><label class="f-label">نوع المصروف (إلزامي — المجموعة بتيجي معاه: تشغيلية · إدارية …)</label>
-    <select class="f" id="${id}"${onchange ? ` onchange="${onchange}"` : ''}>${expCatOptionsHTML(selId)}</select></div>`;
+    <select class="f" id="${id}" data-ss${onchange ? ` onchange="${onchange}"` : ''}>${expCatOptionsHTML(selId)}</select></div>`;
 }
 /* بيرجّع النوع المختار — أو null + رسالة لو مش مختار (ولو مفيش أنواع مكوّدة خالص بيعدّي من غير نوع) */
 function staffCatRead(id){
@@ -28596,7 +28854,7 @@ function xadvKindChanged(){
 function xadvEmpChanged(){
   const e = DB.employees.find(x=>x.id === (document.getElementById('xadvEmp')||{}).value);
   const id = empLastCatId(e, 'advance'), box = document.getElementById('xadvCatBox');
-  if(id && box) box.innerHTML = staffCatFieldHTML('xadvCat', id);
+  if(id && box){ box.innerHTML = staffCatFieldHTML('xadvCat', id); ssEnhance(box); }
 }
 async function saveExpAdvance(){
   if(!can('exp.advance')){ toast('مالكش صلاحية سلفة الموظفين من المصروفات', true); return; }   /* حارس م65 */
@@ -28704,7 +28962,7 @@ function bnTypeChanged(empId){
     if(any) id = any.categoryId;
   }
   const box = document.getElementById('bnCatBox');
-  if(id && box) box.innerHTML = staffCatFieldHTML('bnCat', id);
+  if(id && box){ box.innerHTML = staffCatFieldHTML('bnCat', id); ssEnhance(box); }
 }
 async function saveBonus(empId){
   if(!hrCanReward()){ toast('مالكش صلاحية المكافآت', true); return; }   /* حارس م65 · م215 */
@@ -33411,7 +33669,7 @@ function setBusy(on){
     'createInvoiceFromJob','savePayment','saveExpense','saveExpPhotos','saveExpDelete','saveNewPart','saveEditItem','saveCostReval','saveEditCar','saveStockIn','saveStockOut',
     'savePaintOut','saveExtOutFromStock','saveNewSupplier','saveSupplierPayment','saveSupplierReturn','savePurchaseInvoice',
     'saveCustomerReturn','saveStockAdjustment','saveScrap','saveTransfer','saveNewWarehouse','saveNewAppointment','apptArrived','apptUndoArrive','saveTechComment','saveCiAdd','saveCiNoteEdit',
-    'saveCannedService','saveCountProgress','submitCountForApproval','confirmCancelJob','saveInvoiceInfo','saveTaxWa','savePins','saveCenterName','saveNewStaff','toggleStaff','saveStaffPass','savePerms','saveFinAccount','saveOpeningBalance','saveFinTransfer','saveExternalDeposit','saveCustodySettle','saveExpenseCat',
+    'saveCannedService','saveCountProgress','submitCountForApproval','confirmCancelJob','saveInvoiceInfo','saveTaxWa','savePins','saveCenterName','saveNewStaff','toggleStaff','saveStaffPass','savePerms','saveFinAccount','renameFinAccount','saveOpeningBalance','saveFinTransfer','saveExternalDeposit','saveCustodySettle','saveExpenseCat',
     'saveNewEmployee','saveEmployeeEdit','saveLeaveRequest','saveAbsence','saveAdvance','saveExpAdvance','savePenalty','savePermit',
     'saveIncentivePct','saveIncentiveExclusion','saveBonus','saveBonusPaidOutside','saveExpSetCat','saveAttUndoImport','saveDevBlock','saveDevUnblock','saveDevRename','saveWorkingDays',
     'attCloseSend','attCloseApprove',   /* م217 */
