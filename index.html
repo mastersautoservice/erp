@@ -1287,7 +1287,7 @@ const MERGE_SUBARRAYS = {
   jobs:       ['items','internalCosts','techComments','ciNotes','ciPhotos'],   /* م242: التعليقات الفنية من التابلت والاستقبال في نفس الوقت · م246: استلام السيارة */
   repairEstimates: ['parts','labor','events'],   /* م230: «وصلت/اتفتحت» من جهاز تاني مايتمسحش بحفظة */
   invoices:   ['payments','items'],
-  purchases:  ['items','payments','history'],
+  purchases:  ['items','payments','history','photos'],   /* م270: «📷 صورة الفاتورة» من جهازين على نفس الفاتورة */
   customers:  ['attachments'],
   employees:  ['salaryPays','advances','bonuses','penalties','absences','docs'],   /* م257: «📎 المستندات» — مستند اترفع من جهاز مايضيعش بحفظة من جهاز تاني، والمستند اللي صاحب المركز مسحه مايرجعش */
   suppliers:  ['recons'],   /* م241: مطابقات كشف المورد من جهازين مايمسحوش بعض */   /* م239: الصرف والسلف والجزاءات من أجهزة مختلفة مايمسحوش بعض */
@@ -1559,7 +1559,7 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
         if(keep.length){
           u.data[f] = JSON.parse(JSON.stringify(keep));
           changed = true;
-          keep.forEach(it=>rescued.push({ key, rowId:u.id, field:f, name:(it.name||it.id) }));
+          keep.forEach(it=>rescued.push({ key, rowId:u.id, field:f, name:(it.name||it.id), action:(it && it.action) }));
         }
         return;
       }
@@ -1579,7 +1579,7 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
               const fq = Math.round(fresh.reduce((s, x)=>s + (+x.qty || 0), 0) * 1000) / 1000;
               localArr.push(Object.assign({}, it, { id:uid('it'), qty:fq, issues:fresh, addedAt:fresh[0].at, addedByName:fresh[0].by || it.addedByName,
                 unitPrice:Math.max(...fresh.map(x=>+x.price || 0)), costPrice:Math.max(...fresh.map(x=>+x.cost || 0)) }));
-              rescued.push({ key, rowId:u.id, field:f, name:(it.name||it.id) });
+              rescued.push({ key, rowId:u.id, field:f, name:(it.name||it.id), action:(it && it.action) });
             } else blocked.push({ key, rowId:u.id, field:f, name:(it.name||it.id) });
             changed = true;
           }
@@ -1621,7 +1621,7 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
         if(baseById.has(it.id)) return;             // إحنا حذفناه عن قصد ⇒ يفضل محذوف
         localArr.push(it);                          // جهاز تاني ضافه بعد آخر مزامنة ⇒ نحافظ عليه
         changed = true;
-        rescued.push({ key, rowId:u.id, field:f, name:(it.name||it.id) });
+        rescued.push({ key, rowId:u.id, field:f, name:(it.name||it.id), action:(it && it.action) });
       });
     });
     /* م263: عهدة اتقفلت من جهاز تاني وصفنا هنا طالع «مفتوح» (نسخة قديمة · صندوق صادر) ⇒ بتفضل مقفولة بتسويتها (زي INV_JOB_KEEP260 للأوامر)
@@ -1679,7 +1679,7 @@ async function _mergeConcurrentAdditions(key, t, ups, shadow, nextShadow){
   /* م230: «وصلت/اتفتحت» في خط المقايسة الزمني بتتكتب من جهاز المستلم والتاني بيحفظ بعدها بثواني —
      ضمّها عادي ومتوقع، فمابنزعجش حد بيه (ولا إشعار لصاحب المركز) */
   window._mergeRescues += rescued.length;
-  const loud230 = rescued.filter(r=>!(r.key==='repairEstimates' && r.field==='events') && r.key !== 'employees' && r.key !== 'custodies' && !(r.key==='expenses' && r.field==='photos'));   /* م262: صورة مصروف من جهاز تاني = متوقع، من غير شريط أحمر ولا إشعار */ /* م263: استخدامات العهدة بتتدمج بهدوء — الإشعار المفيد بتاعها (سداد بعد الإقفال/سحب زيادة) من custodyCheckAlerts263 */   /* م239: صرف من الحسابات + جزاء من الـHR على نفس الموظف = متوقع */
+  const loud230 = rescued.filter(r=>!(r.key==='repairEstimates' && r.field==='events') && r.key !== 'employees' && r.key !== 'custodies' && !(r.key==='expenses' && r.field==='photos') && !(r.key==='purchases' && (r.field==='photos' || (r.field==='history' && r.action==='photo'))));   /* م262: صورة مصروف من جهاز تاني = متوقع، من غير شريط أحمر ولا إشعار · م270: وصورة فاتورة المورد كمان */ /* م263: استخدامات العهدة بتتدمج بهدوء — الإشعار المفيد بتاعها (سداد بعد الإقفال/سحب زيادة) من custodyCheckAlerts263 */   /* م239: صرف من الحسابات + جزاء من الـHR على نفس الموظف = متوقع */
   if(loud230.length){
     const names = [...new Set(loud230.map(r=>r.name))].slice(0,4).join(' · ');
     console.warn('م100: اتنقذ ' + loud230.length + ' بند من المسح', loud230);
@@ -2012,7 +2012,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v288';
+const APP_VERSION = 'v292';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -2146,11 +2146,11 @@ const ACTION_GROUPS = [
     ['pur.edit','تعديل فاتورة شراء مورد (عام)'],
     ['pur.approve','اعتماد فاتورة الشراء'],
     ['pur.reopen','إعادة فتح فاتورة شراء معتمدة (لتعديلها)'],
-    ['pur.review','مراجعة فاتورة المورد (كميات وأسعار وطريقة دفع)'],
+    ['pur.review','مراجعة فاتورة المورد (كميات وأسعار)'],
     ['pur.edit_qty','تعديل كميات فاتورة المورد'],
     ['pur.edit_price','تعديل أسعار فاتورة المورد'],
-    ['pur.pay_method','تغيير طريقة دفع فاتورة المورد (كاش/آجل)'],
-    ['pur.fin_approve','الاعتماد المالي وإغلاق فاتورة المورد'],
+    ['pur.pay_method','تحويل فاتورة كاش قديمة لآجل (فواتير قبل v289)'],
+    ['pur.fin_approve','الاعتماد المالي وإغلاق فاتورة المورد (= سدادها)'],
     ['sup.pay_specific','تسديد فاتورة/فواتير مورد محددة'],
     ['sup.refund','تسجيل استرداد رصيد من المورد'],
     ['sup.return','مرتجع بضاعة لمورد'],
@@ -2237,7 +2237,7 @@ const PERM_INFO = {
   'cs.followup':'إضافة متابعات على الشكاوى المفتوحة (بملاحظة إجبارية وتحديث الحالة). مفيش متابعة بتتمسح أبداً.',
   'cs.resolve':'حل الشكوى نهائياً بسبب حل إلزامي — بيحوّل العميل لـ«راضي بعد حل المشكلة» وبينزّل عدّاد «عملاء غير راضيين» الحي. حساسة — مش كل موظف خدمة عملاء ياخدها.',
   'inv.issue':'صرف قطع من المخزون على أوامر الشغل. بيخصم من الرصيد فوراً.',
-  'inv.receive':'تسجيل توريدات ومشتريات وفواتير شراء الموردين. بيزوّد الرصيد.',
+  'inv.receive':'تسجيل توريدات ومشتريات وفواتير شراء الموردين. بيزوّد الرصيد. <b>الفاتورة بتتسجل آجل دايماً</b> — أمين المخزن مالوش دعوة بطريقة الدفع، والمحاسب هو اللي بيسدد.',
   'inv.return':'تسجيل مرتجعات العملاء للمخزون.',
   'inv.item_create':'إضافة أصناف جديدة للمخزون.',
   'inv.item_edit':'تعديل بيانات الأصناف (اسم/كود/أسعار/مخازن). مايسمحش بتعديل الكميات (دي تسوية).',
@@ -2274,12 +2274,12 @@ const PERM_INFO = {
   'pur.edit':'تعديل أسعار وكميات بنود فاتورة شراء المورد + رقم وتاريخ فاتورة المورد والملاحظات — <b>قبل الاعتماد بس</b>. الفاتورة المعتمدة مقفولة تماماً، ومحدش يعدّلها إلا بعد إعادة فتحها.',
   'pur.approve':'اعتماد فاتورة شراء المورد بعد وصول فاتورته الرسمية — بتتقفل الأسعار والكميات وتبقى نهائية. <b>الاعتماد لوحده مابيديش حق إعادة الفتح.</b>',
   'pur.reopen':'إعادة فتح فاتورة معتمدة عشان تتعدّل تاني (كمية/سعر/طريقة دفع) — بسبب إلزامي وبيتسجّل في السجل والتدقيق والإشعارات. <b>دي الطريقة الوحيدة لتعديل فاتورة معتمدة</b>، وبتتدي لموظفين محددين بس غير اللي بيعتمدوا (فصل رقابي).',
-  'pur.review':'فتح شاشة مراجعة فاتورة المورد (بانتظار المحاسب) — رؤية الكميات والأسعار وطريقة الدفع بدون تعديل.',
+  'pur.review':'فتح شاشة مراجعة فاتورة المورد — رؤية الكميات والأسعار بدون تعديل.',
   'pur.edit_qty':'تعديل كميات بنود فاتورة المورد أثناء المراجعة (بيتسجل قبل/بعد والسبب).',
   'pur.edit_price':'تعديل أسعار بنود فاتورة المورد أثناء المراجعة (بيتسجل قبل/بعد والسبب).',
-  'pur.pay_method':'تغيير طريقة دفع الفاتورة (كاش↔آجل). النظام بيعكس الأثر المالي القديم ويطبّق الجديد تلقائياً — بدون ازدواج.',
-  'pur.fin_approve':'الاعتماد المالي وإغلاق فاتورة المورد نهائياً بعد مراجعتها.',
-  'sup.pay_specific':'تسديد فاتورة مورد محددة أو أكتر من فاتورة مع بعض (مش لازم تسدّد كل حساب المورد).',
+  'pur.pay_method':'للفواتير القديمة بس (قبل v289) اللي اتسجلت كاش ولسه ماتقفلتش: تحويلها آجل لو ماتدفعتش فعلاً. الفواتير الجديدة كلها آجل من الأول ومحتاجتش الصلاحية دي.',
+  'pur.fin_approve':'سداد فاتورة المورد من الفاتورة نفسها — كلها أو جزء منها، من حساب أو عهدة — والسداد ده هو الاعتماد المالي وإغلاق الفاتورة. <b>أي سداد (كلي أو جزئي) بيقفل الفاتورة</b>، والباقي بيفضل آجل على حساب المورد. الفاتورة اللي ماتدفعش عليها حاجة بتفضل «آجل» مفتوحة.',
+  'sup.pay_specific':'تسديد فاتورة مورد محددة أو أكتر من فاتورة مع بعض (مش لازم تسدّد كل حساب المورد). <b>الفاتورة اللي يتدفع عليها أي مبلغ بتتقفل لوحدها</b> (اعتماد مالي)، والباقي آجل على حساب المورد.',
   'sup.refund':'تسجيل استرداد رصيد دائن من المورد (كاش/تحويل) وتخفيض الرصيد الدائن.',
   'sup.return':'تسجيل مرتجع بضاعة لمورد: بينقّص المخزون ويخصم من مديونية المورد. (كانت جوه «توريد ومشتريات» — م179)',
   'fin.custody_create':'إصدار عهد مالية للموظفين. بتتخصم من المصدر فوراً.',
@@ -3509,6 +3509,7 @@ function render(){
   if(!loaded){ root.innerHTML = appSplashHTML(); return; }   /* م234 */
   if(!session){ root.innerHTML = loginHTML(); return; }
   root.innerHTML = shellHTML();
+  try{ ssEnhance(document.getElementById('contentArea')); }catch(e){}   /* م272: بحث ذكي في قوايم الشاشات (مش النوافذ بس) */
   estInboxSoon();   /* م230: العداد والرسايل بعد أي رسم (دخول/خروج/تنقل) */
 }
 
@@ -4250,7 +4251,7 @@ function renderTab(){
     default: return '';
   }
 }
-function refreshContent(){ const c=document.getElementById('contentArea'); if(c) c.innerHTML = renderTab(); estInboxSoon(); apptPaintBadges(); }
+function refreshContent(){ const c=document.getElementById('contentArea'); if(c){ c.innerHTML = renderTab(); try{ ssEnhance(c); }catch(e){} } estInboxSoon(); apptPaintBadges(); }   /* م272 */
 /* ============ م229: «تحميل المزيد» في كل القوايم الطويلة ============
    طلب سيف: أي قايمة طويلة (تنبيه النفاد في الرئيسية · المخزون · الفواتير · العملاء · سجل العمليات …)
    بتعرض أول 100 سطر بس وتحتها «⬇ تحميل المزيد (100 كمان)» و«عرض الكل» — عشان ماينزلش لتحت كتير.
@@ -4281,27 +4282,33 @@ function renderDashboard(){
   const lowStock = activeInventory().filter(p=>p.qty<=p.minQty);
   const todayStr = new Date().toDateString();
   const todayInvoices = DB.invoices.filter(i=>!i.cancelled && new Date(i.date).toDateString()===todayStr);
-  const todayCollected = todayInvoices.reduce((s,i)=>s+(i.payments||[]).reduce((a,p)=>a+p.amount,0),0);
-  const outstanding = DB.invoices.filter(i=>!i.cancelled).reduce((s,i)=>{ const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0); return s+(i.total-paid); },0);
-  const supplierPayable = activeSuppliers().reduce((s,sup)=>s+supplierBalance(sup.id).balance,0);
+  /* ============ م271 (قرار سيف 2026-11-11): كروت الرئيسية حسب الشاشات — مش حسب القسم ============
+     كل كارت بيظهر لأي حد عنده الشاشة بتاعته، من أي قسم (اللي معاه «أوامر الشغل» يشوف «أوامر شغل مفتوحة» حتى لو من المخزن).
+     الشاشات الافتراضية للأقسام (DEPT_SCREENS) فيها شاشات زيادة ⇒ المخزن بقى يشوف كروت أوامر الشغل، والحسابات كمان + الموردين والعدد
+     (سيف عارف ووافق: «اللي معاه الشاشة يشوف الكارت» — مش عايز كارت لحد ⇒ شيل منه الشاشة). */
+  const sJobs = canScreen('jobs'), sCust = canScreen('customers'), sInv = canScreen('inventory'), sTools = canScreen('tools'),
+        sSup = canScreen('suppliers'), sInvo = canScreen('invoices'), sRecv = canScreen('receivables');
+  const todayCollected = sInvo ? todayInvoices.reduce((s,i)=>s+(i.payments||[]).reduce((a,p)=>a+p.amount,0),0) : 0;
+  const outstanding = sRecv ? DB.invoices.filter(i=>!i.cancelled).reduce((s,i)=>{ const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0); return s+(i.total-paid); },0) : 0;
+  const supplierPayable = sSup ? activeSuppliers().reduce((s,sup)=>s+supplierBalance(sup.id).balance,0) : 0;
 
   let cards = '';
-  if(['reception','owner'].includes(session.role)) cards += stat(String(activeJobs.length),'أوامر شغل مفتوحة');
-  if(['reception','owner'].includes(session.role)) cards += stat(String(readyJobs.length),'جاهزة للتسليم');
-  if(['warehouse','owner'].includes(session.role)) cards += stat(String(lowStock.length),'قطع تحت حد الأمان', lowStock.length>0);
-  if(['warehouse','owner'].includes(session.role)){
+  if(sJobs) cards += stat(String(activeJobs.length),'أوامر شغل مفتوحة');
+  if(sJobs) cards += stat(String(readyJobs.length),'جاهزة للتسليم');
+  if(sInv) cards += stat(String(lowStock.length),'قطع تحت حد الأمان', lowStock.length>0);
+  if(sTools){
     const od = overdueTools().length, outNow = DB.tools.filter(t=>t.status==='مصروفة').length;
     if(outNow>0 || od>0) cards += stat(String(outNow)+(od?' ('+od+' متأخرة)':''),'عدد خاصة بره المخزن', od>0);
   }
-  if(['warehouse','owner'].includes(session.role)) cards += stat(money(supplierPayable),'مستحق للموردين', supplierPayable>0);
-  if(['accounts','owner'].includes(session.role)) cards += stat(money(todayCollected),'تحصيل اليوم');
-  if(['accounts','owner'].includes(session.role)) cards += stat(money(outstanding),'مستحقات غير محصلة');
+  if(sSup) cards += stat(money(supplierPayable),'مستحق للموردين', supplierPayable>0);
+  if(sInvo) cards += stat(money(todayCollected),'تحصيل اليوم');
+  if(sRecv) cards += stat(money(outstanding),'مستحقات غير محصلة');
   if(can('rep.profit')){
     const monthProfit = computeProfitStats(periodRange({preset:'this_month'}));
     cards += stat(money(monthProfit.netProfit),'💰 ربح الشغل بعد الهالك هذا الشهر (قبل المرتبات والمصاريف)', monthProfit.netProfit<0);
     cards += stat(monthProfit.netMargin.toFixed(1)+'%','نسبة ربح الشغل بعد الهالك هذا الشهر', monthProfit.netMargin<15 && monthProfit.netSales>0);
   }
-  if(['reception','owner'].includes(session.role)) cards += stat(String(DB.customers.length),'إجمالي العملاء');
+  if(sCust) cards += stat(String(DB.customers.length),'إجمالي العملاء');
 
   const recentJobs = [...DB.jobs].filter(j=>!isJobClosed(j)).sort((a,b)=>new Date(b.receivedAt)-new Date(a.receivedAt)).slice(0,4);
 
@@ -4327,17 +4334,17 @@ function renderDashboard(){
     <div class="grid g4" style="margin-bottom:24px">${cards}</div>
     ${canScreen('stockmoves') ? resRtvDashHTML() : ''}
     ${canScreen('notifications') ? renderNotifCenterWidget() : ''}
-    ${['reception','owner'].includes(session.role) ? `
+    ${sJobs ? `
     <div class="section-head"><h3>أحدث أوامر الشغل</h3><button class="btn btn-accent btn-sm" onclick="goTab('jobs')">عرض الكل</button></div>
     <div class="grid g3">${recentJobs.length? recentJobs.map(ticketCard).join('') : emptyState('لسه مفيش أوامر شغل')}</div>
     ` : ''}
-    ${['warehouse','owner'].includes(session.role) && lowStock.length>0 ? `
+    ${sInv && lowStock.length>0 ? `
     <div class="section-head" style="margin-top:26px"><h3>تنبيه: قطع وشيكة النفاد</h3><button class="btn btn-sm" onclick="goTab('inventory')">إدارة المخزون</button></div>
     <div class="card">
       <table><thead><tr><th>القطعة</th><th>الكمية الحالية</th><th>الحد الأدنى</th></tr></thead>
       <tbody>${pgSlice('dashLow', lowStock).map(p=>`<tr><td>${p.name}</td><td class="low-stock">${p.qty}</td><td>${p.minQty}</td></tr>`).join('')}${pgRowHTML('dashLow', lowStock.length, 3)}</tbody></table>
     </div>` : ''}
-    ${['reception','owner'].includes(session.role) ? renderServiceRemindersWidget() : ''}
+    ${sCust ? renderServiceRemindersWidget() : ''}
     ${canScreen('appointments') ? renderTodayAppointmentsWidget() : ''}
   `;
 }
@@ -8966,7 +8973,7 @@ function openEditJobItemModal(jobId, itemId){
         <div class="form-row"><label class="f-label">السعر</label><input class="f" id="editItPrice" type="number" min="0" value="${it.unitPrice}"></div>
       </div>
       <div class="form-row"><label class="f-label">الفني المنفذ</label>
-        <select class="f" id="editItTech">${techOptionsHTML(it.technicianId)}</select></div>
+        <select class="f" id="editItTech" data-ss data-ss-ph="🔎 اكتب جزء من اسم الفني…" data-ss-empty="مفيش فني بالاسم ده">${techOptionsHTML(it.technicianId)}</select></div>
     `}
     <button class="btn btn-accent" style="width:100%" onclick="saveEditJobItem('${jobId}','${itemId}')">حفظ التعديل</button>
   `);
@@ -9636,7 +9643,7 @@ function addJobServiceRow(jobId){
     <div class="grid g2">
       <div class="form-row"><label class="f-label">السعر</label><input class="f" id="svcPrice" type="number" min="0"></div>
       <div class="form-row"><label class="f-label">الفني المنفذ</label>
-        <select class="f" id="svcTech">${techOptionsHTML(job?job.technicianId:null)}</select></div>
+        <select class="f" id="svcTech" data-ss data-ss-ph="🔎 اكتب جزء من اسم الفني…" data-ss-empty="مفيش فني بالاسم ده">${techOptionsHTML(job?job.technicianId:null)}</select></div>
     </div>
     ${noTechs?`<div class="muted" style="font-size:12px;margin-bottom:10px">⚠️ مفيش فنيين نشطين — سجّلهم في الموارد البشرية (الوظيفة لازم تكون فني/ورشة) عشان يظهروا هنا.</div>`:''}
     <div class="form-row"><label class="f-label">هل دي إعادة شغل (Rework)؟</label>
@@ -11176,7 +11183,7 @@ function openStockInModal(partId){
       <div class="form-row"><label class="f-label">سعر الوحدة (تكلفة)</label><input class="f" id="inCost" type="number" min="0" value="${p.costPrice}"></div>
     </div>
     <div class="form-row"><label class="f-label">ملاحظة (اختياري)</label><input class="f" id="inNote" placeholder="مثال: رقم فاتورة المورد"></div>
-    <div class="form-row"><label class="f-label">طريقة السداد للمورد (لو اخترت مورد)</label><select class="f" id="inPay"><option>كاش</option><option>آجل</option></select></div>
+    <div class="muted" style="font-size:11.5px;margin-bottom:10px">📒 لو اخترت مورد: الفاتورة بتتسجل <b>آجل</b> على حسابه — والمحاسب هو اللي بيسددها (م269)</div>
     <button class="btn btn-accent" style="width:100%" onclick="saveStockIn('${partId}')">تأكيد التوريد</button>
   `);
 }
@@ -11205,7 +11212,8 @@ async function saveStockIn(partId){
 
   if(supplierId){
     const supplier = DB.suppliers.find(s=>s.id===supplierId);
-    const inPay179 = (document.getElementById('inPay')||{}).value || 'كاش';
+    /* م269: قرار سيف — المخزن مالوش دعوة بطريقة الدفع: أي فاتورة من المخزن آجل، والمحاسب بيسدد */
+    const inPay179 = 'آجل';
     /* م179د: نفس شكل فاتورة الشراء العادية — كانت بتتعمل ناقصة (لا حالة ولا طريقة دفع ولا منشئ ولا مخزن)
        فتقع من اعتماد المحاسب وتقارير الموردين */
     const purchase = {
@@ -11935,13 +11943,32 @@ function purStatusTag(p){
     return '<span class="tag tag-paid">🟢 معتمدة (تلقائية)</span>' + lockX;
   }
   if(purIsClosed(p)){
+    /* م269: اتقفلت بسداد جزئي ⇒ الباقي بيبان إنه آجل على حساب المورد (بيتسدد من «تسديد» في شاشة المورد) */
+    const rest269 = purIsCredit(p) ? purOwedOn269(p) : 0;
     return '<span class="tag tag-paid">🟢 تم الاعتماد المالي والإغلاق'+(p.finApprovedBy?' بواسطة: '+p.finApprovedBy:'')+'</span>'
-      + (p.approvedBy?' <span class="tag tag-working">🧾 راجعها: '+p.approvedBy+'</span>':'');
+      + (p.approvedBy?' <span class="tag tag-working">🧾 راجعها: '+p.approvedBy+'</span>':'')
+      + (rest269 > 0.005 ? ' <span class="tag tag-partial">📒 الباقي '+money(rest269)+' آجل على حساب المورد</span>' : '');
   }
   const paid = purIsPaid(p) ? ' <span class="tag tag-paid">💵 مدفوعة</span>' : '';
-  if(st==='pending') return '<span class="tag tag-partial">🟡 بانتظار المراجعة / الاعتماد</span>' + paid;
+  /* م269: الفاتورة الآجل ليها حالتين بس — «📒 آجل — متبقي كذا» لحد ما يتدفع عليها، وأول ما يتدفع عليها (كلها أو جزء) بتتقفل
+     (فوق: «تم الاعتماد المالي والإغلاق»). «بانتظار الاعتماد المالي» فاضلة للفواتير الكاش القديمة بس. */
+  const credit269 = purIsCredit(p) ? purCreditTag269(p) : '';
+  if(st==='pending') return '<span class="tag tag-partial">🟡 بانتظار المراجعة / الاعتماد</span>' + (credit269 || paid);
   return '<span class="tag tag-paid">🟢 تمت المراجعة / الاعتماد'+(p.approvedBy?' بواسطة: '+p.approvedBy:'')+'</span>'
-    + ' <span class="tag tag-partial">🟡 بانتظار الاعتماد المالي</span>' + paid;
+    + (credit269 || (' <span class="tag tag-partial">🟡 بانتظار الاعتماد المالي</span>' + paid));
+}
+/* م269 (مراجعة مستقلة): المتبقي اللي بيبان = الأقل من (المتبقي على الفاتورة ، مديونية المورد كلها) — لو المورد اتسدد «على الحساب»
+   الفاتورة نفسها مابتتعلّمش، فرقمها لوحده كان بيبان كأنه لسه علينا */
+function purOwedOn269(p){
+  const out = purchaseOutstanding(p);
+  if(out <= 0.005) return 0;
+  return Math.round(Math.min(out, Math.max(0, supplierBalance(p.supplierId).liability || 0))*100)/100;
+}
+function purCreditTag269(p){
+  const out = purOwedOn269(p);
+  return out > 0.005
+    ? ' <span class="tag tag-partial">📒 آجل — متبقي '+money(out)+'</span>'
+    : ' <span class="tag tag-paid">💵 مفيش متبقي — بانتظار الإغلاق</span>';
 }
 /* مين مسموحله يعدّل الفاتورة دي دلوقتي؟ */
 /* الملاحظة 69: صلاحية التعديل الحبيبية — تعديل عام أو كمية أو سعر */
@@ -12270,10 +12297,16 @@ function approvePurchase(purchaseId){
   if(!p){ toast('الفاتورة غير موجودة', true); return; }
   if(purStatus(p)==='approved'){ toast('الفاتورة معتمدة بالفعل', true); return; }
   const sup = DB.suppliers.find(s=>s.id===p.supplierId);
-  askConfirmReason('اعتماد / إتمام مراجعة فاتورة الشراء #'+p.purchaseNo+(sup?' — '+sup.name:'')+'؟<br><span class="muted" style="font-size:12px">إجماليها '+money(p.total)+'. بعد الاعتماد الفاتورة بتنتقل لـ<b>«بانتظار الاعتماد المالي»</b> (Level 3) — وتعديلها بعد كده محتاج صلاحية «تعديل فاتورة شراء».</span>',
+  /* م269: الفاتورة الآجل بعد المراجعة بتفضل «آجل» لحد ما المحاسب يسددها — وأي سداد عليها (كلي أو جزئي) هو الاعتماد المالي والإغلاق */
+  const cr269 = purIsCredit(p);
+  const nextTxt269 = cr269 ? 'تمت المراجعة — آجل لحد ما تتسدد' : 'تمت المراجعة — بانتظار الاعتماد المالي';
+  askConfirmReason('اعتماد / إتمام مراجعة فاتورة الشراء #'+p.purchaseNo+(sup?' — '+sup.name:'')+'؟<br><span class="muted" style="font-size:12px">إجماليها '+money(p.total)+'. '
+    +(cr269 ? 'بعد الاعتماد الفاتورة بتفضل <b>«آجل»</b> على حساب المورد لحد ما المحاسب يسددها — وأول ما يتدفع عليها (كلها أو جزء) بتتقفل.'
+            : 'بعد الاعتماد الفاتورة بتنتقل لـ<b>«بانتظار الاعتماد المالي»</b> (Level 3).')
+    +' وتعديلها بعد كده محتاج صلاحية «تعديل فاتورة شراء».</span>',
     async (reason)=>{
       p.status = 'approved'; p.approvedAt = new Date().toISOString(); p.approvedBy = actorName();
-      purLog(p, 'approved', [{ field:'حالة الفاتورة', before:'بانتظار المراجعة / الاعتماد', after:'تمت المراجعة — بانتظار الاعتماد المالي' }], reason);
+      purLog(p, 'approved', [{ field:'حالة الفاتورة', before:'بانتظار المراجعة / الاعتماد', after:nextTxt269 }], reason);
       await saveKey('purchases', DB.purchases);
       await logAction('🟢 اعتماد فاتورة شراء #'+p.purchaseNo+auditDetails([
         ['المورد', sup?sup.name:null], ['الإجمالي', money(p.total)],
@@ -12281,7 +12314,7 @@ function approvePurchase(purchaseId){
       ]));
       notify('purchase_approve', 'اعتماد فاتورة شراء #'+p.purchaseNo+(sup?' — '+sup.name:'')+' بقيمة '+money(p.total),
         { category:'financial', refType:'purchase', refId:p.id, refNo:p.purchaseNo, amount:p.total });
-      closeModal(); toast('تم اعتماد / إتمام المراجعة — الفاتورة بانتظار الاعتماد المالي'); refreshContent();
+      closeModal(); toast('تم اعتماد / إتمام المراجعة — '+(cr269 ? 'الفاتورة آجل لحد ما تتسدد' : 'الفاتورة بانتظار الاعتماد المالي')); refreshContent();
     });
 }
 /* ============ م153: Level 2 — شاشة «مراجعة / اعتماد» (من غير أي جزء مالي) ============
@@ -12300,6 +12333,7 @@ function openPurReview(purchaseId){
     <table><thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
     <tbody>${(p.items||[]).map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitCost)}</td><td>${money(it.qty*it.unitCost)}</td></tr>`).join('')}</tbody></table></div>
     ${(can('pur.edit_qty')||can('pur.edit_price')||can('pur.edit'))?`<button class="btn btn-sm" style="margin-bottom:10px" onclick="closeModal();openEditPurchase('${p.id}')">✏️ تعديل الكميات/الأسعار</button>`:''}
+    ${purPhotosViewHTML(p, 'review')}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
       <button class="btn btn-sm" onclick="openPurchaseHistory('${p.id}')">🕘 سجل الفاتورة</button>
     </div>
@@ -12307,7 +12341,7 @@ function openPurReview(purchaseId){
       ? (can('pur.approve')
         ? `<button class="btn btn-accent" style="width:100%" onclick="approvePurchase('${p.id}')">✅ اعتماد / إتمام المراجعة</button>`
         : `<div class="muted" style="font-size:12px">عندك صلاحية المراجعة/التعديل بس — نقل الفاتورة لـ«بانتظار الاعتماد المالي» محتاج صلاحية «اعتماد فواتير الشراء».</div>`)
-      : `<div class="muted" style="font-size:12px">الفاتورة اتراجعت بالفعل${p.approvedBy?' بواسطة '+p.approvedBy:''} — ${purIsClosed(p)?'ومقفولة مالياً':'وبانتظار الاعتماد المالي'}.</div>`}
+      : `<div class="muted" style="font-size:12px">الفاتورة اتراجعت بالفعل${p.approvedBy?' بواسطة '+p.approvedBy:''} — ${purIsClosed(p)?'ومقفولة مالياً':(purIsCredit(p)?'وآجل لحد ما تتسدد':'وبانتظار الاعتماد المالي')}.</div>`}
   `, true);
 }
 /* ---------- إعادة فتح فاتورة معتمدة ---------- */
@@ -12344,7 +12378,7 @@ function reopenPurchase(purchaseId){
 }
 /* ---------- سجل فاتورة الشراء ---------- */
 const PUR_EVENT_LABEL = { created:'📄 إنشاء الفاتورة', edited:'✏️ تعديل', edited_approved:'✏️ تعديل بعد الاعتماد',
-  approved:'🟢 اعتماد / إتمام المراجعة (Level 2)', reopened:'🔄 إعادة فتح', fin_approved:'🟢 اعتماد مالي وإغلاق (Level 3)', pay_method:'💳 تغيير طريقة الدفع' };
+  approved:'🟢 اعتماد / إتمام المراجعة (Level 2)', reopened:'🔄 إعادة فتح', fin_approved:'🟢 اعتماد مالي وإغلاق (Level 3)', pay_method:'💳 تغيير طريقة الدفع', photo:'📷 صورة فاتورة المورد' };
 function openPurchaseHistory(purchaseId){
   const p = DB.purchases.find(x=>x.id===purchaseId);
   if(!p){ toast('الفاتورة غير موجودة', true); return; }
@@ -12392,9 +12426,10 @@ function openPurchaseView(purchaseId){
       ${pu.approvedBy?`<div><span class="muted">اعتمدها:</span> ${pu.approvedBy}${pu.approvedAt?' · '+fmtDate(pu.approvedAt):''}</div>`:''}
       ${pu.notes?`<div><span class="muted">ملاحظات:</span> ${pu.notes}</div>`:''}
     </div>
+    ${purPhotosViewHTML(pu, 'view')}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
       ${purStatus(pu)==='pending' && !pu.extKind && (can('pur.review')||can('pur.approve')||canEditPurchaseAny())?`<button class="btn btn-sm btn-accent" onclick="openPurReview('${pu.id}')">🧾 مراجعة / اعتماد</button>`:''}
-      ${!purIsClosed(pu) && !pu.extKind && can('pur.fin_approve')?`<button class="btn btn-sm" style="border-color:var(--accent)" onclick="openPurApprove('${pu.id}')">💰 اعتماد مالي وإغلاق</button>`:''}
+      ${!purIsClosed(pu) && !pu.extKind && can('pur.fin_approve')?`<button class="btn btn-sm" style="border-color:var(--accent)" onclick="openPurApprove('${pu.id}')">${purFinBtnLbl269(pu)}</button>`:''}
       ${canEditPurchase(pu).ok?`<button class="btn btn-sm" onclick="openEditPurchase('${pu.id}')">✏️ تعديل الأسعار</button>`:''}
       ${purStatus(pu)==='approved' && can('pur.reopen')?`<button class="btn btn-sm" onclick="reopenPurchase('${pu.id}')">🔄 إعادة فتح</button>`:''}
       <button class="btn btn-sm" onclick="openPurchaseHistory('${pu.id}')">🕘 السجل</button>
@@ -17065,7 +17100,7 @@ function supInvRowsHTML(rows){
   return rows.length ? pgSlice(k229, rows).map(p=>{
     const sup = DB.suppliers.find(s=>s.id===p.supplierId);
     return `<tr onclick="supInvRepOpen('${p.id}')" style="cursor:pointer" title="دوس لفتح الفاتورة — الإجراءات حسب صلاحياتك">
-      <td style="font-weight:800">#${p.purchaseNo}${p.supInvNo && String(p.supInvNo)!==String(p.purchaseNo)?`<div class="muted" style="font-size:10.5px">مورد: ${p.supInvNo}</div>`:''}</td>
+      <td style="font-weight:800">#${p.purchaseNo}${p.supInvNo && String(p.supInvNo)!==String(p.purchaseNo)?`<div class="muted" style="font-size:10.5px">مورد: ${p.supInvNo}</div>`:''}${p.extKind?'':`<div style="margin-top:3px">${purPhotoTag(p)}</div>`}</td>
       <td>${sup?sup.name:'—'}</td>
       <td style="white-space:nowrap;font-size:12px">${fmtDate(p.date)}</td>
       <td class="muted" style="font-size:11.5px">${supInvWhTxt(p)}</td>
@@ -17136,7 +17171,7 @@ function openSupInvReport(keep){
         <select class="f" onchange="supInvRepSet('status',this.value)">
           <option value="">كل الحالات</option>
           <option value="pending" ${f.status==='pending'?'selected':''}>🟡 بانتظار المراجعة</option>
-          <option value="l2" ${f.status==='l2'?'selected':''}>🔵 معتمدة — بانتظار الاعتماد المالي</option>
+          <option value="l2" ${f.status==='l2'?'selected':''}>🔵 اتراجعت — لسه ماتقفلتش (آجل / بانتظار الاعتماد)</option>
           <option value="closed" ${f.status==='closed'?'selected':''}>🟢 معتمدة مالياً ومغلقة</option>
         </select></div>
       <div class="form-row" style="margin:0"><label class="f-label">بحث ذكي</label>
@@ -17383,6 +17418,7 @@ function supplierDetailHTML(supplierId){
           <b>#${p.purchaseNo}</b>
           <span class="muted" style="margin-right:6px">${fmtDate(p.date)}</span>
           ${p.paymentMethod?`<span class="muted" style="margin-right:6px">${p.paymentMethod}</span>`:''}
+          ${purPhotoTag(p)}
         </div>
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11px">
           ${purStatusTag(p)}
@@ -17395,9 +17431,10 @@ function supplierDetailHTML(supplierId){
         <table class="tcompact"><thead><tr><th>الصنف</th><th>الكمية</th><th>سعر الشراء</th><th>الإجمالي</th></tr></thead>
         <tbody>${(p.items||[]).map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitCost)}</td><td>${money(it.qty*it.unitCost)}</td></tr>`).join('')}</tbody></table>
         ${(p.payments||[]).length?`<div class="muted" style="font-size:11px;margin-top:5px">الدفعات: ${p.payments.map(x=>money(x.amount)+' ('+fmtDate(x.date)+')').join(' · ')}</div>`:''}
+        ${!p.extKind && (purPhotoList(p).length || purCanAddPhoto(p)) ? `<div style="margin-top:6px">${purPhotosViewHTML(p, 'sup')}</div>` : ''}
         <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
           ${purStatus(p)==='pending' && !p.extKind && (can('pur.review')||can('pur.approve')||canEditPurchaseAny())?`<button class="btn btn-sm btn-accent" onclick="openPurReview('${p.id}')">🧾 مراجعة / اعتماد</button>`:''}
-          ${!purIsClosed(p) && !p.extKind && can('pur.fin_approve')?`<button class="btn btn-sm" style="border-color:var(--accent)" onclick="openPurApprove('${p.id}')">💰 اعتماد مالي وإغلاق</button>`:''}
+          ${!purIsClosed(p) && !p.extKind && can('pur.fin_approve')?`<button class="btn btn-sm" style="border-color:var(--accent)" onclick="openPurApprove('${p.id}')">${purFinBtnLbl269(p)}</button>`:''}
           ${canEditPurchase(p).ok?`<button class="btn btn-sm" onclick="openEditPurchase('${p.id}')">✏️ الكميات/الأسعار</button>`:''}
           ${purStatus(p)==='approved' && can('pur.reopen')?`<button class="btn btn-sm" onclick="reopenPurchase('${p.id}')">🔄 إعادة فتح</button>`:''}
           <button class="btn btn-sm" onclick="openPurchaseHistory('${p.id}')">🕘 السجل</button>
@@ -17791,6 +17828,9 @@ function openPurApprove(purchaseId){
   /* م153: فك الخلط — الاعتماد المالي بصلاحيته المستقلة بس. صلاحية «اعتماد
      المراجعة» (pur.approve) بقت Level 2 فقط ومابتديش إغلاق مالي. */
   const canFin = can('pur.fin_approve');
+  /* م269: فاتورة آجل مفتوحة ⇒ الشاشة دي بقت «سداد الفاتورة» — أي سداد (كلي أو جزئي) = الاعتماد المالي والإغلاق (قرار سيف).
+     مفيش اختيار «آجل» هنا: الفاتورة آجل أصلاً لحد ما تتسدد. الفواتير الكاش القديمة بتكمل بالشاشة القديمة تحت. */
+  if(isCredit && !purIsClosed(p) && !p.extKind) return openPurPay269(p, sup, canFin);
   openModal(`
     <div class="flex-between" style="margin-bottom:8px;gap:8px;flex-wrap:wrap"><h3 style="margin:0">💰 مراجعة واعتماد مالي وإغلاق فاتورة #${p.purchaseNo} (Level 3)</h3>${purStatusTag(p)}</div>
     <div class="muted" style="font-size:12.5px;margin-bottom:10px">المورد: <b>${sup?sup.name:'—'}</b> · الإجمالي: <b>${money(p.total)}</b> · بتاريخ ${fmtDate(p.date)}</div>
@@ -17799,12 +17839,13 @@ function openPurApprove(purchaseId){
     <table><thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
     <tbody>${(p.items||[]).map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitCost)}</td><td>${money(it.qty*it.unitCost)}</td></tr>`).join('')}</tbody></table></div>
     ${(can('pur.edit_qty')||can('pur.edit_price')||can('pur.edit'))?`<button class="btn btn-sm" style="margin-bottom:10px" onclick="closeModal();openEditPurchase('${p.id}')">✏️ تعديل الكميات/الأسعار</button>`:''}
+    ${purPhotosViewHTML(p, 'pay')}
     <div class="dsec">💳 طريقة الدفع والاعتماد المالي</div>
     ${canMethod?`
     <div class="form-row"><label class="f-label">طريقة الدفع الفعلية</label>
       <div style="display:flex;gap:14px;flex-wrap:wrap">
         <label><input type="radio" name="paMethod" value="كاش" ${!isCredit?'checked':''} onchange="paToggleSrc()"> كاش (مدفوع)</label>
-        <label><input type="radio" name="paMethod" value="آجل" ${isCredit?'checked':''} onchange="paToggleSrc()"> آجل (على الحساب)</label>
+        <label><input type="radio" name="paMethod" value="آجل" ${isCredit?'checked':''} onchange="paToggleSrc()"> ${p.extKind?'آجل (على الحساب)':'آجل (ماتدفعتش — تفضل مفتوحة لحد ما تتسدد)'}</label>
       </div></label></div>`
     : `<div class="muted" style="font-size:12.5px;margin-bottom:8px">طريقة الدفع الحالية: <b>${p.paymentMethod}</b>${!canMethod?' <span class="muted">(مالكش صلاحية تغييرها)</span>':''}</div>
        <input type="hidden" name="paMethod" value="${p.paymentMethod}">`}
@@ -17817,10 +17858,117 @@ function openPurApprove(purchaseId){
       عند الاعتماد: النظام بيعكس الأثر المالي القديم ويطبّق الجديد — <b>بدون أي ازدواج</b>. آجل يرفع مديونية المورد، وكاش يخصم من الخزنة.</div>
     <div class="form-row"><label class="f-label">ملاحظة/سبب (اختياري)</label><input class="f" id="paReason" placeholder="لو غيّرت طريقة الدفع، اكتب السبب"></div>
     ${canFin
-      ? `<button class="btn btn-accent" style="width:100%" onclick="purFinApprove('${p.id}')">✅ اعتماد مالي وإغلاق الفاتورة</button>`
+      ? `<button class="btn btn-accent" style="width:100%" id="paGoBtn" data-ext="${p.extKind?1:0}" onclick="purFinApprove('${p.id}')">✅ اعتماد مالي وإغلاق الفاتورة</button>`
       : `<div class="muted" style="font-size:12px">عندك صلاحية المراجعة بس — الاعتماد المالي والإغلاق محتاج صلاحية «الاعتماد المالي وإغلاق فاتورة المورد».</div>`}
   `, true);
   try{ paSrcChanged267(p.id); }catch(e){}   /* م268: الجملة اللي تحت «مصدر الدفع» بتتظبط على الاختيار الافتراضي (لو مفيش حسابات = أول عهدة) */
+}
+/* ============ م269: سداد فاتورة الآجل = الاعتماد المالي والإغلاق ============
+   طلب سيف (2026-11-10): كل فواتير المخزن بتتسجل آجل، والمحاسب هو اللي بيسدد. «الاعتماد المالي
+   وإغلاق الفاتورة» معناه إن الفاتورة دي اتدفع عليها — فمفيش «اقفلها آجل»، ومفيش خطوة إغلاق لوحدها بعد الدفع.
+   تعديل سيف: السداد كلي أو جزئي ⇒ الفاتورة بتتقفل، والباقي بيفضل آجل على حساب المورد (يتسدد من «تسديد» في شاشة المورد).
+   • من الفاتورة نفسها: «💵 سداد واعتماد مالي» (صلاحية pur.fin_approve) — أي مبلغ لحد المتبقي، من حساب أو عهدة ⇒ تتقفل.
+   • من شاشة المورد «سداد فواتير محددة»: الفاتورة اللي يتدفع عليها أي مبلغ بتتقفل لوحدها (purAutoClose269).
+   • «دفعة على الحساب» بتنزّل رصيد المورد بس ومابتقفلش فواتير بعينها (م106 زي ما هي).
+   الدفعة نفسها بنفس شكل «سداد فواتير محددة»: purPayCredit269 (حساب) / purFinApproveCus267 (عهدة). */
+function purFinBtnLbl269(p){ return purIsCredit(p) ? '💵 سداد واعتماد مالي' : '💰 اعتماد مالي وإغلاق'; }
+/* م269 (مراجعة مستقلة): السقف = الأقل من (المتبقي على الفاتورة ، ومديونية المورد كلها). المورد لو اتسدد «على الحساب»
+   (الدفعة العامة مابتتوزعش على فواتير — م106) المتبقي على الفاتورة بيفضل باين أكبر من اللي علينا فعلاً، والدفع فوقه = دفع مرتين. */
+function purPayCap269(p){
+  const need = purCashNeed267(p);
+  const liab = Math.max(0, Math.round((supplierBalance(p.supplierId).liability || 0)*100)/100);
+  return { need, liab, cap: Math.round(Math.min(need, liab)*100)/100 };
+}
+/* تتقفل بمبلغ 0 (من غير سداد جديد) بس لو اتدفع عليها قبل كده (اتفتحت تاني بعد السداد مثلاً).
+   (مراجعة مستقلة: «حساب المورد أقل من المتبقي» لوحدها مش سبب — ممكن يكون خصم أو مرتجع مش مربوط ⇒ تتقفل من غير ولا جنيه.
+    لو حساب المورد كله صفر ⇒ الشباك أصلاً بيقفلها من غير فلوس.) */
+function purCanCloseNoPay269(p){ return purManualPaid(p) > 0.005; }
+/* فاتورة إجماليها صفر (توريد من غير سعر مثلاً) ولسه ماتراجعتش ⇒ ماتتقفلش — وإلا السعر يتقفل والمديونية ماتتسجلش */
+function purZeroUnreviewed269(p){ return !(Number(p.total) > 0.005) && purStatus(p)==='pending'; }
+function openPurPay269(p, sup, canFin){
+  const c = purPayCap269(p), need = c.need, cap = c.cap;
+  const paidBefore = Math.round(purManualPaid(p)*100)/100;
+  const returned = Math.round((DB.supplierReturns||[]).filter(r=>r.invoiceId===p.id).reduce((s,r)=>s+(r.payableReduction||0),0)*100)/100;
+  const zero = purZeroUnreviewed269(p);
+  const lowCap = cap < need - 0.005;
+  let payBox;
+  if(zero){
+    payBox = `<div class="card" style="border-right:3px solid var(--danger);padding:8px 12px;margin-bottom:10px;font-size:12.5px">⛔ إجمالي الفاتورة <b>صفر</b> ولسه ماتراجعتش — راجع الأسعار الأول («تعديل الكميات/الأسعار») وبعدين اقفلها.</div>`;
+  } else if(cap > 0.005){
+    payBox = !canFin ? '' : `
+    <div class="grid g2">
+      <div class="form-row"><label class="f-label">المبلغ اللي هتدفعه</label>
+        <input class="f" id="paAmt" type="number" min="0" step="any" value="${cap}" oninput="purPayHint269('${p.id}')"></div>
+      <div class="form-row"><label class="f-label">هتدفع منين؟</label>
+        <select class="f" id="paSrcAcc" onchange="purPayHint269('${p.id}')"><option value="">— اختار الحساب أو العهدة —</option>${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}${can('sup.pay')?custodyPayOptionsHTML():''}</select></div>
+    </div>
+    <div class="muted" id="paSrcHint" style="font-size:11.5px;margin-bottom:8px">اختار هتدفع منين.</div>
+    ${lowCap?`<div class="card" style="border-right:3px solid var(--accent-2);padding:8px 10px;margin-bottom:8px;font-size:11.5px">⚠️ حساب المورد كله عليه <b>${money(cap)}</b> بس (اتدفع له «على الحساب» قبل كده) — مش هينفع تدفع أكتر من كده.</div>`:''}
+    ${paidBefore>0.005?`<div class="muted" style="font-size:11.5px;margin-bottom:8px">اتدفع عليها قبل كده ${money(paidBefore)} — لو مش هتدفع حاجة دلوقتي اكتب <b>0</b> والفاتورة هتتقفل من غير سداد جديد.</div>`:''}`;
+  } else {
+    payBox = `<div class="muted" style="font-size:12.5px;margin-bottom:8px">${need > 0.005
+      ? 'حساب المورد مفيهوش مديونية علينا (اتسدد «على الحساب» قبل كده) — الاعتماد هيقفل الفاتورة من غير ما يتخصم أي فلوس.'
+      : 'مفيش متبقي على الفاتورة — الاعتماد هيقفلها بس، من غير ما يتخصم أي فلوس.'}</div>`;
+  }
+  openModal(`
+    <div class="flex-between" style="margin-bottom:8px;gap:8px;flex-wrap:wrap"><h3 style="margin:0">💵 سداد فاتورة #${p.purchaseNo} — اعتماد مالي وإغلاق</h3>${purStatusTag(p)}</div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">المورد: <b>${sup?escNote(sup.name):'—'}</b> · الإجمالي: <b>${money(p.total)}</b> · بتاريخ ${fmtDate(p.date)} · أدخلها: ${purCreator(p)}</div>
+    <div class="dsec">🧾 البنود</div>
+    <div style="max-height:180px;overflow:auto;margin-bottom:6px">
+    <table><thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+    <tbody>${(p.items||[]).map(it=>`<tr><td>${it.name}</td><td>${it.qty}</td><td>${money(it.unitCost)}</td><td>${money(it.qty*it.unitCost)}</td></tr>`).join('')}</tbody></table></div>
+    ${(can('pur.edit_qty')||can('pur.edit_price')||can('pur.edit'))?`<button class="btn btn-sm" style="margin-bottom:10px" onclick="closeModal();openEditPurchase('${p.id}')">✏️ تعديل الكميات/الأسعار</button>`:''}
+    ${purPhotosViewHTML(p, 'pay')}
+    <div class="dsec">💵 السداد</div>
+    <div class="card" style="padding:8px 12px;margin-bottom:10px;font-size:13px">
+      <div class="flex-between"><span>إجمالي الفاتورة</span><b>${money(p.total)}</b></div>
+      ${paidBefore>0.005?`<div class="flex-between"><span>اتدفع عليها قبل كده</span><span>− ${money(paidBefore)}</span></div>`:''}
+      ${returned>0.005?`<div class="flex-between"><span>مرتجعات للمورد</span><span>− ${money(returned)}</span></div>`:''}
+      <div class="flex-between" style="border-top:1px dashed var(--border);margin-top:4px;padding-top:4px"><span>المتبقي على الفاتورة</span><b style="color:var(--accent)">${money(need)}</b></div>
+      ${lowCap?`<div class="flex-between"><span>حساب المورد كله عليه</span><b>${money(cap)}</b></div>`:''}
+    </div>
+    ${payBox}
+    <div class="form-row"><label class="f-label">ملاحظة (اختياري)</label><input class="f" id="paReason" placeholder="مثال: رقم إيصال الدفع"></div>
+    ${!canFin
+      ? `<div class="muted" style="font-size:12px">سداد الفاتورة من هنا = اعتمادها ماليًا وإغلاقها، ومحتاج صلاحية «الاعتماد المالي وإغلاق فاتورة المورد».</div>`
+      : (zero ? '' : `<button class="btn btn-accent" style="width:100%" onclick="purFinApprove('${p.id}')">${cap>0.005?'✅ سدّد واقفل الفاتورة':'✅ اقفل الفاتورة'}</button>`)}
+    <div class="muted" style="font-size:11.5px;margin-top:10px">💡 تقدر تدفع جزء بس — الفاتورة بتتقفل برضه، والباقي بيفضل آجل على حساب المورد وتسدده بعدين من «تسديد» في شاشة المورد. ولو هتحاسب المورد آخر الأسبوع أو الشهر سيبها آجل.</div>
+  `, true);
+}
+/* م269: جملة الشرح تحت المبلغ والمصدر — بتقول هيتدفع كام ومنين، والباقي اللي هيفضل آجل */
+function purPayHint269(pid){
+  const p = DB.purchases.find(x=>x.id===pid), sel = document.getElementById('paSrcAcc'), hint = document.getElementById('paSrcHint');
+  if(!p || !sel || !hint) return;
+  const c = purPayCap269(p);
+  const amt = Math.round((parseFloat((document.getElementById('paAmt')||{}).value)||0)*100)/100;
+  const bad = t => `<span style="color:var(--danger);font-weight:700">⛔ ${t}</span>`;
+  if(!(amt > 0)){ hint.innerHTML = purCanCloseNoPay269(p) ? 'مبلغ صفر ⇒ الفاتورة هتتقفل من غير سداد جديد.' : bad('اكتب المبلغ اللي هتدفعه'); return; }
+  if(amt > c.cap + 0.005){ hint.innerHTML = bad(c.cap < c.need - 0.005 ? 'حساب المورد كله عليه '+money(c.cap)+' بس — مش هينفع تدفع أكتر من كده' : 'المبلغ أكبر من المتبقي على الفاتورة ('+money(c.need)+')'); return; }
+  const v = String(sel.value||'');
+  if(!v){ hint.innerHTML = 'اختار هتدفع منين.'; return; }
+  let src = '';
+  if(v.indexOf('cus:')===0){
+    const cu = DB.custodies.find(x=>x.id===v.slice(4)), av = cu ? custodyAvailable(cu) : 0, lbl = cu ? escNote(custodyPayLabel(cu)) : 'العهدة';
+    if(amt > av + 0.005){ hint.innerHTML = bad('المتاح في '+lbl+' '+money(av)+' بس — اكتب مبلغ أقل أو اختار حساب أو عهدة تانية'); return; }
+    src = ' من '+lbl+' (من غير خصم من أي حساب — الفلوس خرجت يوم إصدار العهدة؛ الباقي في العهدة بعدها '+money(Math.round((av-amt)*100)/100)+')';
+  } else {
+    const a = DB.finAccounts.find(x=>x.id===v); src = ' من '+(a ? escNote(a.name) : 'الحساب');
+  }
+  const rest = Math.round((c.cap - amt)*100)/100;
+  hint.innerHTML = 'هيتدفع <b>'+money(amt)+'</b>'+src+' والفاتورة هتتقفل'+(rest > 0.005 ? ' — والباقي <b>'+money(rest)+'</b> يفضل آجل على حساب المورد' : '')+'.';
+}
+/* م269: الفاتورة الآجل اللي اتدفع عليها أي مبلغ (كلي أو جزئي) من «سداد فواتير محددة» ⇒ بتتقفل لوحدها
+   (قرار سيف: أي سداد = الفاتورة اتراجعت واتعمدت ماليًا) — والباقي بيفضل آجل على حساب المورد.
+   بتتنادى بعد ما الدفعة تتسجل على الفاتورة في الذاكرة وقبل الحفظ. الكاش القديمة والقطع الخارجية برا الموضوع. */
+function purAutoClose269(p, how){
+  if(!p || p.extKind || !purIsCredit(p) || purIsClosed(p)) return false;
+  const now = new Date().toISOString(), by = actorName(), rest = purchaseOutstanding(p);
+  const changes = [{ field:'الحالة', before: purStatus(p)==='pending' ? 'بانتظار المراجعة / الاعتماد (Level 1)'
+      : 'تمت المراجعة'+(p.approvedBy?' بواسطة '+p.approvedBy:'')+' — آجل', after:'معتمدة مالياً ومقفولة (Level 3)' }];
+  if(rest > 0.005) changes.push({ field:'الباقي', before:'—', after:money(rest)+' آجل على حساب المورد' });
+  p.status = 'approved'; p.finApproved = true; p.finApprovedBy = by; p.finApprovedAt = now; p.finAutoClosed = how || true;
+  purLog(p, 'fin_approved', changes, 'اتقفلت لوحدها — اتسدد عليها'+(how?' ('+how+')':''));
+  return true;
 }
 /* ============ م267: الاعتماد المالي لفاتورة شراء كاش «من عهدة موظف» ============
    طلب سيف: «أدوس كاش، وفي مصدر الدفع ألاقي العهد المفتوحة … يتخصم من العهدة تلقائي — ولو الفاتورة أكبر من العهدة مرفوض».
@@ -17847,11 +17995,14 @@ function paSrcChanged267(pid){
     hint.innerHTML = need > av + 0.005
       ? `<span style="color:var(--danger);font-weight:700">⛔ المتاح في ${lbl} ${money(av)} بس — والفاتورة محتاجة ${money(need)}. اختار حساب أو عهدة تانية.</span>`
       : `هيتسجّل سداد ${money(need)} من ${lbl}${src?' (العهدة طالعة من '+escNote(src)+')':''} — <b>من غير خصم من أي حساب</b> (الفلوس خرجت يوم إصدار العهدة)${back}. الباقي في العهدة بعدها: ${money(Math.max(0, Math.round((av-need)*100)/100))}.`;
+  } else if(!v){
+    hint.textContent = '';   /* م269: شاشة السداد بتبدأ من غير اختيار — لازم المحاسب يختار بنفسه */
   } else {
-    hint.textContent = purAutoPayment(p)&&purAutoPayment(p).finMoveId ? 'الفاتورة متخصومة بالفعل — الاعتماد هيسجّل المصدر.' : 'هيتخصم '+money(Math.max(0,p.total-purManualPaid(p)))+' من الحساب المختار.';
+    /* م269: المبلغ = المتبقي الفعلي (بعد المدفوع والمرتجعات) — نفس اللي هيتخصم بالظبط */
+    hint.textContent = purAutoPayment(p)&&purAutoPayment(p).finMoveId ? 'الفاتورة متخصومة بالفعل — الاعتماد هيسجّل المصدر.' : 'هيتخصم '+money(purCashNeed267(p))+' من الحساب المختار.';
   }
 }
-async function purFinApproveCus267(purchaseId, cusId, reason, wantMethod){
+async function purFinApproveCus267(purchaseId, cusId, reason, wantMethod, amount269){   /* م269: amount269 = سداد جزئي (اختياري) */
   if(!can('pur.fin_approve')){ toast('مالكش صلاحية الاعتماد المالي وإغلاق الفاتورة', true); return; }
   if(!can('sup.pay')){ toast('الدفع من عهدة محتاج صلاحية «سداد الموردين»', true); return; }
   if(!DB.custodies.find(c=>c.id===cusId)){ toast('العهدة دي مش مفتوحة', true); return; }
@@ -17872,17 +18023,24 @@ async function purFinApproveCus267(purchaseId, cusId, reason, wantMethod){
   const need = purCashNeed267(p);   // المتبقي على الفاتورة (من غير الدفعة الكاش التلقائية القديمة — دي هترجع لحسابها)
   const av = custodyAvailable(cus);
   if(need <= 0.005){ toast('الفاتورة مدفوعة بالكامل — مفيش حاجة تتخصم من العهدة', true); return; }
-  if(need > av + 0.005){ toast('المتاح في '+custodyPayLabel(cus)+' '+money(av)+' بس — والفاتورة محتاجة '+money(need)+' (مرفوض)', true); return; }
+  /* م269: الفاتورة الآجل ممكن تتسدد جزء (والباقي يفضل آجل على حساب المورد) — المبلغ مايعديش المتبقي */
+  if(amount269 > need + 0.005){ toast('المبلغ ('+money(amount269)+') أكبر من المتبقي على الفاتورة ('+money(need)+')', true); return; }
+  const pay = amount269 > 0.005 ? Math.round(amount269*100)/100 : need;
+  /* م269 (مراجعة مستقلة): الفاتورة الآجل — مايتدفعش فوق مديونية المورد كلها (لو اتسدد «على الحساب» قبل كده) */
+  const cap269 = wantMethod==='آجل' ? purPayCap269(p).cap : need;
+  if(pay > cap269 + 0.005){ toast('حساب المورد كله عليه '+money(cap269)+' بس — مش هينفع تدفع أكتر', true); return; }
+  if(pay > av + 0.005){ toast('المتاح في '+custodyPayLabel(cus)+' '+money(av)+' بس — '+(amount269 > 0.005 ? 'والمبلغ المطلوب ' : 'والفاتورة محتاجة ')+money(pay)+' (مرفوض)', true); return; }
+  const rest269 = Math.round((cap269 - pay)*100)/100;
   const oldMethod = p.paymentMethod, methodChanged = wantMethod !== oldMethod;
   const beforeBal = supplierBalance(p.supplierId).balance;
   const oldAuto = purAutoPayment(p);
   const reversed = purReversePayEffect(p);   // دفعة كاش قديمة من حساب ⇒ ترجع للحساب (مفيش ازدواج)
   p.paymentMethod = wantMethod;             // «كاش» — من غير دفعة تلقائية: المدفوع متسجّل من العهدة تحت
   const supNm = supName(p.supplierId), now = new Date().toISOString(), by = actorName(), src = custodySrcName(cus);
-  const spay = { id:uid('spay'), amount:need, date:now, fromCustody:cus.id };
+  const spay = { id:uid('spay'), amount:pay, date:now, fromCustody:cus.id };
   p.payments = p.payments || []; p.payments.push(spay);
   const supExp = { id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'supplier_payment', category:'سداد مورد',
-    amount:need, note:supNm, description:'سداد فاتورة شراء #'+p.purchaseNo+' للمورد '+supNm, supplierId:p.supplierId,
+    amount:pay, note:supNm, description:'سداد فاتورة شراء #'+p.purchaseNo+' للمورد '+supNm, supplierId:p.supplierId,
     accountId:null, payAccount:custodyPayLabel(cus), fromCustody:cus.id, purchaseId:p.id, purchaseNo:p.purchaseNo, payId:spay.id,
     date:now, recordedBy:by, system:true };
   /* م268 (مراجعة v287): صور إيصال الدفعة الكاش القديمة (purReversePayEffect بيشيلها على الفاتورة) بتنتقل على صف السداد من العهدة — زي purApplyPayEffect */
@@ -17890,14 +18048,15 @@ async function purFinApproveCus267(purchaseId, cusId, reason, wantMethod){
   DB.expenses.push(supExp);
   cus.uses = Array.isArray(cus.uses) ? cus.uses : [];
   const cusUse = { id:uid('cuse'), kind:'supplier_payment', name:'سداد '+supNm, expId:supExp.id, expNo:supExp.expNo, supplierId:p.supplierId, supplierName:supNm,
-    invoices:[{ purchaseId:p.id, purchaseNo:p.purchaseNo, amount:need }], amount:need, voucherNo:null, at:now, by, viaApprove:true };
+    invoices:[{ purchaseId:p.id, purchaseNo:p.purchaseNo, amount:pay }], amount:pay, voucherNo:null, at:now, by, viaApprove:true };
   cus.uses.push(cusUse);
   const changes = [];
   if(methodChanged) changes.push({ field:'طريقة الدفع', before:oldMethod, after:wantMethod });
-  changes.push({ field:'مصدر الدفع', before:'—', after:escNote(custodyPayLabel(cus)+(src?' (العهدة طالعة من '+src+')':''))+' — '+money(need) });   /* م268: سجل الفاتورة بيتعرض HTML ⇒ الأسامي متأمّنة */
+  changes.push({ field:'مصدر الدفع', before:'—', after:escNote(custodyPayLabel(cus)+(src?' (العهدة طالعة من '+src+')':''))+' — '+money(pay) });   /* م268: سجل الفاتورة بيتعرض HTML ⇒ الأسامي متأمّنة */
+  if(rest269 > 0.005) changes.push({ field:'الباقي', before:'—', after:money(rest269)+' آجل على حساب المورد' });   /* م269 */
   if(reversed && oldAuto && oldAuto.finMoveId) changes.push({ field:'الدفعة الكاش القديمة', before:money(oldAuto.amount)+' مخصومة من حساب', after:'رجعت للحساب — واتدفعت من العهدة' });
   changes.push({ field:'الحالة', before: purStatus(p)==='pending' ? 'بانتظار المراجعة / الاعتماد (Level 1)'
-    : 'تمت المراجعة'+(p.approvedBy?' بواسطة '+p.approvedBy:'')+' — بانتظار الاعتماد المالي (Level 2)', after:'معتمدة مالياً ومقفولة (Level 3)' });
+    : 'تمت المراجعة'+(p.approvedBy?' بواسطة '+p.approvedBy:'')+(wantMethod==='آجل'?' — آجل':' — بانتظار الاعتماد المالي (Level 2)'), after:'معتمدة مالياً ومقفولة (Level 3)' });
   p.status = 'approved'; p.finApproved = true; p.finApprovedBy = by; p.finApprovedAt = now;
   const afterBal = supplierBalance(p.supplierId).balance;
   const debtImpact = Math.round((afterBal - beforeBal)*100)/100;
@@ -17911,17 +18070,20 @@ async function purFinApproveCus267(purchaseId, cusId, reason, wantMethod){
   { const cx = DB.custodies.find(c=>c.id===cus.id); if(cx && !custodyUses(cx).some(u=>u.id===cusUse.id)){ cx.uses = custodyUses(cx).concat([cusUse]); await saveKey('custodies'); } }
   await logAction('🟢 اعتماد مالي لفاتورة شراء #'+p.purchaseNo+auditDetails([
     ['المورد', supNm], ['طريقة الدفع', wantMethod+(methodChanged?' (كانت '+oldMethod+')':'')],
-    ['الدفع من', custodyPayLabel(cus)+(src?' — العهدة طالعة من '+src:'')], ['المبلغ', money(need)],
+    ['الدفع من', custodyPayLabel(cus)+(src?' — العهدة طالعة من '+src:'')], ['المبلغ', money(pay)],
     ['مديونية المورد', money(beforeBal)+' ← '+money(afterBal)], ['السبب', reason||'—']]));
-  await logAction('سداد '+money(need)+' للمورد '+supNm+' من '+custodyPayLabel(cus)+' — فواتير: #'+p.purchaseNo+' ('+money(need)+')');
-  notify('purchase_approve', 'اعتماد مالي لفاتورة شراء #'+p.purchaseNo+' — '+supNm+' (كاش من '+custodyPayLabel(cus)+')'+(methodChanged?' [تغيّرت من '+oldMethod+']':''),
+  await logAction('سداد '+money(pay)+' للمورد '+supNm+' من '+custodyPayLabel(cus)+' — فواتير: #'+p.purchaseNo+' ('+money(pay)+')');
+  notify('purchase_approve', 'اعتماد مالي لفاتورة شراء #'+p.purchaseNo+' — '+supNm+' (سداد '+money(pay)+' من '+custodyPayLabel(cus)+(rest269>0.005?' — والباقي '+money(rest269)+' آجل':'')+')'+(methodChanged?' [تغيّرت من '+oldMethod+']':''),
     { category:'financial', refType:'purchase', refId:p.id, refNo:p.purchaseNo, amount:p.total });
   { const cn = DB.custodies.find(c=>c.id===cus.id) || cus; custodyCheckAlerts263(cn); }   /* سحب زيادة أو اتقفلت من جهاز تاني أثناء الحفظ ⇒ المالك يتبلّغ */
-  closeModal(); toast('تم الاعتماد المالي — واتخصم '+money(need)+' من '+custodyPayLabel(cus)); refreshContent();
+  closeModal(); toast('تم الاعتماد المالي — واتخصم '+money(pay)+' من '+custodyPayLabel(cus)+(rest269>0.005?' — والباقي '+money(rest269)+' آجل على حساب المورد':'')); refreshContent();
 }
 function paToggleSrc(){
   const m = (document.querySelector('input[name="paMethod"]:checked')||{}).value;
   const box = document.getElementById('paSrcBox'); if(box) box.style.display = (m==='آجل') ? 'none' : 'block';
+  /* م269: «آجل» مابيقفلش الفاتورة — بيحوّلها بس */
+  const go = document.getElementById('paGoBtn');
+  if(go) go.textContent = (m==='آجل' && go.getAttribute('data-ext')!=='1') ? '💳 حوّلها آجل (من غير إغلاق)' : '✅ اعتماد مالي وإغلاق الفاتورة';   /* القطع الخارجية: زي الأول */
 }
 async function purFinApprove(purchaseId){
   /* م153: الاعتماد المالي بصلاحيته المستقلة بس (فُك من pur.approve) */
@@ -17932,12 +18094,37 @@ async function purFinApprove(purchaseId){
      قبل كده أي فاتورة اتراجعت (L2) كانت بتتحبس هنا برسالة «معتمدة بالفعل». */
   if(purIsClosed(p)){ toast('الفاتورة معتمدة ماليًا ومقفولة بالفعل', true); return; }
   const reason = ((document.getElementById('paReason')||{}).value||'').trim();
-  const wantMethod = ((document.querySelector('input[name="paMethod"]:checked')||{}).value) || p.paymentMethod;
-  const isCredit = wantMethod === 'آجل';
-  let srcAcc = isCredit ? null : ((document.getElementById('paSrcAcc')||{}).value || null);
-  if(!isCredit && !srcAcc){ toast('اختار مصدر الدفع (الحساب)', true); return; }
+  /* م269 (قرار سيف): فاتورة آجل ⇒ الاعتماد المالي = السداد. أي سداد عليها — كلي أو جزئي — بيقفلها،
+     والباقي بيفضل آجل على حساب المورد (يتسدد بعدين من «تسديد» في شاشة المورد). مفيش «اقفلها آجل» من غير دفع.
+     الدفعة بتتسجل «سداد مورد» على الفاتورة نفسها (نفس شكل «سداد فواتير محددة») والفاتورة بتفضل «آجل» كطريقة.
+     ولو مفيش متبقي (المرتجعات غطّتها) ⇒ بتتقفل بس من غير أي فلوس. */
+  const payFlow269 = purIsCredit(p) && !p.extKind;   /* القطع الخارجية برا الموضوع — بتفضل زي ما كانت بالظبط */
+  let wantMethod, isCredit, srcAcc;
+  if(payFlow269){
+    if(purZeroUnreviewed269(p)){ toast('إجمالي الفاتورة صفر ولسه ماتراجعتش — راجع الأسعار الأول', true); return; }
+    const c269 = purPayCap269(p);
+    const amt269 = c269.cap > 0.005 ? Math.round((parseFloat((document.getElementById('paAmt')||{}).value)||0)*100)/100 : 0;
+    if(c269.cap > 0.005 && !(amt269 <= 0 && purCanCloseNoPay269(p))){
+      const src269 = String((document.getElementById('paSrcAcc')||{}).value || '');
+      if(!src269){ toast('اختار هتدفع منين (الحساب أو العهدة)', true); return; }
+      if(!(amt269 > 0)){ toast('اكتب المبلغ اللي هتدفعه', true); return; }
+      if(amt269 > c269.cap + 0.005){ toast(c269.cap < c269.need - 0.005
+        ? 'حساب المورد كله عليه '+money(c269.cap)+' بس (اتدفع له على الحساب قبل كده) — مش هينفع تدفع أكتر'
+        : 'المبلغ ('+money(amt269)+') أكبر من المتبقي على الفاتورة ('+money(c269.need)+')', true); return; }
+      if(src269.indexOf('cus:')===0) return purFinApproveCus267(p.id, src269.slice(4), reason, p.paymentMethod, amt269);
+      return purPayCredit269(p.id, amt269, src269, reason);
+    }
+    wantMethod = p.paymentMethod; srcAcc = null; isCredit = false;   /* قفل من غير سداد جديد (مفيش متبقي / حساب المورد صفر / اتدفع عليها قبل كده ومبلغ 0) */
+  } else {
+    wantMethod = ((document.querySelector('input[name="paMethod"]:checked')||{}).value) || p.paymentMethod;
+    isCredit = wantMethod === 'آجل';
+    srcAcc = isCredit ? null : ((document.getElementById('paSrcAcc')||{}).value || null);
+    if(!isCredit && !srcAcc){ toast('اختار مصدر الدفع (الحساب)', true); return; }
+  }
   const methodChanged = wantMethod !== p.paymentMethod;
-  if(methodChanged && !can('pur.pay_method')){ toast('مالكش صلاحية تغيير طريقة الدفع', true); return; }
+  if(methodChanged && !payFlow269 && !can('pur.pay_method')){ toast('مالكش صلاحية تغيير طريقة الدفع', true); return; }
+  /* م269: فاتورة كاش قديمة المحاسب اختار لها «آجل» ⇒ بتتحول آجل بس ومابتتقفلش — الإغلاق = الدفع */
+  if(isCredit && !p.extKind) return purLegacyToCredit269(p, reason);
   /* م267: مصدر الدفع = عهدة موظف مفتوحة («cus:<id>») ⇒ مسار خاص: الفاتورة تتقفل كاش والمبلغ يتسجّل سداد من العهدة */
   if(!isCredit && String(srcAcc).indexOf('cus:')===0){
     const need267 = purCashNeed267(p);
@@ -17951,7 +18138,7 @@ async function purFinApprove(purchaseId){
   const changes = [];
   if(methodChanged) changes.push({ field:'طريقة الدفع', before:oldMethod, after:wantMethod });
   changes.push({ field:'الحالة', before: purStatus(p)==='pending' ? 'بانتظار المراجعة / الاعتماد (Level 1)'
-    : 'تمت المراجعة'+(p.approvedBy?' بواسطة '+p.approvedBy:'')+' — بانتظار الاعتماد المالي (Level 2)',
+    : 'تمت المراجعة'+(p.approvedBy?' بواسطة '+p.approvedBy:'')+(payFlow269?' — آجل':' — بانتظار الاعتماد المالي (Level 2)'),
     after:'معتمدة مالياً ومقفولة (Level 3)' });
   p.status = 'approved'; p.finApproved = true; p.finApprovedBy = actorName(); p.finApprovedAt = new Date().toISOString();
   /* م162: أثر المديونية بيتوثق جوه سجل الفاتورة نفسه — قبل/بعد وقيمة الفرق */
@@ -17968,6 +18155,68 @@ async function purFinApprove(purchaseId){
   notify('purchase_approve', 'اعتماد مالي لفاتورة شراء #'+p.purchaseNo+' — '+supName(p.supplierId)+' ('+wantMethod+')'+(methodChanged?' [تغيّرت من '+oldMethod+']':''),
     { category:'financial', refType:'purchase', refId:p.id, refNo:p.purchaseNo, amount:p.total });
   closeModal(); toast('تم الاعتماد المالي للفاتورة'); refreshContent();
+}
+/* م269: سداد فاتورة آجل من الفاتورة نفسها (من حساب) — كلي أو جزئي ⇒ اعتماد مالي وإغلاق، والباقي آجل على حساب المورد.
+   نفس شكل دفعة «سداد فواتير محددة» بالظبط: دفعة على الفاتورة + حركة خصم من الحساب + صف «سداد مورد» في السجل —
+   فكشف المورد ومطابقة المدفوع من الخزنة (supPaymentGap) والتقارير بيشوفوها زي أي سداد مورد. */
+async function purPayCredit269(pid, amount, accId, reason){
+  if(!DB.finAccounts.find(a=>a.id===accId)){ toast('الحساب ده مش موجود', true); return; }
+  /* م269 (مراجعة مستقلة): جهاز تاني دفع على الفاتورة أو قفلها وإحنا فاتحين الشباك (والمزامنة اللحظية لسه ماوصلتش) ⇒ مرفوض بدل الدفع مرتين.
+     بنقرا صف الفاتورة من السيرفر «لو متاح» — النت واقع ⇒ الدفع من حساب بيكمل أوفلاين زي الأول (العهدة بس اللي محتاجة نت). */
+  const rp = await purServerRow268(pid);
+  const p = DB.purchases.find(x=>x.id===pid);   // بعد الانتظار: السجل ممكن اتبدّل بالمزامنة اللحظية
+  if(!p){ toast('الفاتورة غير موجودة', true); return; }
+  if(purIsClosed(p) || (rp.ok && rp.data && purIsClosed(rp.data))){ toast('الفاتورة اتقفلت (يمكن من جهاز تاني) — افتحها تاني', true); refreshContent(); return; }
+  if(rp.ok && rp.data && Math.abs(purManualPaid(rp.data) - purManualPaid(p)) > 0.005){ toast('اتسجّلت دفعة على الفاتورة دي من جهاز تاني — افتحها تاني وراجع المتبقي', true); refreshContent(); return; }
+  const acc = DB.finAccounts.find(a=>a.id===accId);
+  if(!acc){ toast('الحساب ده مش موجود', true); return; }
+  /* ===== التحقق + كل التعديلات في الذاكرة مرة واحدة (من غير await) ===== */
+  const c = purPayCap269(p);
+  if(!(amount > 0) || amount > c.cap + 0.005){ toast('المبلغ لازم يكون أكبر من صفر ومايعديش '+money(c.cap), true); return; }
+  const supNm = supName(p.supplierId), now = new Date().toISOString(), by = actorName();
+  const rest = Math.round((c.cap - amount)*100)/100;
+  const beforeBal = supplierBalance(p.supplierId).balance;
+  const fm = addFinMove(acc.id, 'out', amount, 'supplier', 'سداد فاتورة شراء #'+p.purchaseNo+' — '+supNm, { refPurchase:p.id });
+  const spay = { id:uid('spay'), amount, date:now, accountId:acc.id, finMoveId:fm.id };
+  p.payments = p.payments || []; p.payments.push(spay);
+  DB.expenses.push({ id:uid('exp'), expNo:nextNo(DB.expenses,'expNo'), txnType:'supplier_payment', category:'سداد مورد',
+    amount, note:supNm, description:'سداد فاتورة شراء #'+p.purchaseNo+' للمورد '+supNm, supplierId:p.supplierId,
+    accountId:acc.id, payAccount:acc.name, purchaseId:p.id, purchaseNo:p.purchaseNo, payId:spay.id, finMoveId:fm.id,
+    date:now, recordedBy:by, system:true });
+  const changes = [{ field:'السداد', before:'—', after:money(amount)+' من '+escNote(acc.name) }];
+  if(rest > 0.005) changes.push({ field:'الباقي', before:'—', after:money(rest)+' آجل على حساب المورد' });
+  changes.push({ field:'الحالة', before: purStatus(p)==='pending' ? 'بانتظار المراجعة / الاعتماد (Level 1)'
+    : 'تمت المراجعة'+(p.approvedBy?' بواسطة '+p.approvedBy:'')+' — آجل', after:'معتمدة مالياً ومقفولة (Level 3)' });
+  p.status = 'approved'; p.finApproved = true; p.finApprovedBy = by; p.finApprovedAt = now;
+  const afterBal = supplierBalance(p.supplierId).balance;
+  changes.push({ field:'مديونية المورد', before:money(beforeBal), after:money(afterBal) });
+  purLog(p, 'fin_approved', changes, reason);
+  await Promise.all([saveKey('purchases', DB.purchases), saveKey('finMoves', DB.finMoves), saveKey('expenses', DB.expenses)]);
+  await logAction('🟢 اعتماد مالي لفاتورة شراء #'+p.purchaseNo+auditDetails([
+    ['المورد', supNm], ['السداد', money(amount)+' من '+acc.name], ['الباقي آجل', rest > 0.005 ? money(rest) : '—'],
+    ['مديونية المورد', money(beforeBal)+' ← '+money(afterBal)], ['السبب', reason||'—']]));
+  await logAction('سداد '+money(amount)+' للمورد '+supNm+' من '+acc.name+' — فواتير: #'+p.purchaseNo+' ('+money(amount)+')');
+  notify('purchase_approve', 'اعتماد مالي لفاتورة شراء #'+p.purchaseNo+' — '+supNm+' (سداد '+money(amount)+' من '+acc.name+(rest > 0.005 ? ' — والباقي '+money(rest)+' آجل' : '')+')',
+    { category:'financial', refType:'purchase', refId:p.id, refNo:p.purchaseNo, amount });
+  closeModal(); toast('اتسدد '+money(amount)+' من '+acc.name+' واتقفلت الفاتورة'+(rest > 0.005 ? ' — والباقي '+money(rest)+' آجل على حساب المورد' : '')); refreshContent();
+}
+/* م269: فاتورة كاش قديمة (قبل م269) المحاسب قال إنها ماتدفعتش ⇒ بتتحول آجل على حساب المورد ومابتتقفلش.
+   الدفعة التلقائية القديمة بتتشال بنفس محرك م69 (ولو كانت اتخصمت من حساب بترجع له — مفيش ازدواج). */
+async function purLegacyToCredit269(p, reason){
+  if(!can('pur.pay_method')){ toast('مالكش صلاحية تغيير طريقة الدفع', true); return; }
+  const oldMethod = p.paymentMethod;
+  const beforeBal = supplierBalance(p.supplierId).balance;
+  purApplyMethodChange(p, 'آجل', null);
+  const afterBal = supplierBalance(p.supplierId).balance;
+  purLog(p, 'pay_method', [{ field:'طريقة الدفع', before:oldMethod, after:'آجل' },
+    { field:'مديونية المورد', before:money(beforeBal), after:money(afterBal) }], reason);
+  await Promise.all([saveKey('purchases', DB.purchases), saveKey('finMoves', DB.finMoves), saveKey('expenses', DB.expenses)]);
+  await logAction('💳 فاتورة شراء #'+p.purchaseNo+' اتحولت آجل'+auditDetails([
+    ['المورد', supName(p.supplierId)], ['طريقة الدفع', oldMethod+' ← آجل'],
+    ['مديونية المورد', money(beforeBal)+' ← '+money(afterBal)], ['السبب', reason||'—']]));
+  notify('purchase_edit', 'فاتورة شراء #'+p.purchaseNo+' — '+supName(p.supplierId)+' اتحولت من '+oldMethod+' لآجل (هتتقفل لما تتسدد)',
+    { category:'financial', refType:'purchase', refId:p.id, refNo:p.purchaseNo, amount:p.total });
+  closeModal(); toast('الفاتورة اتحولت آجل على حساب المورد — هتتقفل لما تتسدد'); refreshContent();
 }
 /* ---------- استرداد رصيد دائن من المورد ---------- */
 function openSupplierRefundModal(supplierId){
@@ -18007,7 +18256,7 @@ function openSupplierPaymentModal(supplierId){
   const b = supplierBalance(supplierId);
   // فواتير مفتوحة (عليها متبقي) — للسداد المحدد (الملاحظة 69)
   const openInvs = DB.purchases.filter(p=>p.supplierId===supplierId)
-    .map(p=>({ p, remaining: Math.round((p.total - (p.payments||[]).reduce((s,x)=>s+x.amount,0))*100)/100 }))
+    .map(p=>({ p, remaining: purchaseOutstanding(p) }))   /* م269 (مراجعة): بعد المرتجعات */
     .filter(x=>x.remaining>0.01).sort((a,b)=>new Date(a.p.date)-new Date(b.p.date));
   const canSpecific = can('sup.pay_specific');
   openModal(`
@@ -18098,7 +18347,7 @@ function supPayRecalc(bal){
 }
 async function saveSupplierPayment(supplierId){
   if(!can('sup.pay')){ toast('مالكش صلاحية سداد الموردين', true); return; }
-  let amount = parseFloat(document.getElementById('supPayAmt').value)||0;
+  let amount = Math.round((parseFloat(document.getElementById('supPayAmt').value)||0)*100)/100;   /* م269 (مراجعة): قرشين على الأقل — 0.001 كانت بتقفل فاتورة */
   // الملاحظة 47: الخصم حركة محاسبية مستقلة — مابيعدّلش قيم الفواتير أبداً
   const discAmt = Math.max(parseFloat((document.getElementById('supDiscAmt')||{}).value)||0, 0);
   const discReason = ((document.getElementById('supDiscReason')||{}).value||'').trim();
@@ -18159,6 +18408,7 @@ async function saveSupplierPayment(supplierId){
   }
   const paidInvoices = [];
   const paidInvDetail = [];   /* م263: تفصيل الفواتير اللي اتسددت (للاستخدام المسجّل على العهدة) */
+  const closed269 = [];       /* م269: الفواتير الآجل اللي اتدفع عليها واتقفلت لوحدها */
   let openingPaid = 0, supExp = null, cusNow = null, cusUse = null;
   if(paidTotal>0){
     const balBefore = Math.round(supplierBalance(supplierId).balance*100)/100;
@@ -18169,8 +18419,8 @@ async function saveSupplierPayment(supplierId){
         .sort((a,b)=>new Date(a.date)-new Date(b.date));
       for(const p of purchases){
         if(amount<=0) break;
-        const paidSoFar = (p.payments||[]).reduce((s,x)=>s+x.amount,0);
-        const remaining = Math.round((p.total - paidSoFar)*100)/100;
+        /* م269 (مراجعة مستقلة): المتبقي بعد المرتجعات المخصومة من الفاتورة (purchaseOutstanding) — كان بيدفع الإجمالي كله ⇒ المورد ياخد زيادة */
+        const remaining = purchaseOutstanding(p);
         if(remaining<=0) continue;   // مسدَّدة بالكامل — مابتتسددش تاني
         const toPay = Math.min(remaining, amount);
         p.payments = p.payments || [];
@@ -18180,6 +18430,8 @@ async function saveSupplierPayment(supplierId){
         amount -= toPay;
         paidInvoices.push('#'+p.purchaseNo+' ('+money(toPay)+')');
         paidInvDetail.push({ purchaseId:p.id, purchaseNo:p.purchaseNo, amount:toPay });
+        /* م269: الفاتورة الآجل اتدفع عليها (كلها أو جزء) ⇒ بتتقفل لوحدها (السداد = الاعتماد المالي والإغلاق) */
+        if(purAutoClose269(p, 'سداد فواتير محددة من شاشة المورد')) closed269.push('#'+p.purchaseNo);
       }
     }
     /* الباقي (أو الدفعة كلها في الوضع العام) بيتسجّل كحركة «سداد دفعة» على
@@ -18204,6 +18456,15 @@ async function saveSupplierPayment(supplierId){
       amount: paidTotal, note: supNm, description:'سداد للمورد '+supNm, supplierId,
       accountId:accSel?accSel.id:null, payAccount:accSel?accSel.name:null, date:new Date().toISOString(),
       recordedBy:actorName(), system:true};
+    /* م270: السطر في سجل المصروفات بيتربط بالفاتورة اللي اتسددت («🔗 الفاتورة 📷») — أو بالفواتير لو كذا واحدة */
+    const extra270 = openingPaid > 0.005 ? ' — منها '+money(openingPaid)+' على الرصيد الافتتاحي' : '';   /* مراجعة م270: الزيادة اللي مالقتش فاتورة */
+    if(paidInvDetail.length === 1){
+      supExp.purchaseId = paidInvDetail[0].purchaseId; supExp.purchaseNo = paidInvDetail[0].purchaseNo;
+      supExp.description = 'سداد فاتورة شراء #'+paidInvDetail[0].purchaseNo+' للمورد '+supNm+extra270;
+    } else if(paidInvDetail.length > 1){
+      supExp.purchaseIds = paidInvDetail.map(x=>x.purchaseId); supExp.purchasePaid = paidInvDetail.map(x=>Object.assign({}, x));
+      supExp.description = 'سداد فواتير شراء '+paidInvDetail.map(x=>'#'+x.purchaseNo).join('، ')+' للمورد '+supNm+extra270;
+    }
     /* م263: من عهدة ⇒ نفس الصف بالظبط بس payAccount «عهدة #N — الموظف» + fromCustody، والاستخدام بيتسجل على العهدة نفسها */
     if(payCus){
       cusNow = payCus;
@@ -18235,12 +18496,14 @@ async function saveSupplierPayment(supplierId){
   const fromTxt = accSel ? ' من '+accSel.name : (cusNow ? ' من '+custodyPayLabel(cusNow) : '');
   await logAction('سداد '+money(paidTotal)+' للمورد '+supNm+fromTxt
     +(paidInvoices.length?' — فواتير: '+paidInvoices.join(' · '):'')
-    +(openingPaid>0.005?' — على الرصيد الافتتاحي: '+money(openingPaid):''));
+    +(openingPaid>0.005?' — على الرصيد الافتتاحي: '+money(openingPaid):'')
+    +(closed269.length?' — اتقفلت (اتسدد عليها): '+closed269.join('، '):''));
   notify(selIds.length?'supplier_pay_specific':'supplier_pay', 'سداد '+money(paidTotal)+' للمورد '+supNm+(cusNow?' (من '+custodyPayLabel(cusNow)+')':'')+(selIds.length?' (فواتير محددة: '+paidInvoices.join(' · ')+')':''),
     { category:'financial', refType:'supplier', refId:supplierId, amount:paidTotal });
   /* م263: الحفظ دمج استخدامات جهاز تاني ⇒ لو السحب عدّى قيمة العهدة المالك يتبلّغ */
   if(cusNow){ const cn = DB.custodies.find(c=>c.id===payCusId) || cusNow; custodyCheckAlerts263(cn); }   /* سحب زيادة، أو العهدة اتقفلت من جهاز تاني أثناء الحفظ ⇒ المالك يتبلّغ */
-  closeModal(); toast('تم تسجيل الدفعة للمورد'+(accSel?' وخصمها من '+accSel.name:(cusNow?' من '+custodyPayLabel(cusNow):''))); refreshContent();
+  closeModal(); toast('تم تسجيل الدفعة للمورد'+(accSel?' وخصمها من '+accSel.name:(cusNow?' من '+custodyPayLabel(cusNow):''))
+    +(closed269.length?' — واتقفلت '+closed269.length+' فاتورة اتسدد عليها':'')); refreshContent();
 }
 
 /* ---- الملاحظة 47: تسوية رصيد المورد (صاحب المركز فقط) — بتضيف حركة جديدة، عمرها ما تعدّل تاريخ ---- */
@@ -18297,12 +18560,143 @@ async function saveSupplierAdjust(supplierId){
   closeModal(); toast('اتسجلت التسوية — الرصيد بقى '+money(correct)); openSupplierDetail(supplierId); refreshContent();
 }
 
+/* ============ م270: 📷 صور فاتورة المورد (طلب سيف 2026-11-10) ============
+   «أمين المخزن وهو بيضيف الفاتورة يكون في خانة إضافة صورة — من الكمبيوتر أو يصورها من الموبايل.
+    والمحاسب لما يسدد فاتورة معينة، في سجل المصاريف أدوس على الفاتورة يوديني عليها ويبان إن عليها صورة.»
+   • اختيارية (قرار سيف): البضاعة ساعات بتوصل قبل ورقة المورد ⇒ «📷 ضيف صورة الفاتورة» بعدين من الفاتورة نفسها.
+   • لحد 3 صور (الفاتورة ممكن تبقى أكتر من ورقة) · بتتصغّر ويتطبع عليها «فاتورة شراء · المورد · التاريخ · الساعة»
+     وتترفع لنفس مخزن صور المصروفات (job-photos — فولدر pur/الفاتورة) — القاعدة بتشيل اللينك بس.
+   • مفيش مسح بعد الحفظ (زي صور المصروفات) · القطع الخارجية برا الموضوع.
+   • الإضافة بعدين: لأي حد ليه شغل على فواتير الشراء (إدخال · مراجعة · تعديل · اعتماد · اعتماد مالي). */
+const PUR_MAX_PHOTOS = 3;
+var _purDraftPh = [];   // صور الفاتورة الجديدة (لسه مااتحفظتش): [{ file, preview, at, up }]
+var _purPh = null;      // «ضيف صورة» لفاتورة موجودة: { pid, photos:[…] }
+function purPhotoList(p){ return ((p && p.photos) || []).filter(x=>x && x.url); }
+function purPhotoPerm(){ return can('inv.receive') || can('pur.review') || can('pur.approve') || canEditPurchaseAny() || can('pur.fin_approve'); }
+function purCanAddPhoto(p){ return !!p && !p.extKind && purPhotoPerm() && purPhotoList(p).length < PUR_MAX_PHOTOS; }
+function purStampText(supId, at){
+  const d = new Date(at || Date.now());
+  return ['فاتورة شراء', supName(supId), fmtDate(d.toISOString()), d.toLocaleTimeString(NUM_LOCALE, { hour:'2-digit', minute:'2-digit' })].join(' · ');
+}
+/* m = 'd' (المسودة — شاشة الفاتورة الجديدة) · 'm' (نافذة «ضيف صورة» لفاتورة موجودة) */
+function purPhArr(m){ return m === 'd' ? _purDraftPh : (_purPh ? _purPh.photos : null); }
+function purPhRoom(m){
+  const arr = purPhArr(m); if(!arr) return 0;
+  const pu = (m === 'm' && _purPh) ? DB.purchases.find(x=>x.id === _purPh.pid) : null;
+  return PUR_MAX_PHOTOS - (pu ? purPhotoList(pu).length : 0) - arr.length;
+}
+function purPhotosPickHTML(m){
+  const arr = purPhArr(m) || [], room = purPhRoom(m);
+  const grid = arr.length ? `<div class="tc-phs">${arr.map((x, i)=>`<div class="tc-ph-w"><img class="tc-ph" src="${escAttr(x.preview)}" alt="صورة"><button class="tc-ph-x" title="شيل الصورة" onclick="purRemovePhoto(${i},'${m}')">✕</button></div>`).join('')}</div>` : '';
+  const btns = room > 0 ? `<div style="display:flex;gap:8px;flex-wrap:wrap${arr.length ? ';margin-top:10px' : ''}">
+      <label class="btn" style="cursor:pointer">📷 صوّر<input type="file" accept="image/*" capture="environment" style="display:none" onchange="purPickFiles(this,'${m}')"></label>
+      <label class="btn" style="cursor:pointer">🖼 من المعرض / الكمبيوتر<input type="file" accept="image/*" multiple style="display:none" onchange="purPickFiles(this,'${m}')"></label>
+    </div>` : `<div class="muted" style="font-size:11.5px;margin-top:8px">✅ اكتملوا ${PUR_MAX_PHOTOS} صور — لو عايز تغيّر صورة شيلها الأول</div>`;
+  return grid + btns;
+}
+function purPhotosRedraw(m){ const el = document.getElementById(m === 'd' ? 'purDraftPhotos' : 'purPhotos'); if(el) el.innerHTML = purPhotosPickHTML(m); }
+function purRemovePhoto(i, m){ const arr = purPhArr(m); if(arr){ arr.splice(i, 1); purPhotosRedraw(m); } }
+function purPickFiles(input, m){
+  const arr = purPhArr(m); if(!arr) return;
+  const files = [...((input && input.files) || [])];
+  if(input) input.value = '';
+  for(const f of files){
+    if(purPhRoom(m) <= 0){ toast('أقصى حاجة ' + PUR_MAX_PHOTOS + ' صور للفاتورة', true); break; }
+    if(!f || (f.type && !/^image\//.test(f.type))){ toast('الملف ده مش صورة', true); continue; }
+    let preview = '';
+    try{ preview = URL.createObjectURL(f); }catch(e){}
+    arr.push({ file:f, preview, at:new Date().toISOString() });
+  }
+  purPhotosRedraw(m);
+}
+/* الرفع: اللي اترفع بيتحفظ مكانه (x.up) — لو النت فصل في النص وجرّبت تاني مابيترفعش مرتين */
+async function purUploadAll(arr, folder, supId, btn, label){
+  const who = ciAuthor(), n = arr.length, out = [];
+  try{
+    for(let i = 0; i < n; i++){
+      const x = arr[i];
+      if(btn){ btn.disabled = true; btn.textContent = '⏳ بيرفع الصورة ' + (i + 1) + ' من ' + n + '…'; }
+      if(!x.up || x.upSup !== supId){   /* المورد اتغيّر بعد ما اترفعت ⇒ تترفع تاني باسم المورد الصح مطبوع عليها */
+        let c;
+        try{ c = await tcCompress(x.file, purStampText(supId, x.at)); }catch(e){ throw new Error('decode'); }
+        const id = uid('pph');
+        const up = await tcUpload(folder, id, c.blob);
+        x.up = { id, url:up.url, path:up.path, at:x.at, by:who.by, byName:who.byName }; x.upSup = supId;
+      }
+      out.push(x.up);
+    }
+  } finally { if(btn){ btn.disabled = false; btn.textContent = label; } }
+  return out;
+}
+/* جوه الفاتورة: الصور (تدوس تكبر) + «📷 ضيف صورة» — أو «📷 مفيش صورة لسه» */
+function purPhotosViewHTML(p, back){   /* back: الشاشة اللي نرجع لها بعد الحفظ — view · review · pay · sup */
+  if(!p || p.extKind) return '';
+  const list = purPhotoList(p);
+  const add = purCanAddPhoto(p) ? `<button class="btn btn-sm" onclick="openPurPhotoModal('${p.id}','${back || ''}')">📷 ${list.length ? 'ضيف صورة تانية' : 'ضيف صورة الفاتورة'}</button>` : '';
+  if(!list.length) return `<div class="dsec">📷 صورة فاتورة المورد</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><span class="muted" style="font-size:12.5px">📷 مفيش صورة لسه</span>${add}</div>`;
+  return `<div class="dsec">📷 صورة فاتورة المورد (${list.length})</div>
+    <div class="tc-phs" style="margin-bottom:6px">${list.map(x=>`<img class="tc-ph" src="${escAttr(x.url)}" loading="lazy" alt="صورة الفاتورة" title="${escAttr((x.byName ? x.byName + ' · ' : '') + fmtDateTime(x.at))}" onclick="tcViewPhoto('${escAttr(x.url)}')">`).join('')}</div>
+    ${add ? `<div style="margin-bottom:10px">${add}</div>` : ''}`;
+}
+/* علامة صغيرة في القوايم: «📷 2» أو «📷 مفيش صورة» */
+function purPhotoTag(p){
+  if(!p || p.extKind) return '';
+  const n = purPhotoList(p).length;
+  return n ? `<span class="tag tag-paid" style="font-size:10px" title="عليها صورة فاتورة المورد">📷 ${n}</span>`
+           : `<span class="tag" style="font-size:10px;opacity:.65" title="الفاتورة مالهاش صورة">📷 مفيش صورة</span>`;
+}
+function openPurPhotoModal(pid, back){
+  const pu = DB.purchases.find(x=>x.id === pid);
+  if(!pu){ toast('الفاتورة دي مش موجودة', true); return; }
+  if(!purCanAddPhoto(pu)){ toast(pu.extKind ? 'فواتير القطع الخارجية مالهاش صور هنا' : (!purPhotoPerm() ? 'مالكش صلاحية على فواتير الشراء' : 'الفاتورة عليها ' + PUR_MAX_PHOTOS + ' صور خلاص'), true); return; }
+  _purPh = { pid, photos:[], back: back || '' };
+  openModal(`<h3>📷 صورة فاتورة المورد — #${pu.purchaseNo}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">${escNote(supName(pu.supplierId))} · ${money(pu.total)} · ${fmtDate(pu.date)}</div>
+    <div id="purPhotos">${purPhotosPickHTML('m')}</div>
+    <div class="muted" style="font-size:11.5px;margin-top:8px">🔒 الصورة بعد الحفظ مابتتمسحش · التاريخ والساعة بيتطبعوا عليها</div>
+    <button class="btn btn-accent" id="purPhSaveBtn" style="width:100%;margin-top:12px" onclick="savePurPhotos()">💾 حفظ</button>`);
+}
+async function savePurPhotos(){
+  if(!_purPh || !_purPh.pid) return;
+  if(!purPhotoPerm()){ toast('مالكش صلاحية على فواتير الشراء', true); return; }
+  const st = _purPh, pid = st.pid;
+  let pu = DB.purchases.find(x=>x.id === pid);
+  if(!pu || pu.extKind){ toast('الفاتورة دي مش موجودة', true); return; }
+  if(!st.photos.length){ toast('صوّر الفاتورة الأول', true); return; }
+  if(purPhRoom('m') < 0){ toast('أقصى حاجة ' + PUR_MAX_PHOTOS + ' صور للفاتورة — شيل صورة', true); return; }
+  try{ await purUploadAll(st.photos, 'pur/' + pid, pu.supplierId, document.getElementById('purPhSaveBtn'), '💾 حفظ'); }
+  catch(err){ toast(expUploadErrText(err, ''), true); return; }
+  /* مراجعة م270: صورة اتختارت وإحنا بنرفع ⇒ مانحفظش من غيرها (كانت بتضيع بصمت) */
+  if(st.photos.some(x=>!x.up)){ toast('اتضافت صورة وإحنا بنرفع — دوس «حفظ» تاني عشان تترفع هي كمان', true); return; }
+  const photos = st.photos.map(x=>x.up);
+  pu = DB.purchases.find(x=>x.id === pid);   // بعد الرفع — نسخة الذاكرة الحالية (المزامنة اللحظية ممكن بدّلتها)
+  if(!pu){ if(_purPh === st) _purPh = null; closeModal(); toast('الفاتورة دي اتشالت — الصورة ما اتحفظتش', true); refreshContent(); return; }
+  const have = new Set(purPhotoList(pu).map(x=>x.id));
+  const add = photos.filter(x=>!have.has(x.id));
+  const before = purPhotoList(pu).length;
+  pu.photos = purPhotoList(pu).concat(add);   // مابنقصّش: صورة اترفعت لازم تفضل مربوطة بالفاتورة
+  purLog(pu, 'photo', [{ field:'صور الفاتورة', before:String(before), after:String(pu.photos.length) }], '');
+  if(_purPh === st) _purPh = null;
+  await saveKey('purchases');
+  await logAction('📷 ' + (add.length === 1 ? 'صورة' : add.length + ' صور') + ' لفاتورة شراء #' + pu.purchaseNo + ' — ' + supName(pu.supplierId));
+  closeModal(); toast('تم حفظ صورة الفاتورة');
+  refreshContent();   /* الشاشة اللي ورا (سجل المصروفات مثلاً) تبان فيها «📷» على طول */
+  /* مراجعة م270: نرجع للشاشة اللي «ضيف صورة» اتداست منها (الفاتورة / المراجعة / السداد / حساب المورد) بدل ما تختفي */
+  const back = st.back;
+  if(back === 'view') openPurchaseView(pid);
+  else if(back === 'review') openPurReview(pid);
+  else if(back === 'pay') openPurApprove(pid);
+  else if(back === 'sup' && canScreen('suppliers')) openSupplierDetail(pu.supplierId);
+}
+
 /* ======================= NEW PURCHASE INVOICE (فاتورة شراء مورد) ======================= */
 let purchaseDraft = null;
 let purEditIdx = null;   // م96: السطر اللي في وضع التعديل (null = مفيش)
 function resetPurchaseDraft(){
-  purchaseDraft = { supplierId:'', invoiceNo:'', date:new Date().toISOString().slice(0,10), paymentMethod:'كاش', lines:[] };
+  purchaseDraft = { supplierId:'', invoiceNo:'', date:new Date().toISOString().slice(0,10), paymentMethod:'آجل', lines:[] };   /* م269: دايماً آجل */
   purEditIdx = null;   // م96: وضع تعديل السطر ماينفعش يفضل مفتوح على فاتورة جديدة
+  _purDraftPh = [];    // م270: صور فاتورة المورد بتاعة المسودة
 }
 function openNewPurchaseInvoicePage(){
   resetPurchaseDraft();
@@ -18320,20 +18714,26 @@ function renderNewPurchaseInvoice(){
   <div class="card" style="margin-bottom:18px">
     <div class="grid g4">
       <div class="form-row"><label class="f-label">المورد</label>
-        <select class="f" onchange="purchaseDraft.supplierId=this.value">
+        <select class="f" onchange="purchaseDraft.supplierId=this.value" data-ss data-ss-ph="🔎 اكتب جزء من اسم المورد…" data-ss-empty="مفيش مورد بالاسم ده">
           <option value="">— اختار المورد —</option>
           ${supplierOptions(purchaseDraft.supplierId)}
         </select>
       </div>
       <div class="form-row"><label class="f-label">رقم فاتورة المورد (اختياري)</label><input class="f" value="${purchaseDraft.invoiceNo}" oninput="purchaseDraft.invoiceNo=this.value"></div>
       <div class="form-row"><label class="f-label">تاريخ الفاتورة</label><input class="f" type="date" value="${purchaseDraft.date}" onchange="purchaseDraft.date=this.value"></div>
-      <div class="form-row"><label class="f-label">طريقة الدفع</label>
-        <select class="f" onchange="purchaseDraft.paymentMethod=this.value">
-          ${['كاش','آجل','فيزا','تحويل بنكي','أخرى'].map(m=>`<option ${purchaseDraft.paymentMethod===m?'selected':''}>${m}</option>`).join('')}
-        </select>
+      <!-- م269: قرار سيف — أمين المخزن مالوش دعوة بطريقة الدفع. الفاتورة بتتسجل آجل دايماً، والمحاسب بيسددها
+           (من الفاتورة نفسها أو من شاشة المورد) — وأي سداد عليها (كلي أو جزئي) هو الاعتماد المالي والإغلاق -->
+      <div class="form-row"><label class="f-label">الدفع</label>
+        <div class="muted" style="font-size:12.5px;padding-top:8px">📒 <b>آجل</b> على حساب المورد — المحاسب هو اللي بيسدد</div>
       </div>
     </div>
     ${DB.suppliers.length===0? `<div class="muted" style="font-size:12.5px;margin-top:8px">مفيش موردين مسجلين — <button class="btn btn-sm" onclick="openNewSupplierModal()">أضف مورد الأول</button></div>`:''}
+  </div>
+  <!-- م270: صورة ورقة المورد — اختيارية (البضاعة ساعات بتوصل قبل الورقة ⇒ تتضاف بعدين من الفاتورة) -->
+  <div class="card" style="margin-bottom:18px">
+    <label class="f-label">📷 صورة فاتورة المورد (اختياري — لحد ${PUR_MAX_PHOTOS} صور)</label>
+    <div id="purDraftPhotos">${purPhotosPickHTML('d')}</div>
+    <div class="muted" style="font-size:11.5px;margin-top:6px">ورقة المورد لسه ماوصلتش؟ احفظ الفاتورة عادي، وضيف الصورة بعدين من الفاتورة نفسها («📷 ضيف صورة الفاتورة»).</div>
   </div>
 
   <div class="section-head"><h3>بنود الفاتورة (${purchaseDraft.lines.length})</h3>
@@ -18393,7 +18793,7 @@ function renderNewPurchaseInvoice(){
     }).join('') : `<tr><td colspan="8" class="empty">لسه مفيش أصناف مضافة للفاتورة</td></tr>`}</tbody></table>
     <div class="flex-between" style="margin-top:14px"><span>إجمالي الفاتورة</span><span class="total-row">${money(total)}</span></div>
   </div>
-  <button class="btn btn-accent" style="width:100%;margin-top:18px;padding:14px" onclick="savePurchaseInvoice()">💾 حفظ الفاتورة وتحديث المخزون وحساب المورد</button>
+  <button class="btn btn-accent" id="purSaveBtn" style="width:100%;margin-top:18px;padding:14px" onclick="savePurchaseInvoice()">💾 حفظ الفاتورة وتحديث المخزون وحساب المورد</button>
   `;
 }
 /* الملاحظة 38: حقول تتبع اختيارية للأصناف المشتراة (ملاحظات + طالب + أمر شغل + سيارة) */
@@ -18540,7 +18940,7 @@ function ssMake(sel){
   const inp = document.createElement('input');
   inp.className = 'f ss-in'; inp.type = 'text';
   inp.setAttribute('autocomplete', 'off');
-  inp.setAttribute('placeholder', '🔎 اكتب جزء من اسم النوع…');
+  inp.setAttribute('placeholder', sel.getAttribute('data-ss-ph') || '🔎 اكتب جزء من اسم النوع…');   /* م272: كل قايمة بكلامها */
   const list = document.createElement('div'); list.className = 'ss-list'; list.style.display = 'none';
   box.appendChild(inp); box.appendChild(list); box.appendChild(sel);
   sel.style.display = 'none';
@@ -18555,7 +18955,7 @@ function ssMake(sel){
     list.innerHTML = hits.length ? hits.map((x, i)=>{
       const head = x.g !== g ? ((g = x.g) ? `<div class="ss-g">${escNote(x.g)}</div>` : '') : '';
       return head + `<div class="ss-it${i === hi ? ' on' : ''}" data-i="${i}">${escNote(x.t)}</div>`;
-    }).join('') : `<div class="ss-empty">مفيش نوع بالاسم ده</div>`;
+    }).join('') : `<div class="ss-empty">${escNote(sel.getAttribute('data-ss-empty') || 'مفيش نوع بالاسم ده')}</div>`;
     list.style.display = 'block';
   };
   const mark = () => list.querySelectorAll('.ss-it').forEach(el=>el.classList.toggle('on', +el.getAttribute('data-i') === hi));
@@ -19314,7 +19714,29 @@ async function savePurchaseInvoice(){
     }
   }
   const warn241 = purchaseDraft._warn241 || null;
-  const purchaseId = uid('pur');
+  purchaseDraft.paymentMethod = 'آجل';   /* م269: أي فاتورة من المخزن آجل — مهما كان في المسودة */
+  /* م270 (مراجعة): رقم الفاتورة ثابت على المسودة — المحاولة التانية بعد فشل الرفع بتحط الصور في نفس فولدر الفاتورة */
+  if(!purchaseDraft._pid270 || DB.purchases.some(x=>x && x.id===purchaseDraft._pid270)) purchaseDraft._pid270 = uid('pur');   /* اتحفظت بالرقم ده قبل كده (الحفظ فشل بعدها) ⇒ رقم جديد — مفيش فاتورتين بنفس الرقم */
+  const purchaseId = purchaseDraft._pid270;
+  /* م270: صور فاتورة المورد بتترفع الأول — قبل أي تعديل في المخزن أو حساب المورد:
+     النت فاصل ⇒ مفيش حاجة اتحفظت خالص (والصورة اللي اترفعت قبل الفصل مابتترفعش تاني في المحاولة الجاية) */
+  let photos270 = [];
+  if(_purDraftPh.length){
+    const draft270 = purchaseDraft, supId270 = draft270.supplierId;
+    /* أي رجوع من غير حفظ ⇒ تأكيد تنبيه «شبه فاتورة قديمة / السعر قفز» بيتلغي — المحاولة الجاية تتفحص من الأول (مراجعة م270) */
+    const back270 = msg => { if(purchaseDraft){ purchaseDraft._warnOk = false; delete purchaseDraft._warn241; } toast(msg, true); };
+    try{ await purUploadAll(_purDraftPh, 'pur/' + purchaseId, supId270, document.getElementById('purSaveBtn'), '💾 حفظ الفاتورة وتحديث المخزون وحساب المورد'); }
+    catch(err){ back270(expUploadErrText(err, ' — الفاتورة ماتحفظتش. جرّب تاني، أو شيل الصورة واحفظ وضيفها بعدين من الفاتورة')); return; }
+    if(purchaseDraft !== draft270 || draft270.supplierId !== supId270 || !draft270.lines.length){ back270('الفاتورة اتغيّرت أثناء رفع الصورة — راجعها ودوس حفظ تاني'); return; }
+    /* صورة اتختارت وإحنا بنرفع ⇒ مانحفظش من غيرها (كانت بتضيع بصمت) — الصور اللي اترفعت مابتترفعش تاني */
+    if(_purDraftPh.some(x=>!x.up || x.upSup !== supId270)){ back270('اتضافت صورة وإحنا بنرفع — دوس «حفظ» تاني عشان تترفع هي كمان'); return; }
+    photos270 = _purDraftPh.map(x=>x.up);   // الصور اللي في المسودة دلوقتي بالظبط (لو صورة اتشالت بـ✕ أثناء الرفع مابتدخلش)
+    /* الملاحظة 45 تاني بعد الرفع: صنف اتأرشف/اتدمج/اتشال أو المورد اتأرشف من جهاز تاني وإحنا بنرفع */
+    const goneLine = draft270.lines.find(l=>{ if(!l.partId) return false; const x = DB.inventory.find(q=>q.id===l.partId); return !x || x.archived || x.merged; });
+    if(goneLine){ back270('الصنف «'+goneLine.name+'» اتأرشف أو اتدمج من جهاز تاني — شيله من الفاتورة وضيفه تاني'); return; }
+    const sup270 = DB.suppliers.find(x=>x.id===supId270);
+    if(!sup270 || sup270.archived){ back270('المورد اتأرشف من جهاز تاني — استرجعه من الأرشيف الأول'); return; }
+  }
   const invoiceItems = [];
   const dupMergedOnSave = [];   // م84: أصناف اتضافت على بند موجود بدل ما تتعمل من جديد
   const autoCoded145 = [];      // م145: أصناف دخلت من غير كود واتولدلها تلقائياً
@@ -19385,17 +19807,15 @@ async function savePurchaseInvoice(){
     status: 'pending', finApproved: false,   /* م193: القفل المالي بالزرار الصريح بس */
     supInvNo: purchaseDraft.invoiceNo || '', supInvDate: '',
     createdBy: actorName(),
+    ...(photos270.length ? { photos: photos270 } : {}),   /* م270 */
     history: [{ id:uid('ph'), at:new Date().toISOString(), actor:actorName(), action:'created',
-      changes:[{ field:'إجمالي الفاتورة', before:'—', after:money(total) }], reason:'' }]
+      changes:[{ field:'إجمالي الفاتورة', before:'—', after:money(total) }].concat(photos270.length ? [{ field:'صور الفاتورة', before:'—', after:String(photos270.length) }] : []), reason:'' }]
   };
-  // الملاحظة 69: كاش = دفعة تلقائية (المديونية مابتزيدش) لكن الخصم الفعلي من الخزنة
-  // بيتعمل وقت اعتماد المحاسب لما يحدّد المصدر. آجل = مفيش دفعة (المديونية بتزيد فوراً).
-  if(purchaseDraft.paymentMethod !== 'آجل'){
-    purchase.payments.push({id:uid('pay'), amount: total, date: new Date().toISOString(), auto:true, accountId:null });
-  }
+  /* م269: الفاتورة آجل دايماً ⇒ مفيش «دفعة تلقائية» — مديونية المورد بتزيد فوراً بقيمتها.
+     (قبل كده «كاش» كان بيعمل دفعة تلقائية من غير حساب لحد ما المحاسب يحدد المصدر — الفواتير القديمة دي لسه شغالة بمسارها) */
   DB.purchases.push(purchase);
   await saveKey('purchases', DB.purchases);
-  await logAction('فاتورة شراء جديدة #'+purchase.purchaseNo+' من '+supplier.name+' بقيمة '+money(total)+' ('+purchaseDraft.paymentMethod+')');
+  await logAction('فاتورة شراء جديدة #'+purchase.purchaseNo+' من '+supplier.name+' بقيمة '+money(total)+' ('+purchaseDraft.paymentMethod+')'+(photos270.length ? ' — 📷 '+photos270.length+(photos270.length===1?' صورة':' صور')+' للفاتورة' : ' — من غير صورة'));
   if(autoCoded145.length) await logAction('🏷️ توليد أكواد تلقائية لأصناف دخلت الفاتورة من غير كود'+auditDetails(autoCoded145));
   if(resMade206.length) await logAction('📦 حجز قطع لأوامر شغل — فاتورة شراء #'+purchase.purchaseNo+auditDetails(resMade206));
   if(resSkipped206.length) toast('تنبيه: الأمر اتقفل قبل الحفظ — «'+resSkipped206.join('، ')+'» دخلت المخزن من غير حجز', true);
@@ -19416,7 +19836,7 @@ async function savePurchaseInvoice(){
       { category:'financial', refType:'purchase', refId:purchase.id, refNo:purchase.purchaseNo, amount:total });
   }
   toast('تم حفظ الفاتورة وتحديث المخزون وحساب المورد');
-  purchaseDraft = null;
+  purchaseDraft = null; _purDraftPh = [];   /* م270 */
   currentTab='suppliers'; render();
   /* م145: سؤال طباعة باركود أصناف الفاتورة — استيكر لكل قطعة اتشترت (قرار سيف) */
   openBarcodeAfterPurchase(purchaseId);
@@ -21786,7 +22206,8 @@ function expSearchHay(e){
   const emp = e.employeeId ? (DB.employees.find(x=>x.id===e.employeeId)||{}).name : '';
   return [e.description, e.note, e.notes, e.category, expTxnDef(e).label, expGroupOf(e),
     e.payAccount, sup, emp, e.recordedBy, e.actor,
-    e.expNo?('#'+e.expNo+' '+e.expNo):'', e.purchaseNo?('#'+e.purchaseNo+' '+e.purchaseNo):''
+    e.expNo?('#'+e.expNo+' '+e.expNo):'', e.purchaseNo?('#'+e.purchaseNo+' '+e.purchaseNo):'',
+    ...(e.purchasePaid||[]).map(x=>'#'+x.purchaseNo+' '+x.purchaseNo)   /* م270 */
   ].filter(Boolean).join(' ').toLowerCase();
 }
 function expMatchesFilters(e){
@@ -21818,11 +22239,32 @@ function expSummaryHTML(){
 }
 function expSourceBtn(e){
   const t = expTxnType(e);
-  if((t==='purchase_payment'||t==='supplier_payment') && e.purchaseId)
-    return `<button class="btn btn-sm" onclick="openPurApprove('${e.purchaseId}')">🔗 الفاتورة</button>`;
+  /* م270: سطر سداد فاتورة ⇒ «🔗 الفاتورة» بيفتح الفاتورة نفسها (بنودها وصورتها) — و«📷» لو عليها صورة فاتورة المورد */
+  if((t==='purchase_payment'||t==='supplier_payment') && e.purchaseId){
+    const pu = DB.purchases.find(x=>x.id===e.purchaseId), n = pu ? purPhotoList(pu).length : 0;
+    return `<button class="btn btn-sm" title="${n ? 'عليها صورة فاتورة المورد' : 'الفاتورة مالهاش صورة لسه'}" onclick="openPurchaseView('${e.purchaseId}')">🔗 الفاتورة${n ? ' 📷' : ''}</button>`;
+  }
+  if(t==='supplier_payment' && Array.isArray(e.purchaseIds) && e.purchaseIds.length){
+    const n = e.purchaseIds.filter(id=>{ const pu = DB.purchases.find(x=>x.id===id); return pu && purPhotoList(pu).length; }).length;
+    return `<button class="btn btn-sm" onclick="openPurListOfExp270('${e.id}')">🔗 الفواتير (${e.purchaseIds.length})${n ? ' 📷' : ''}</button>`;
+  }
   if(t==='advance' && e.employeeId)
     return `<button class="btn btn-sm" onclick="openEmployeeDetail('${e.employeeId}')">🔗 الموظف</button>`;
   return '';
+}
+/* م270: سداد كذا فاتورة مع بعض («سداد فواتير محددة») ⇒ قايمة بيهم — كل واحدة باللي اتسدد عليها وعلامة الصورة */
+function openPurListOfExp270(expId){
+  const e = DB.expenses.find(x=>x.id===expId);
+  if(!e){ toast('السطر ده مش موجود', true); return; }
+  const paid = new Map((e.purchasePaid||[]).map(x=>[x.purchaseId, x.amount]));
+  const rows = (e.purchaseIds||[]).map(id=>DB.purchases.find(x=>x.id===id)).filter(Boolean);
+  openModal(`<h3>🔗 الفواتير اللي اتسددت${e.expNo ? ' <span class="muted" style="font-size:12px">— عملية #' + e.expNo + '</span>' : ''}</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">${escNote(e.description||'')} · ${money(e.amount)} · ${fmtDate(e.date)}</div>
+    <table><thead><tr><th>الفاتورة</th><th>التاريخ</th><th>الإجمالي</th><th>اتسدد عليها</th><th>الصورة</th><th></th></tr></thead>
+    <tbody>${rows.map(pu=>`<tr><td style="font-weight:800">#${pu.purchaseNo}</td><td>${fmtDate(pu.date)}</td><td>${money(pu.total)}</td><td>${paid.has(pu.id) ? money(paid.get(pu.id)) : '—'}</td><td>${purPhotoTag(pu)}</td>
+      <td><button class="btn btn-sm" onclick="openPurchaseView('${pu.id}')">فتح</button></td></tr>`).join('') || `<tr><td colspan="6" class="empty">الفواتير دي مش موجودة</td></tr>`}</tbody></table>
+    ${(()=>{ const gap = Math.round(((+e.amount||0) - (e.purchasePaid||[]).reduce((t,x)=>t+(+x.amount||0),0))*100)/100;
+      return gap > 0.005 ? `<div class="muted" style="font-size:12px;margin-top:8px">والباقي ${money(gap)} اتسجّل على الرصيد الافتتاحي للمورد.</div>` : ''; })()}`);
 }
 function expRowsHTML(){
   const all = [...DB.expenses].filter(expMatchesFilters).sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -33666,7 +34108,7 @@ function setBusy(on){
 }
 (function wrapExecutiveOps(){
   const opNames = ['saveNewCustomer','saveNewCar','saveNewJob','saveServiceRow','saveEditJobItem','saveExtItem',
-    'createInvoiceFromJob','savePayment','saveExpense','saveExpPhotos','saveExpDelete','saveNewPart','saveEditItem','saveCostReval','saveEditCar','saveStockIn','saveStockOut',
+    'createInvoiceFromJob','savePayment','saveExpense','saveExpPhotos','savePurPhotos','saveExpDelete','saveNewPart','saveEditItem','saveCostReval','saveEditCar','saveStockIn','saveStockOut',
     'savePaintOut','saveExtOutFromStock','saveNewSupplier','saveSupplierPayment','saveSupplierReturn','savePurchaseInvoice',
     'saveCustomerReturn','saveStockAdjustment','saveScrap','saveTransfer','saveNewWarehouse','saveNewAppointment','apptArrived','apptUndoArrive','saveTechComment','saveCiAdd','saveCiNoteEdit',
     'saveCannedService','saveCountProgress','submitCountForApproval','confirmCancelJob','saveInvoiceInfo','saveTaxWa','savePins','saveCenterName','saveNewStaff','toggleStaff','saveStaffPass','savePerms','saveFinAccount','renameFinAccount','saveOpeningBalance','saveFinTransfer','saveExternalDeposit','saveCustodySettle','saveExpenseCat',
