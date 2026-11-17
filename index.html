@@ -400,6 +400,74 @@ tr:hover td{background:var(--surface-2);}
 .ci-list{margin:6px 0 0;padding:0 18px 0 0;font-size:13.5px;line-height:1.9}
 .ci-mini{padding:1px 7px;font-size:11px;margin-inline-start:4px}
 @media (max-width:600px){ .ci-ph{width:96px;height:72px} }
+/* م274: سجل العميل */
+.ch-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px;padding-left:40px}
+.ch-meta{font-size:12.5px;color:var(--muted);line-height:1.9}
+.ch-acts{display:flex;gap:6px;flex-wrap:wrap}
+.ch-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.ch-kpis .stat-card{padding:10px 12px;margin:0}
+.ch-kpis .stat-card .num{font-size:19px}
+.ch-kpis .stat-card .lbl{font-size:12px}
+.ch-note{font-size:12.5px;margin:-4px 0 12px;color:var(--success)}
+.ch-cars{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:4px 0 12px}
+.ch-car{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;cursor:pointer}
+.ch-car.on{border:2px solid var(--accent);padding:9px 11px}
+.ch-car.arch{opacity:.62}
+.ch-car-m{font-size:13.5px;font-weight:700;margin-top:6px}
+.ch-all{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;font-weight:800;gap:2px}
+.ch-plate{display:inline-block;border:2px solid var(--text);border-radius:6px;padding:0 9px;font-weight:800;letter-spacing:1px;background:var(--surface);white-space:nowrap;font-size:13.5px}
+.ch-plate.sm{font-size:11.5px;padding:0 6px;border-width:1px}
+.ch-open{border-right:3px solid var(--accent);background:var(--surface-2);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12.5px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ch-tabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:10px}
+.ch-tl{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.ch-tl.off{opacity:.6}
+.ch-tl-h{display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;align-items:center}
+.ch-tl-l{font-size:13px;margin-top:6px;line-height:1.7}
+.ch-tl-f{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+/* م275: أرصدة الخزن فوق المصروفات + أعمار مديونيات العملاء + كشف حساب العميل + تحذير الرصيد */
+.bal-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:14px}
+.bal-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:13.5px}
+.bal-total{color:var(--accent);font-size:15px}
+.bal-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+.bal-card{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:8px 11px;cursor:pointer;min-width:0}
+.bal-card:hover{border-color:var(--surface-3)}
+.bal-card.flash{animation:balFlash 2.6s ease-out}
+@keyframes balFlash{0%,65%{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}100%{border-color:var(--border);box-shadow:none}}
+@media (prefers-reduced-motion:reduce){ .bal-card.flash{animation:none;border-color:var(--accent)} }
+.bal-name{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bal-num{font-family:'Cairo',sans-serif;font-size:19px;font-weight:800;margin:2px 0;white-space:nowrap}
+.bal-num.neg{color:var(--danger)}
+.bal-today{font-size:11px;color:var(--muted)}
+.bal-today .in{color:var(--success)}
+.bal-today .out{color:var(--danger)}
+.bal-foot{font-size:11.5px;color:var(--muted);margin-top:8px}
+.bal-off{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;border:1px dashed var(--border);border-radius:12px;padding:8px 12px;margin-bottom:14px;font-size:12.5px;color:var(--muted)}
+.ow275{border:1px solid var(--danger);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12.5px;line-height:1.8;color:var(--danger)}
+.age-bar{height:5px;background:var(--surface-2);border-radius:4px;margin-top:8px;overflow:hidden}
+.age-bar span{display:block;height:100%;background:var(--accent)}
+.age-bar.old span{background:var(--danger)}
+@media (max-width:640px){ .grid.age-grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
+.cs-sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px}
+/* م276: تنبيه «محتاج تراجع» · كارت «النهارده» · جدول مقارنة البنود · المراجعة */
+.anom-box{border:1px solid var(--danger);border-radius:12px;padding:10px 12px;margin-bottom:14px;background:var(--surface)}
+.anom-h{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-weight:800;color:var(--danger);margin-bottom:6px}
+.anom-l{font-size:12.5px;line-height:1.9;border-top:1px dashed var(--border);padding-top:4px;margin-top:4px}
+.t276{margin-bottom:16px}
+.t276-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}
+.t276-c{background:var(--surface-2);border-radius:10px;padding:9px 12px;min-width:0}
+.t276-n{font-family:'Cairo',sans-serif;font-size:20px;font-weight:800;white-space:nowrap}
+.t276-n.in{color:var(--success)}
+.t276-n.out{color:var(--danger)}
+.t276-l{font-size:12px;color:var(--muted)}
+.t276-b{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.7}
+.cmp276 tr.over td{background:rgba(224,37,37,.08)}
+.aud276 .card{margin-bottom:12px}
+.aud276 h4{margin:0 0 6px;font-size:14px}
+@media (max-width:640px){ .t276-grid{grid-template-columns:repeat(2,minmax(0,1fr))} .t276-n{font-size:16px;white-space:normal} }
+.cs-sum .stat-card{padding:10px 12px;margin:0}
+.cs-sum .stat-card .num{font-size:19px}
+@media (max-width:600px){ .bal-cards{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding-bottom:4px} .bal-card{min-width:150px;flex:0 0 auto;scroll-snap-align:start} .cs-sum{grid-template-columns:1fr 1fr} }
+@media (max-width:600px){ .ch-head{padding-left:0} .ch-kpis{grid-template-columns:repeat(2,minmax(0,1fr))} .ch-kpis .stat-card .num{font-size:17px} .ch-cars{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))} }
 .ap-done{opacity:.78}
 .ap-top{display:flex;gap:12px;align-items:flex-start}
 .ap-time{font-size:19px;font-weight:900;color:var(--accent);min-width:78px;text-align:center;line-height:1.3}
@@ -2012,7 +2080,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v292';
+const APP_VERSION = 'v297';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -4699,12 +4767,12 @@ function openArchivedCarsReport(){
     }).join('')}</tbody></table></div>` : `<div class="empty">مفيش سيارات مؤرشفة</div>`}
   `, true);
 }
-function openCustomerHistory(customerId){
+function openCustomerHistory(customerId, keep){
   /* م167: بحث اللوحة بيتصفّر لما تفتح عميل مختلف — وبيفضل شغال لو رجعت
      من تقرير أمر شغل لنفس العميل (عشان تكمل تقليب في فواتير نفس العربية) */
-  if(window._custHistLastId !== customerId){ custHistQ = ''; custHistLimit = 300; }
+  if(!keep || window._custHistLastId !== customerId){ custHistQ = ''; custHistLimit = 100; custHistCar = ''; custHistTab = 'tl'; custHistTlLimit = 20; }   /* م274: keep = رجوع للسجل */
   window._custHistLastId = customerId;
-  openModal(customerHistoryHTML(customerId));
+  openModal(customerHistoryHTML(customerId), true);
 }
 /* ============ م89: تعديل بيانات العميل ============
    طلب سيف: زرار تعديل للعميل — الاسم ونوعه (فرد/شركة) والتليفون وأي حاجة.
@@ -4815,66 +4883,175 @@ async function saveEditCustomer(customerId){
       closeModal(); toast('اتحفظت بيانات العميل'); refreshContent();
     });
 }
-function customerHistoryHTML(customerId){
+/* ============ م274: «سجل العميل» بشكل جديد (طلب سيف: الشاشة كانت ركيكة) ============
+   عرض بس — ولا رقم ولا بيانة بتتغيّر. فوق: العميل + 4 أرقام (الزيارات · اللي دفعه · عليه دلوقتي · آخر زيارة).
+   تحت: كروت العربيات (دوسة = العربية دي بس، ودوسة تانية = كل العربيات) + 3 تابات:
+   سجل الصيانة (خط زمني لكل زيارة) · الفواتير (جدول م167 زي ما هو) · الحساب (الفواتير اللي لسه عليها فلوس). */
+var custHistCar = '', custHistTab = 'tl', custHistTlLimit = 20;
+function customerHistoryHTML(customerId){ return `<div id="chRoot">${custHistViewHTML(customerId)}</div>`; }
+function custHistViewHTML(customerId){
   const cust = DB.customers.find(c=>c.id===customerId);
-  const cars = DB.cars.filter(c=>c.customerId===customerId);
-  const jobs = [...DB.jobs.filter(j=>j.customerId===customerId)].sort((a,b)=>new Date(a.receivedAt)-new Date(b.receivedAt));
-  /* م131: الملغية بتظهر في القائمة بعلامة 🚫 — لكن الإجماليات من السارية بس زي ما كانت */
-  const invoices = DB.invoices.filter(i=>i.customerId===customerId);
-  const totalPaid = invoices.filter(i=>!i.cancelled).reduce((s,i)=>s+(i.payments||[]).reduce((a,p)=>a+p.amount,0),0);
-  const firstVisit = jobs.length? jobs[0].receivedAt : null;
-  const lastVisit = jobs.length? jobs[jobs.length-1].receivedAt : null;
+  if(!cust) return `<div class="empty">العميل مش موجود</div>`;
+  const live = DB.jobs.filter(j=>j.customerId===customerId && j.status!=='ملغاة');
+  const times = live.map(j=>new Date(j.receivedAt).getTime()).filter(t=>!isNaN(t)).sort((a,b)=>a-b);
+  /* م131: الإجماليات من الفواتير السارية بس (الملغية بتظهر في القوايم بعلامة 🚫) */
+  const invs = DB.invoices.filter(i=>i.customerId===customerId && !i.cancelled);
+  const paid = invs.reduce((s,i)=>s+invBalance(i).paid,0);
+  const owed = invs.reduce((s,i)=>s+Math.max(0, invBalance(i).balance||0),0);
+  const credit = custCreditsOf(customerId).reduce((s,x)=>s+x.remaining,0);
+  const wa = cust.phone ? apptWaPhone(cust.phone) : '';
   return `
-  <div class="flex-between" style="gap:10px;flex-wrap:wrap">
-    <h3 style="margin:0">سجل العميل — ${cust.name}</h3>
-    ${can('customers.edit') && !cust.merged
-      ? `<button class="btn btn-sm btn-accent" onclick="openEditCustomer('${cust.id}')">✏️ تعديل بيانات العميل</button>` : ''}
+  <div class="ch-head">
+    <div style="min-width:0">
+      <h3 style="margin:0 0 4px">سجل العميل — ${escNote(cust.name)}</h3>
+      <!-- م89: البيانات الشخصية كاملة ظاهرة، مش الموبايل بس -->
+      <div class="ch-meta">
+        <span class="tag tag-inspect">${cust.custType||'فرد'}</span>
+        ${cust.phone?`<a class="ap-tel" href="tel:${escAttr(cust.phone)}">${escNote(cust.phone)}</a>`:'—'}${cust.phone2?' · إضافي: '+escNote(cust.phone2):''}
+        ${cust.nationalId?' · قومي: '+escNote(cust.nationalId):''}${cust.email?' · '+escNote(cust.email):''}
+        ${times.length?' · عميل من '+fmtDate(times[0]):''}
+        ${cust.editedAt?`<br><span style="font-size:11.5px">آخر تعديل للبيانات: ${fmtDateTime(cust.editedAt)} — ${escNote(cust.editedBy||'—')}</span>`:''}
+      </div>
+    </div>
+    <div class="ch-acts">
+      ${wa.length>=8?`<a class="btn btn-sm" target="_blank" rel="noopener" href="https://wa.me/${wa}">💬 واتساب</a>`:''}
+      ${custStmtAllowed()?`<button class="btn btn-sm" onclick="openCustStatement('${cust.id}')">📄 كشف حساب</button>`:''}
+      ${can('customers.edit') && !cust.merged
+        ? `<button class="btn btn-sm btn-accent" onclick="openEditCustomer('${cust.id}')">✏️ تعديل بيانات العميل</button>` : ''}
+    </div>
   </div>
-  <!-- م89: البيانات الشخصية كاملة ظاهرة، مش الموبايل بس -->
-  <div class="muted" style="font-size:12.5px;margin:6px 0 14px;line-height:1.8">
-    <span class="tag tag-inspect">${cust.custType||'فرد'}</span>
-    ${cust.phone||'—'}${cust.phone2?' · إضافي: '+cust.phone2:''}
-    ${cust.nationalId?' · قومي: '+cust.nationalId:''}${cust.email?' · '+cust.email:''}
-    ${cust.editedAt?`<br><span style="font-size:11.5px">آخر تعديل للبيانات: ${fmtDateTime(cust.editedAt)} — ${cust.editedBy||'—'}</span>`:''}
+  <div class="ch-kpis">
+    ${stat(String(live.length),'الزيارات')}
+    ${stat(money(paid),'إجمالي اللي دفعه')}
+    ${stat(money(owed),'عليه دلوقتي', owed>0.005)}
+    ${stat(times.length?fmtDate(times[times.length-1]):'—','آخر زيارة')}
   </div>
-  <div class="grid g3" style="margin-bottom:16px">
-    ${stat(String(jobs.length),'إجمالي أوامر الشغل')}
-    ${stat(money(totalPaid),'إجمالي المدفوع')}
-    ${stat(String(cars.length),'عدد السيارات')}
-  </div>
-  <div class="muted" style="font-size:12.5px;margin-bottom:16px">أول زيارة: ${firstVisit?fmtDate(firstVisit):'—'} · آخر زيارة: ${lastVisit?fmtDate(lastVisit):'—'}</div>
-  <label class="f-label">السيارات</label>
-  <div style="margin:8px 0 16px">${cars.length? cars.map(c=>{
-    const carJobs = jobs.filter(j=>j.carId===c.id);
-    return `<div style="background:var(--surface-2);padding:8px 10px;border-radius:8px;margin-bottom:6px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;${c.archived?'opacity:.62':''}">
-      <span>${c.plate} — ${carLabel(c)} <span class="muted">(${carJobs.length} زيارة${c.vin?' · شاسيه: '+c.vin:''})</span>${c.archived?' <span class="tag tag-cancel" style="font-size:10px">🗄️ مؤرشفة</span>':''}</span>
-      <span style="display:flex;gap:6px">
-        ${can('cars.edit') && !c.archived?`<button class="btn btn-sm" onclick="openEditCarModal('${c.id}')">✏️ تعديل</button>`:''}
-        <button class="btn btn-sm" onclick="custHistCarById('${customerId}','${c.id}')">📜 تاريخها</button>
-      </span>
+  ${credit>0.005?`<div class="ch-note">💚 ليه رصيد عندنا <b>${money(credit)}</b> — بيتخصم من فواتيره الجاية</div>`:''}
+  <div id="chBody">${custHistBodyHTML(customerId)}</div>`;
+}
+/* العربيات + التابات — الدوسة بترسم الشاشة كلها (#chRoot) من غير ما النافذة تتقفل وتتفتح */
+function custHistBodyHTML(customerId){
+  const cars = DB.cars.filter(c=>c.customerId===customerId);
+  if(custHistCar && !cars.some(c=>c.id===custHistCar)) custHistCar = '';
+  const jobs = DB.jobs.filter(j=>j.customerId===customerId);
+  const invoiced = new Set(), spentByJob = {};
+  DB.invoices.forEach(i=>{
+    if(i.cancelled || !i.jobId) return;
+    invoiced.add(i.jobId);   /* نفس قاعدة isJobClosed: فاتورة سارية = العربية خرجت */
+    if(i.customerId===customerId) spentByJob[i.jobId] = (spentByJob[i.jobId]||0) + (i.total||0);
+  });
+  const openJobs = jobs.filter(j=>j.status!=='ملغاة' && !invoiced.has(j.id));
+  const sel = custHistCar, selCar = cars.find(c=>c.id===sel);
+  const carCard = c=>{
+    const cj = jobs.filter(j=>j.carId===c.id && j.status!=='ملغاة');
+    const spent = cj.reduce((s,j)=>s+(spentByJob[j.id]||0),0);
+    const km = Number(c.currentOdometer) || Math.max(0, ...cj.map(j=>Number(j.odometer)||0));
+    const next = [c.nextServiceDate?fmtDate(c.nextServiceDate):'', c.nextServiceKm?Number(c.nextServiceKm).toLocaleString(NUM_LOCALE)+' كم':''].filter(Boolean).join(' أو ');
+    return `<div class="ch-car${sel===c.id?' on':''}${c.archived?' arch':''}" role="button" tabindex="0" title="دوس تشوف سجل العربية دي بس"
+        onclick="custHistSelCar('${customerId}','${c.id}')" onkeydown="if(event.key==='Enter'&&event.target===this)this.click()">
+      <div class="flex-between" style="gap:6px;flex-wrap:wrap"><span class="ch-plate">${escNote(c.plate)}</span>
+        <span>${openJobs.some(j=>j.carId===c.id && j.status!=='تم التسليم')?'<span class="tag tag-working" style="font-size:10.5px">🔧 جوه المركز</span>':''}${c.archived?' <span class="tag tag-cancel" style="font-size:10px">🗄️ مؤرشفة</span>':''}</span></div>
+      <div class="ch-car-m">${escNote(carLabel(c))||'—'}${c.color?' · '+escNote(c.color):''}</div>
+      <div class="muted" style="font-size:12px">${cj.length} ${cj.length>=3 && cj.length<=10 ? 'زيارات' : 'زيارة'} · ${money(spent)}${km?' · آخر عداد '+km.toLocaleString(NUM_LOCALE):''}</div>
+      ${c.vin?`<div class="muted" style="font-size:11px">شاسيه: ${escNote(c.vin)}</div>`:''}
+      ${next?`<div style="font-size:11.5px;margin-top:3px">🔔 الصيانة الجاية: ${next}</div>`:''}
+      ${can('cars.edit') && !c.archived?`<button class="btn btn-sm" style="margin-top:6px" onclick="event.stopPropagation();openEditCarModal('${c.id}')">✏️ تعديل</button>`:''}
     </div>`;
-  }).join('') : '<div class="muted" style="font-size:12.5px">لا توجد سيارات مسجلة</div>'}</div>
-  ${(()=>{
-    /* م167: القسم دة بقى للأوامر المفتوحة/النشطة حالياً بس (السيارة لسه جوه المركز).
-       المقفولة مش بتتمسح — تاريخها كامل تحت في «الفواتير السابقة» (كل فاتورة بتفتح تقريرها) */
-    const openJobs = [...jobs].filter(j=>!isJobClosed(j)).reverse();
-    return `
-  <label class="f-label">🔧 أوامر الشغل المفتوحة حالياً (${openJobs.length})</label>
-  <table style="margin-top:6px"><thead><tr><th>رقم</th><th>السيارة</th><th>التاريخ</th><th>الحالة</th><th>الخدمات/القطع</th><th>القيمة</th></tr></thead>
-  <tbody>${openJobs.map(j=>{
-    const car = cars.find(c=>c.id===j.carId);
-    const total = j.items.reduce((s,it)=>s+it.qty*it.unitPrice,0);
-    const itemsSummary = j.items.map(it=>it.name).join('، ') || '—';
-    return `<tr><td>#${j.jobNo}</td><td>${car?car.plate:'—'}</td><td>${fmtDate(j.receivedAt)}</td><td><span class="tag ${STATUS_TAGCLASS[j.status]}">${j.status}</span></td><td class="muted" style="max-width:180px">${itemsSummary}</td><td>${money(total)}</td></tr>`;
-  }).join('') || `<tr><td colspan="6" class="empty">مفيش أوامر شغل مفتوحة حالياً — كل السيارات متسلمة 👌</td></tr>`}</tbody></table>`;
-  })()}
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px">
-    <label class="f-label" style="margin:0">🧾 الفواتير السابقة <span class="muted" style="font-size:11px">— دوس على الفاتورة يفتحلك تقرير أمر الشغل بتاعها</span></label>
+  };
+  const tabs = [['tl','🔧 سجل الصيانة'],['inv','🧾 الفواتير'],['acc','💰 الحساب']];
+  const tab = custHistTab==='inv' ? custHistInvTabHTML(customerId) : custHistTab==='acc' ? custHistAccHTML(customerId) : custHistTimelineHTML(customerId);
+  return `
+  <label class="f-label">🚗 العربيات (${cars.length})</label>
+  ${cars.length ? `<div class="ch-cars">
+    ${cars.length>1?`<div class="ch-car ch-all${sel?'':' on'}" role="button" tabindex="0" onclick="custHistSelCar('${customerId}','')" onkeydown="if(event.key==='Enter'&&event.target===this)this.click()">🚗 كل العربيات<span class="muted" style="font-size:12px;font-weight:400">${cars.length} عربية</span></div>`:''}
+    ${cars.map(carCard).join('')}</div>` : '<div class="muted" style="font-size:12.5px;margin:6px 0 12px">لا توجد سيارات مسجلة</div>'}
+  ${openJobs.length ? `<div class="ch-open"><b>🔧 أوامر الشغل المفتوحة حالياً (${openJobs.length})</b>
+    ${openJobs.map(j=>{ const car = cars.find(c=>c.id===j.carId);
+      return `<span>#${j.jobNo} · ${car?escNote(car.plate):'—'} <span class="tag ${STATUS_TAGCLASS[j.status]||'tag-working'}" style="font-size:10.5px">${escNote(j.status)}</span></span>`; }).join(' ')}</div>` : ''}
+  <div class="ch-tabs">
+    ${tabs.map(([k,l])=>`<button class="btn btn-sm${custHistTab===k?' btn-accent':''}" onclick="custHistSetTab('${customerId}','${k}')">${l}</button>`).join('')}
+    ${selCar?`<span class="muted" style="font-size:12px">— عربية <b>${escNote(selCar.plate)}</b> بس · <a href="#" style="color:var(--accent);font-weight:700" onclick="custHistSelCar('${customerId}','');return false">كل العربيات</a></span>`:''}
+  </div>
+  ${tab}`;
+}
+function custHistRefresh(customerId){
+  const r = document.getElementById('chRoot');
+  if(r) r.innerHTML = custHistViewHTML(customerId);
+}
+function custHistSelCar(customerId, carId){
+  custHistCar = custHistCar===carId ? '' : carId;   /* دوسة تانية على نفس العربية ⇐ كل العربيات */
+  custHistTlLimit = 20; custHistLimit = 100;
+  custHistRefresh(customerId);
+}
+function custHistSetTab(customerId, k){ custHistTab = k; custHistRefresh(customerId); }
+function custHistTlMore(customerId){ custHistTlLimit += 20; custHistRefresh(customerId); }
+/* 🔧 سجل الصيانة: كل زيارة كارت — الأحدث فوق */
+function custHistTimelineHTML(customerId){
+  const cars = DB.cars.filter(c=>c.customerId===customerId);
+  const list = DB.jobs.filter(j=>j.customerId===customerId && (!custHistCar || j.carId===custHistCar))
+    .sort((a,b)=>new Date(b.receivedAt)-new Date(a.receivedAt));
+  if(!list.length) return `<div class="empty">مفيش زيارات${custHistCar?' للعربية دي':''} لسه</div>`;
+  const shown = list.slice(0, custHistTlLimit);
+  return shown.map(j=>custHistEntryHTML(j, cars, customerId)).join('')
+    + (list.length > shown.length ? `<div style="text-align:center;margin-top:4px"><button class="btn btn-sm" onclick="custHistTlMore('${customerId}')">⬇ زيارات أقدم (${list.length-shown.length})</button></div>` : '');
+}
+function custHistEntryHTML(j, cars, customerId){
+  const car = cars.find(c=>c.id===j.carId);
+  const cancelled = j.status==='ملغاة';
+  const inv = jobInvoiceOf(j);
+  const lines = (jobLinesView(j).items||[]).filter(it=>(Number(it.qty)||0)>0);   /* م264: المتفوتر ⇐ زي ما اتحاسب العميل */
+  const svc = lines.filter(it=>it.kind==='service' || it.kind==='ext_work');
+  const parts = lines.filter(it=>it.kind!=='service' && it.kind!=='ext_work');
+  const techs = [...new Set(svc.map(it=>techKeyOf(it, j)).filter(k=>k!=='غير محدد').map(techLabelOf))];
+  const head = [j.odometer?'عداد '+Number(j.odometer).toLocaleString(NUM_LOCALE):'', techs.length?'الفني: '+techs.map(escNote).join('، '):''].filter(Boolean).join(' · ');
+  const stMap = { unpaid:['مش مدفوعة','tag-unpaid'], partial:['جزئي','tag-partial'], paid:['مدفوعة','tag-paid'] };
+  let pill;
+  if(inv){
+    const st = stMap[paymentStatus(inv)] || stMap.unpaid, b = invBalance(inv);
+    pill = `<span class="tag ${st[1]}">🧾 فاتورة #${inv.invNo} · ${money(inv.total)} · ${st[0]}${paymentStatus(inv)==='partial'?' (باقي '+money(b.balance)+')':''}</span>`;
+  } else pill = cancelled ? `<span class="tag tag-cancel">🚫 أمر ملغي</span>` : `<span class="tag tag-working">⏳ لسه مش متفوتر</span>`;
+  const cx = DB.invoices.filter(i=>i.jobId===j.id && i.cancelled);
+  const cs = inv ? csStatusOf(inv.id) : null;   /* م143: نتيجة خدمة العملاء جزء دائم من سجل العميل */
+  return `<div class="ch-tl${cancelled?' off':''}">
+    <div class="ch-tl-h"><span><b>${j.receivedAt?fmtDate(j.receivedAt):'—'} · أمر #${j.jobNo}</b>
+      ${!custHistCar && cars.length>1 && car ? ` <span class="ch-plate sm">${escNote(car.plate)}</span>` : ''}
+      ${!cancelled && !isJobClosed(j) ? ` <span class="tag ${STATUS_TAGCLASS[j.status]||'tag-working'}" style="font-size:10.5px">${escNote(j.status)}</span>` : ''}</span>
+      ${head?`<span class="muted" style="font-size:12px">${head}</span>`:''}</div>
+    ${svc.length?`<div class="ch-tl-l">🔧 ${svc.map(it=>escNote(it.name)).join(' · ')}</div>`:''}
+    ${parts.length?`<div class="ch-tl-l muted">📦 ${parts.map(it=>escNote(it.name)+' ×'+it.qty).join(' · ')}</div>`:''}
+    ${!svc.length && !parts.length?`<div class="ch-tl-l muted">مفيش بنود على الأمر</div>`:''}
+    <div class="ch-tl-f"><span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${pill}
+      ${cx.map(i=>`<span class="tag tag-cancel" style="font-size:10px">🚫 فاتورة #${i.invNo} ملغاة</span>`).join('')}
+      ${cs && cs.key!=='none' ? `<span class="tag ${cs.cls}" style="font-size:10.5px">📞 خدمة العملاء: ${cs.label}</span>` : ''}</span>
+      <button class="btn btn-sm" onclick="openWorkOrderReportFromCust('${j.id}','${customerId}')">📄 فتح التقرير</button></div>
+  </div>`;
+}
+/* 🧾 الفواتير: جدول م167 نفسه (بحث اللوحة + تحميل المزيد) — ومتفلتر بالعربية المختارة */
+function custHistInvTabHTML(customerId){
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <input class="f" id="custHistQInput" style="max-width:220px" placeholder="🔍 بحث برقم اللوحة..." value="${escAttr(custHistQ)}" oninput="setCustHistQ('${customerId}', this.value)">
     <button class="btn btn-sm" onclick="custHistClear('${customerId}')">✕ مسح البحث</button>
+    <span class="muted" style="font-size:11.5px">دوس على الفاتورة يفتحلك تقرير أمر الشغل بتاعها</span>
   </div>
-  <div id="custInvTableWrap">${custInvTableHTML(customerId)}</div>
-  `;
+  <div id="custInvTableWrap">${custInvTableHTML(customerId)}</div>`;
+}
+/* 💰 الحساب: الفواتير اللي لسه عليها فلوس (الأقدم الأول) + رصيده عندنا لو فيه */
+function custHistAccHTML(customerId){
+  const rows = DB.invoices.filter(i=>i.customerId===customerId && !i.cancelled && invBalance(i).balance > 0.005).map(inv=>{
+    const jb = inv.jobId ? DB.jobs.find(j=>j.id===inv.jobId) : null;
+    return { inv, jb, car: jb ? DB.cars.find(c=>c.id===jb.carId) : null, b: invBalance(inv) };
+  }).filter(x=>!custHistCar || (x.car && x.car.id===custHistCar))
+    .sort((a,b)=>new Date(a.inv.date)-new Date(b.inv.date));
+  const credits = custCreditsOf(customerId);
+  const due = rows.reduce((s,x)=>s+x.b.balance,0);
+  return `
+  ${rows.length ? `<table><thead><tr><th>الفاتورة</th><th>أمر الشغل</th><th>السيارة</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th><th>الباقي</th></tr></thead>
+  <tbody>${rows.map(({inv, jb, car, b})=>`<tr ${jb?`onclick="openWorkOrderReportFromCust('${jb.id}','${customerId}')" style="cursor:pointer" title="دوس لتقرير أمر الشغل #${jb.jobNo}"`:''}>
+    <td>#${inv.invNo}</td><td>${jb?'#'+jb.jobNo:'—'}</td><td>${car?escNote(car.plate):'—'}</td><td>${fmtDate(inv.date)}</td>
+    <td>${money(inv.total)}</td><td>${money(b.paid)}</td><td style="color:var(--danger);font-weight:800">${money(b.balance)}</td></tr>`).join('')}</tbody></table>
+  <div style="margin-top:8px;font-size:13px">إجمالي اللي عليه${custHistCar?' للعربية دي':''}: <b style="color:var(--danger)">${money(due)}</b> · ${rows.length} فاتورة</div>`
+  : `<div class="empty">✅ مفيش عليه فلوس${custHistCar?' للعربية دي':''} — كل فواتيره مدفوعة</div>`}
+  ${credits.length ? `<div class="ch-note" style="margin-top:10px">💚 رصيد ليه عندنا: ${credits.map(x=>`<b>${money(x.remaining)}</b> من فاتورة #${x.inv.invNo}`).join(' · ')}</div>` : ''}`;
 }
 /* ============ م167: الفواتير السابقة — لوحة العربية ظاهرة + بحث باللوحة جوه العميل بس ============
    البحث محدود بالعميل المفتوح سجله (مش بحث عام)، وبيشتغل بنفس الطريقة
@@ -4893,13 +5070,6 @@ function custHistClear(customerId){
   if(el) el.value = '';
   setCustHistQ(customerId, '');
 }
-function custHistCarById(customerId, carId){
-  const car = DB.cars.find(c=>c.id===carId);
-  if(!car) return;
-  const el = document.getElementById('custHistQInput');
-  if(el) el.value = car.plate;
-  setCustHistQ(customerId, car.plate);
-}
 function custHistMore(customerId){
   custHistLimit += 100;
   const b = document.getElementById('custInvTableWrap');
@@ -4914,7 +5084,7 @@ function custInvTableHTML(customerId){
     const car = jb ? DB.cars.find(c=>c.id===jb.carId) : null;
     return { inv, jb, car };
   });
-  const rows = q ? withCar.filter(x=>x.car && normPlate(x.car.plate).includes(q)) : withCar;
+  const rows = withCar.filter(x=>(!q || (x.car && normPlate(x.car.plate).includes(q))) && (!custHistCar || (x.car && x.car.id===custHistCar)));   /* م274: + العربية المختارة */
   const shown = rows.slice(0, custHistLimit);
   const activeTotal = rows.filter(x=>!x.inv.cancelled).reduce((s,x)=>s+(x.inv.total||0),0);
   if(!all.length) return `<div class="muted" style="font-size:12.5px;margin-top:8px">لسه مفيش فواتير للعميل دة</div>`;
@@ -4934,7 +5104,7 @@ function custInvTableHTML(customerId){
         return st143.key==='none' ? '<span class="muted" style="font-size:11px">—</span>'
           : '<span class="tag '+st143.cls+'" style="font-size:10px">'+st143.label+'</span>';
       })()}</td></tr>`;
-  }).join('') : `<tr><td colspan="7" class="empty">مفيش فواتير للوحة دي عند العميل دة</td></tr>`}
+  }).join('') : `<tr><td colspan="7" class="empty">مفيش فواتير ${custHistCar?'للعربية المختارة':'للوحة دي'} عند العميل دة</td></tr>`}
   ${rows.length > shown.length ? `<tr><td colspan="7" style="text-align:center;padding:10px">
     <button class="btn btn-sm btn-accent" onclick="custHistMore('${customerId}')">⬇ تحميل المزيد (${Math.min(100, rows.length-shown.length)} كمان)</button>
     <button class="btn btn-sm" onclick="custHistLimit=Infinity;custHistMore('${customerId}')">عرض الكل (${rows.length.toLocaleString(NUM_LOCALE)})</button></td></tr>` : ''}
@@ -5204,7 +5374,7 @@ async function saveEditCar(carId){
   notify('vehicle_edit', 'تعديل بيانات سيارة «'+c.plate+'» — '
     + changes.map(ch=>ch.field+': '+ch.before+' ← '+ch.after).join(' · '),
     { category:'system', refType:'customer', refId:c.customerId, reason });
-  closeModal(); toast('اتحفظت بيانات السيارة'); openCustomerHistory(c.customerId); refreshContent();
+  closeModal(); toast('اتحفظت بيانات السيارة'); openCustomerHistory(c.customerId, true); refreshContent();
 }
 /* ============ (7) أداة دمج العملاء المكررين (صاحب المركز فقط) ============ */
 let mergeSrcId = null, mergeDstId = null;
@@ -12887,7 +13057,7 @@ function openWorkOrderReport(jobId){
 /* م131: فتح التقرير من سجل العميل — مع زرار رجوع للسجل عشان يقلّب في فواتيره براحته */
 function openWorkOrderReportFromCust(jobId, customerId){
   openModal(workOrderReportHTML(jobId)
-    + `<button class="btn" style="width:100%;margin-top:8px" onclick="openCustomerHistory('${customerId}')">↩️ رجوع لسجل العميل</button>`);
+    + `<button class="btn" style="width:100%;margin-top:8px" onclick="openCustomerHistory('${customerId}', true)">↩️ رجوع لسجل العميل</button>`);
 }
 /* ============ الملاحظة 59: شارة حالة الفوترة + فصل التواريخ ============
    الفرق اللي كان محيّر: «تاريخ الإغلاق» كان بيعرض وقت تغيير الحالة لـ«تم التسليم»
@@ -12908,7 +13078,7 @@ function jobLinesView(job){
   if(!inv || !Array.isArray(inv.items) || !inv.items.length) return { items: job.items, fromInvoice:false };
   const keyOf = (x, i)=>(x && x.id) ? String(x.id) : '#'+i;
   const invKeys = new Set(inv.items.map(keyOf));
-  const extra = job.items.filter((x, i)=>!invKeys.has(keyOf(x, i)));   /* بنود على الأمر ومش في الفاتورة */
+  const extra = (job.items||[]).filter((x, i)=>!invKeys.has(keyOf(x, i)));   /* بنود على الأمر ومش في الفاتورة */
   return { items: inv.items, fromInvoice:true, invNo: inv.invNo, changed: !jobItemsVsInvoice(job.items, inv.items).same, extra };
 }
 /* o.cost: يوري تكلفة البنود الزيادة · o.warn: يوري تنبيه «الأمر اتغيّر». التنبيه مش في نسخة خدمة العملاء (ممكن تتعرض قدام العميل)، ولا في تفاصيل الأمر لحد مالوش صلاحية الربحية (زي كارت م260). نسخة المخزن بتوريه لأنها أصلاً بتعرض التكلفة. */
@@ -16145,10 +16315,10 @@ function supplierStatement(supplierId){
     /* م162: الكاش المنتظر بيظهر في الكشف للعلم بس — بأثر صفر لحد الاعتماد،
        عشان الكشف يفضل مطابق لرقم المديونية في الملخص مليم بمليم */
     if(purCountsInDebt(p)){
-      rows.push({ date:p.date, type:'فاتورة شراء', desc:'#'+p.purchaseNo, amount:p.total });
+      rows.push({ date:p.date, type:'فاتورة شراء', desc:'#'+p.purchaseNo, amount:p.total, purchaseId:p.id });   /* م273: البنود تحت الفاتورة */
       (p.payments||[]).forEach(pay=>rows.push({ date:pay.date, type:'سداد', desc:'على فاتورة #'+p.purchaseNo, amount:-pay.amount }));
     } else {
-      rows.push({ date:p.date, type:'فاتورة شراء', desc:'#'+p.purchaseNo+' — ⏳ كاش بانتظار الاعتماد المالي (قيمتها '+money(p.total)+') — غير محسوبة في المديونية', amount:0 });
+      rows.push({ date:p.date, type:'فاتورة شراء', purchaseId:p.id, desc:'#'+p.purchaseNo+' — ⏳ كاش بانتظار الاعتماد المالي (قيمتها '+money(p.total)+') — غير محسوبة في المديونية', amount:0 });
     }
   });
   DB.supplierReturns.filter(r=>r.supplierId===supplierId).forEach(r=>{
@@ -16527,29 +16697,74 @@ function supStmtRepRows(supplierId){
   const out = rows.map(x=>{ run += x.amount; return { ...x, running:run }; });
   return { prev, rows:out };
 }
-function supStmtTableHTML(supplierId){
+/* ============ م273: بنود الفاتورة تحت سطرها في «تقرير كشف حساب المورد» (طلب سيف) ============
+   دوسة على سطر «فاتورة شراء» ⇐ بنودها تنزل تحته (الصنف · الكمية · سعر الشراء · الإجمالي · المخزن) — ودوسة تانية تقفلها.
+   «📋 اعرض كل البنود» بيفتحهم كلهم · الطباعة بتطلع اللي مفتوح (كشف تفصيلي) — عرض بس: ولا رقم ولا رصيد اتغيّر. */
+var supStmtOpen = new Set();
+function supStmtItemsHTML(pu, forPrint){
+  const items = (pu && pu.items) || [];
+  const body = items.length ? items.map(it=>{
+    const ret = it.partId ? supRetReturnedQty(pu.id, it.partId) : 0;
+    const wid = it.warehouseId || null;
+    return `<tr><td>${escNote(it.name||'—')}${ret > 0 ? ` <span class="tag tag-partial" style="font-size:9.5px">↩ اترجع منه ${ret}</span>` : ''}</td>
+      <td>${it.qty}</td><td>${money(Number(it.unitCost)||0)}</td><td>${money((Number(it.qty)||0)*(Number(it.unitCost)||0))}</td>
+      <td class="muted">${wid ? escNote(whName(wid)) : '—'}</td></tr>`;
+  }).join('') : `<tr><td colspan="5" class="muted">مفيش بنود على الفاتورة</td></tr>`;
+  return `<table style="margin:0;font-size:12px;width:100%;background:transparent">
+    <thead><tr style="font-size:11px"><th>الصنف</th><th>الكمية</th><th>سعر الشراء</th><th>الإجمالي</th><th>المخزن</th></tr></thead>
+    <tbody>${body}</tbody></table>
+    ${forPrint ? '' : `<div style="display:flex;gap:8px;align-items:center;margin-top:6px">${purPhotoTag(pu)}<button class="btn btn-sm" onclick="openPurchaseView('${pu.id}')">فتح الفاتورة</button></div>`}`;
+}
+function supStmtToggle(pid){
+  if(supStmtOpen.has(pid)) supStmtOpen.delete(pid); else supStmtOpen.add(pid);
+  const on = supStmtOpen.has(pid);
+  const d = document.getElementById('ssd_' + pid); if(d) d.style.display = on ? '' : 'none';
+  const a = document.getElementById('ssa_' + pid); if(a) a.textContent = on ? '▾' : '▸';
+}
+function supStmtInvIds(supplierId){ return supStmtRepRows(supplierId).rows.filter(x=>x.purchaseId).map(x=>x.purchaseId); }
+function supStmtAllOpen(supplierId){ const ids = supStmtInvIds(supplierId); return ids.length > 0 && ids.every(id=>supStmtOpen.has(id)); }
+function supStmtToggleAll(supplierId){
+  const ids = supStmtInvIds(supplierId), open = !supStmtAllOpen(supplierId);
+  ids.forEach(id=>{ if(open) supStmtOpen.add(id); else supStmtOpen.delete(id); });
+  openSupStatementReport(supplierId, true);
+}
+function supStmtTableHTML(supplierId, forPrint){
   const { prev, rows } = supStmtRepRows(supplierId);
   const r = supRepRange();
   return `<table class="tcompact"><thead><tr><th>التاريخ</th><th>نوع الحركة</th><th>المرجع / البيان</th>
     <th style="color:var(--danger)">مدين (علينا)</th><th style="color:var(--accent)">دائن</th><th>الرصيد</th></tr></thead>
   <tbody>
     ${r?`<tr style="font-weight:700"><td colspan="5">⏮ رصيد ما قبل الفترة</td><td>${money(prev)}</td></tr>`:''}
-    ${rows.length? rows.map(x=>`<tr>
-      <td style="white-space:nowrap">${fmtDate(x.date)}</td><td>${x.type}</td><td class="muted" style="font-size:11.5px">${escNote(x.desc)||'—'}</td>
-      <td style="color:var(--danger)">${x.amount>0?money(x.amount):'—'}</td>
-      <td style="color:var(--accent)">${x.amount<0?money(-x.amount):'—'}</td>
-      <td style="font-weight:700">${money(x.running)}</td></tr>`).join('')
+    ${rows.length? rows.map(x=>{
+      const pu = x.purchaseId ? DB.purchases.find(p=>p.id===x.purchaseId) : null;
+      const open = !!pu && supStmtOpen.has(pu.id);
+      if(forPrint && pu && !open) return supStmtRowHTML(x, '');
+      const head = supStmtRowHTML(x, pu && !forPrint ? `id="ssr_${pu.id}" style="cursor:pointer" title="دوس تشوف بنود الفاتورة" onclick="supStmtToggle('${pu.id}')"` : '', pu && !forPrint ? `<span id="ssa_${pu.id}" style="font-weight:800">${open ? '▾' : '▸'}</span> ` : '');
+      return pu ? head + `<tr id="ssd_${pu.id}" style="${open ? '' : 'display:none;'}background:var(--surface-2)"><td colspan="6" style="padding:4px 18px 10px">${supStmtItemsHTML(pu, forPrint)}</td></tr>` : head;
+    }).join('')
       : `<tr><td colspan="6" class="empty">مفيش حركات في الفترة دي</td></tr>`}
   </tbody></table>`;
 }
+function supStmtRowHTML(x, attrs, arrow){
+  return `<tr ${attrs||''}>
+      <td style="white-space:nowrap">${arrow||''}${fmtDate(x.date)}</td><td>${x.type}</td><td class="muted" style="font-size:11.5px">${escNote(x.desc)||'—'}</td>
+      <td style="color:var(--danger)">${x.amount>0?money(x.amount):'—'}</td>
+      <td style="color:var(--accent)">${x.amount<0?money(-x.amount):'—'}</td>
+      <td style="font-weight:700">${money(x.running)}</td></tr>`;
+}
 function openSupStatementReport(supplierId, keep){
   const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
-  if(!keep){ supRepFilter = { preset:'all', from:'', to:'' }; }
+  if(!keep){ supRepFilter = { preset:'all', from:'', to:'' }; supStmtOpen = new Set(); }   /* م273: فتحة جديدة ⇐ البنود مقفولة */
   _supRepCtx = { kind:'statement', supplierId };
   const { rows } = supStmtRepRows(supplierId);
+  const nInv = rows.filter(x=>x.purchaseId).length;
   openModal(`
   ${supRepHeaderHTML('📄 تقرير كشف حساب المورد', sup, 'printSupStatementReport')}
-  <div class="muted" style="font-size:12px;margin-bottom:8px">الفترة: <b>${supRepPeriodLabel()}</b> · ${rows.length} حركة · الرصيد الحالي الكلي: <b>${money(supplierBalance(supplierId).balance)}</b></div>
+  <div class="flex-between" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
+    <div class="muted" style="font-size:12px">الفترة: <b>${supRepPeriodLabel()}</b> · ${rows.length} حركة · الرصيد الحالي الكلي: <b>${money(supplierBalance(supplierId).balance)}</b></div>
+    ${nInv ? `<button class="btn btn-sm" onclick="supStmtToggleAll('${supplierId}')">${supStmtAllOpen(supplierId) ? '📋 اخفي كل البنود' : '📋 اعرض كل البنود'}</button>` : ''}
+  </div>
+  <div class="muted" style="font-size:11.5px;margin-bottom:6px">💡 دوس على أي «فاتورة شراء» تشوف بنودها تحتها · والطباعة بتطلع البنود المفتوحة (كشف تفصيلي)</div>
   ${supStmtTableHTML(supplierId)}
   `, 'xwide');
 }
@@ -16557,9 +16772,9 @@ function printSupStatementReport(supplierId){
   const sup = DB.suppliers.find(s=>s.id===supplierId); if(!sup) return;
   const html = `
   <div style="direction:rtl;text-align:right;font-size:13px">
-    <h2 style="text-align:center;margin:4px 0">${DB.settings.centerName||''} — تقرير كشف حساب المورد</h2>
+    <h2 style="text-align:center;margin:4px 0">${DB.settings.centerName||''} — تقرير كشف حساب المورد${supStmtInvIds(supplierId).some(id=>supStmtOpen.has(id)) ? ' (تفصيلي)' : ''}</h2>
     <div style="text-align:center;margin-bottom:10px">المورد: <b>${sup.name}</b> · الفترة: <b>${supRepPeriodLabel()}</b> · الرصيد الحالي: <b>${money(supplierBalance(supplierId).balance)}</b></div>
-    ${supStmtTableHTML(supplierId)}
+    ${supStmtTableHTML(supplierId, true)}
   </div>`;
   logAction('🖨 طباعة تقرير كشف حساب المورد «'+sup.name+'» ('+supRepPeriodLabel()+')');
   downloadHTML(html, 'كشف-حساب-'+sup.name);
@@ -21483,6 +21698,7 @@ function renderReceivables(){
       note:'بتتلون أحمر فوق 30%. نسبة الفترة لوحدها موجودة في تقرير الربحية تحت.' })}
   </div>
 
+  ${custAgingStripHTML()}
   <div class="section-head"><h3>💰 تقرير الربحية الإجمالية للفترة</h3></div>
   <div class="card" style="margin-bottom:18px;border-right:3px solid var(--accent)">
     ${profitReportHTML(range)}
@@ -21518,7 +21734,7 @@ function renderReceivables(){
       <td>${d.invCount}</td>
       <td class="muted" style="font-size:12px">${d.invNos.join('، ')}</td>
       <td class="low-stock" style="font-weight:800">${money(d.total)}</td>
-      <td><button class="btn btn-sm" onclick="invFilters={search:'${d.cust.name.replace(/'/g,"\\'")}',status:'',custType:'',dateFrom:'',dateTo:''};goTab('invoices')">فواتيره</button></td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openCustStatement('${d.cust.id}')">📄 كشف حساب</button> <button class="btn btn-sm" onclick="invFilters={search:'${d.cust.name.replace(/'/g,"\\'")}',status:'',custType:'',dateFrom:'',dateTo:''};goTab('invoices')">فواتيره</button></td>
     </tr>`).join('')}${pgRowHTML(pgKey('debC', [rcvPeriod]), debtorsComp.length, 5)}</tbody></table>
   </div>` : ''}
 
@@ -21531,7 +21747,7 @@ function renderReceivables(){
       <td>${d.invCount}</td>
       <td class="muted" style="font-size:12px">${d.invNos.join('، ')}</td>
       <td class="low-stock" style="font-weight:800">${money(d.total)}</td>
-      <td><button class="btn btn-sm" onclick="invFilters={search:'${d.cust.name.replace(/'/g,"\\'")}',status:'',custType:'',dateFrom:'',dateTo:''};goTab('invoices')">فواتيره</button></td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="openCustStatement('${d.cust.id}')">📄 كشف حساب</button> <button class="btn btn-sm" onclick="invFilters={search:'${d.cust.name.replace(/'/g,"\\'")}',status:'',custType:'',dateFrom:'',dateTo:''};goTab('invoices')">فواتيره</button></td>
     </tr>`).join('')}${pgRowHTML(pgKey('debI', [rcvPeriod]), debtorsInd.length, 5)}</tbody></table>
   </div>` : ''}
 
@@ -21597,6 +21813,228 @@ function rcvRowsHTML(){
   }).join('') + pgRowHTML(k229, list.length, 9, 'refreshRcvTable()');
 }
 
+/* ============ م275: ⏳ أعمار مديونيات العملاء (طلب سيف — نفس فكرة الموردين م241) ============
+   كل فاتورة سارية لسه عليها فلوس بتتحط في خانة حسب عمرها من تاريخها: 0–30 · 31–60 · 61–90 · أكتر من 90 يوم.
+   نفس تعريف «المديونيات القائمة» في الشاشة بالحرف ⇒ مجموع الخانات = الرقم الكبير فوق. عرض بس. */
+function custAgingAll(asOf){
+  const now = asOf ? new Date(asOf).getTime() : Date.now();
+  const cMap = new Map(DB.customers.map(c=>[c.id, c])), by = {};
+  DB.invoices.forEach(inv=>{
+    if(inv.cancelled) return;
+    const bal = invBalance(inv).balance;
+    if(!(bal > 0.005)) return;
+    const cust = cMap.get(inv.customerId);
+    if(!cust) return;
+    let days = Math.floor((now - new Date(inv.date).getTime()) / 86400000);
+    days = isNaN(days) ? 0 : Math.max(0, days);
+    const r = by[cust.id] || (by[cust.id] = { cust, total:0, b:[0, 0, 0, 0], oldestDays:null, invs:[] });
+    r.total += bal;
+    r.b[days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3] += bal;
+    if(r.oldestDays == null || days > r.oldestDays) r.oldestDays = days;
+    r.invs.push({ inv, bal, days });
+  });
+  return Object.values(by).map(r=>{ r.total = _r2_207(r.total); r.b = r.b.map(_r2_207); return r; }).sort((a, b)=>b.total - a.total);
+}
+function custAgingTotals(rows){
+  const tot = [0, 0, 0, 0];
+  rows.forEach(r=>r.b.forEach((v, i)=>{ tot[i] += v; }));
+  return { tot: tot.map(_r2_207), all: _r2_207(rows.reduce((s, r)=>s + r.total, 0)) };
+}
+function custAgingCellsHTML(tot, all){
+  return `<div class="grid g4 age-grid">${SUP_AGE_LBL.map((l, i)=>{
+    const pct = all > 0 ? Math.round(tot[i] / all * 100) : 0;
+    return `<div class="card stat-card" style="margin:0"><div class="num" style="font-size:20px;${i === 3 && tot[3] > 0.005 ? 'color:var(--danger)' : ''}">${money(tot[i])}</div>
+      <div class="lbl">${l} <span class="muted">(${pct}%)</span></div><div class="age-bar${i === 3 ? ' old' : ''}"><span style="width:${pct}%"></span></div></div>`;
+  }).join('')}</div>`;
+}
+function custAgingStripHTML(){
+  const rows = custAgingAll(), { tot, all } = custAgingTotals(rows);
+  return `<div class="section-head"><h3>⏳ أعمار مديونيات العملاء</h3>
+    ${rows.length ? `<button class="btn btn-sm" onclick="openCustAgingReport()">📋 التفاصيل لكل عميل</button>` : ''}</div>
+  <div class="card" style="margin-bottom:18px">
+    ${rows.length ? custAgingCellsHTML(tot, all) + `<div class="muted" style="font-size:12px;margin-top:10px">${rows.length === 1 ? 'عميل واحد عليه' : rows.length === 2 ? 'عميلين عليهم' : rows.length + (rows.length <= 10 ? ' عملاء' : ' عميل') + ' عليهم'} <b>${money(all)}</b> · كل فاتورة في خانة حسب عمرها من تاريخها — كل ما الفلوس تقعد برة أكتر، تحصيلها بيصعب.</div>`
+      : `<div class="empty">مفيش مديونيات على العملاء 👏</div>`}
+  </div>`;
+}
+function openCustAgingReport(){
+  if(!canScreen('receivables')){ toast('مالكش صلاحية على شاشة المديونيات', true); return; }
+  const rows = custAgingAll(), { tot, all } = custAgingTotals(rows);
+  openModal(`<div class="flex-between" style="gap:8px;flex-wrap:wrap;margin-bottom:8px"><h3 style="margin:0">⏳ أعمار مديونيات العملاء</h3>
+      <div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="printCustAging()">🖨 طباعة</button><button class="btn btn-sm" onclick="exportCustAgingCSV()">⬇ Excel</button></div></div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">كل فاتورة لسه عليها فلوس في خانة حسب عمرها من تاريخها. الأحمر = فلوس برة من أكتر من 3 شهور — دي أولوية التحصيل.</div>
+    <div style="margin-bottom:12px">${custAgingCellsHTML(tot, all)}</div>
+    <div class="card" style="max-height:55vh;overflow:auto"><table><thead><tr><th>العميل</th><th>عليه</th>${SUP_AGE_LBL.map(l=>`<th>${l}</th>`).join('')}<th>أقدم فاتورة</th><th></th></tr></thead><tbody>
+      ${rows.length ? rows.map(x=>`<tr><td>${canScreen('customers') ? `<a href="#" onclick="event.preventDefault();openCustomerHistory('${x.cust.id}')" style="font-weight:800;color:inherit">${escNote(x.cust.name)}</a>` : `<b>${escNote(x.cust.name)}</b>`}
+          <div class="muted" style="font-size:11px">${x.cust.custType || 'فرد'}${x.cust.phone ? ' · ' + escNote(x.cust.phone) : ''} · ${x.invs.length} فاتورة</div></td>
+        <td style="font-weight:800">${money(x.total)}</td>${x.b.map((v, i)=>`<td style="${i === 3 && v > 0 ? 'color:var(--danger);font-weight:800' : ''}">${v ? money(v) : '—'}</td>`).join('')}
+        <td>${x.oldestDays != null ? x.oldestDays + ' يوم' : '—'}</td>
+        <td><button class="btn btn-sm" onclick="openCustStatement('${x.cust.id}')">📄 كشف حساب</button></td></tr>`).join('')
+        + `<tr style="font-weight:900;background:var(--surface-2)"><td>الإجمالي (${rows.length} عميل)</td><td>${money(all)}</td>${tot.map(v=>`<td>${money(v)}</td>`).join('')}<td></td><td></td></tr>`
+        : '<tr><td colspan="8" class="empty">مفيش مديونيات على العملاء 👏</td></tr>'}
+    </tbody></table></div>`, 'xwide');
+}
+function printCustAging(){
+  const rows = custAgingAll(), { tot, all } = custAgingTotals(rows);
+  printHTML(`<div style="padding:10px"><h3 style="margin:0 0 4px">⏳ أعمار مديونيات العملاء</h3>
+    <div style="font-size:12px;color:#555;margin-bottom:10px">${escNote((DB.settings && DB.settings.centerName) || 'Masters Auto Service')} — ${fmtDateTime(new Date().toISOString())} · بواسطة ${escNote(actorName())}</div>
+    <table><thead><tr><th>العميل</th><th>الموبايل</th><th>عليه</th>${SUP_AGE_LBL.map(l=>`<th>${l}</th>`).join('')}<th>أقدم فاتورة</th></tr></thead><tbody>
+    ${rows.map(x=>`<tr><td>${escNote(x.cust.name)}</td><td>${escNote(x.cust.phone || '—')}</td><td><b>${money(x.total)}</b></td>${x.b.map(v=>`<td>${v ? money(v) : '—'}</td>`).join('')}<td>${x.oldestDays != null ? x.oldestDays + ' يوم' : '—'}</td></tr>`).join('')}
+    <tr style="font-weight:900"><td>الإجمالي</td><td></td><td>${money(all)}</td>${tot.map(v=>`<td>${money(v)}</td>`).join('')}<td></td></tr>
+    </tbody></table></div>`);
+}
+function exportCustAgingCSV(){
+  const out = [['العميل', 'النوع', 'الموبايل', 'عليه', ...SUP_AGE_LBL, 'أقدم فاتورة (يوم)', 'عدد الفواتير']];
+  custAgingAll().forEach(x=>out.push([x.cust.name, x.cust.custType || 'فرد', x.cust.phone || '', x.total, ...x.b, x.oldestDays == null ? '' : x.oldestDays, x.invs.length]));
+  out.push([], ['تاريخ التصدير', fmtDateTime(new Date().toISOString())], ['بواسطة', actorName()]);
+  const csv = '﻿' + out.map(r=>r.map(v=>'"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  downloadXLSXFromCSV('أعمار مديونيات العملاء', csv);
+}
+/* ============ م275: 📄 كشف حساب العميل (طلب سيف) ============
+   بالترتيب الزمني: كل فاتورة سارية (عليه) · كل دفعة اتقبضت عليها (له) · فلوس فاتورة ملغاة لسه مستنية فاتورتها الجديدة (له)
+   · الفرق اللي طلع للعميل من فاتورة ملغاة (له) — ولو اترد له نقدي (عليه).
+   خصم «رصيد للعميل» من فاتورة جديدة مش بيتعد دفعة تانية (الفلوس اتحسبت مرة واحدة لما الرصيد اتعمل).
+   ✔ الرصيد الأخير = مجموع الباقي على الفواتير − الرصيد اللي ليه − الفلوس المعلّقة من فواتير ملغاة. عرض بس — مفيش ولا رقم بيتغيّر. */
+var custStmtFilter = { preset:'all', from:'', to:'' };
+function custStmtAllowed(){ return canScreen('receivables') || canScreen('invoices'); }
+function custStatementRows(customerId){
+  const rows = [];
+  /* مراجعة م275: «رصيد للعميل» بيتحسب مرة واحدة مهما اتفتحت/اتلغت فواتير السلسلة:
+     سطر الرصيد على فاتورته (لو سارية) = اللي فاضل منه + اللي اتخصم منه على فواتير سارية — وخصمه على الفواتير دي مابيتعدش تاني.
+     فاتورة الرصيد اتلغت ⇒ فلوسها بقت «محصّل على فاتورة ملغاة» والخصم اللي اتعمل منها بيتعد دفعة عادية.
+     فاتورة الخصم اتلغت ⇒ الخصم ده راح لـ«محصّل على فاتورة ملغاة» على أمرها. رد الرصيد نقدي ⇒ الاتنين بيلغوا بعض (مفيش سطر). */
+  const live = new Set(DB.invoices.filter(i=>i.customerId === customerId && !i.cancelled).map(i=>i.id));
+  const usedLive = {};
+  DB.invoices.forEach(inv=>{
+    if(!live.has(inv.id)) return;
+    (inv.payments || []).forEach(p=>{ if(p.creditFromInvId && live.has(p.creditFromInvId)) usedLive[p.creditFromInvId] = (usedLive[p.creditFromInvId] || 0) + (Number(p.amount) || 0); });
+  });
+  DB.invoices.forEach(inv=>{
+    if(!live.has(inv.id)) return;
+    rows.push({ date:inv.date, kind:'inv', type:'🧾 فاتورة', ref:'#' + inv.invNo, debit:Number(inv.total) || 0, credit:0 });
+    (inv.payments || []).forEach(p=>{
+      if(p.creditFromInvId && live.has(p.creditFromInvId)) return;
+      const a = Number(p.amount) || 0;
+      if(!a) return;
+      rows.push({ date:p.date || inv.date, kind:'pay', type:p.depositId ? '💰 عربون' : p.creditFromInvId ? '💳 خصم من رصيده' : '💵 دفعة',
+        ref:'فاتورة #' + inv.invNo + (p.method ? ' — ' + p.method : ''), debit:a < 0 ? -a : 0, credit:a > 0 ? a : 0 });
+    });
+    const cc = inv.custCredit;
+    const cAmt = cc && ['open', 'credit', 'used', 'refunded'].includes(cc.status) ? _r2_207((Number(cc.remaining) || 0) + (usedLive[inv.id] || 0)) : 0;   /* اترد نقدي ⇐ remaining = 0 والجزء اللي اتخصم بس اللي بيفضل */
+    if(cAmt > 0.005) rows.push({ date:cc.at || inv.date, kind:'credit', type:'💳 فلوس للعميل', ref:'فرق الفاتورة الملغاة #' + (cc.fromInvNo || '—') + ' (على فاتورة #' + inv.invNo + ')', debit:0, credit:cAmt });
+  });
+  DB.jobs.forEach(j=>{
+    if(j.customerId !== customerId) return;
+    const c = jobPendingCarry(j);
+    if(c) rows.push({ date:c.at, kind:'carry', type:'💰 محصّل على فاتورة ملغاة', ref:'#' + c.fromInvNo + ' — مستني الفاتورة الجديدة لأمر #' + j.jobNo, debit:0, credit:Number(c.amount) || 0 });
+  });
+  const t = custStmtT;
+  rows.sort((a, b)=>(t(a) - t(b)) || ((a.kind === 'inv' ? 0 : 1) - (b.kind === 'inv' ? 0 : 1)));
+  let run = 0;
+  rows.forEach(r=>{ run = _r2_207(run + r.debit - r.credit); r.running = run; });
+  return rows;
+}
+function custStmtT(x){ const v = new Date(x.date).getTime(); return isNaN(v) ? 0 : v; }
+function custStmtView(customerId){
+  const all = custStatementRows(customerId);
+  const r = repRangeOf(custStmtFilter);
+  const inR = x=>{ const v = custStmtT(x); return v >= r.from.getTime() && v <= r.to.getTime(); };
+  const before = r ? all.filter(x=>custStmtT(x) < r.from.getTime()) : [];
+  const rows = r ? all.filter(inR) : all;
+  const opening = before.length ? before[before.length - 1].running : 0;
+  const closing = rows.length ? rows[rows.length - 1].running : opening;
+  return { r, rows, opening, closing,
+    debit:_r2_207(rows.reduce((s, x)=>s + x.debit, 0)), credit:_r2_207(rows.reduce((s, x)=>s + x.credit, 0)) };
+}
+function custStmtBalTxt(v){ return Math.abs(v) < 0.005 ? '0' : money(Math.abs(v)) + (v > 0 ? ' عليه' : ' ليه'); }
+function custStmtPeriodLabel(){
+  const f = custStmtFilter;
+  if(f.preset === 'custom') return 'من ' + (f.from ? fmtDate(localDayStart(f.from)) : 'البداية') + ' إلى ' + (f.to ? fmtDate(localDayStart(f.to)) : 'النهارده');
+  return (SUP_REP_PRESETS.find(x=>x[0] === f.preset) || ['', 'كل التعاملات'])[1];
+}
+function custOpenDeposits(customerId){
+  return DB.jobs.filter(j=>j.customerId === customerId && j.status !== 'ملغاة').map(j=>({ j, d:jobOpenDeposit(j) })).filter(x=>x.d && Number(x.d.amount) > 0.005);
+}
+function custStmtTableHTML(v, forPrint){
+  const td = (x, st)=>`<td style="white-space:nowrap${st ? ';' + st : ''}">${x}</td>`;
+  return `<table${forPrint ? '' : ' class="tcompact"'}><thead><tr><th>التاريخ</th><th>البيان</th><th>المرجع</th><th>عليه (مدين)</th><th>ليه (دائن)</th><th>الرصيد</th></tr></thead><tbody>
+    ${v.r ? `<tr style="font-weight:700"><td colspan="5">⏮ رصيد ما قبل الفترة</td>${td(custStmtBalTxt(v.opening))}</tr>` : ''}
+    ${v.rows.length ? v.rows.map(x=>`<tr>${td(fmtDate(x.date))}<td>${x.type}</td><td class="muted" style="font-size:11.5px">${escNote(x.ref)}</td>
+      ${td(x.debit ? money(x.debit) : '—', x.debit ? 'color:var(--danger)' : '')}${td(x.credit ? money(x.credit) : '—', x.credit ? 'color:var(--success)' : '')}
+      ${td(custStmtBalTxt(x.running), 'font-weight:800' + (x.running > 0.005 ? ';color:var(--danger)' : ''))}</tr>`).join('')
+      : `<tr><td colspan="6" class="empty">مفيش حركات في الفترة دي</td></tr>`}
+  </tbody></table>`;
+}
+function custStmtWaText(cust){
+  const open = DB.invoices.filter(i=>i.customerId === cust.id && !i.cancelled && invBalance(i).balance > 0.005)
+    .sort((a, b)=>new Date(a.date) - new Date(b.date));
+  const due = _r2_207(open.reduce((s, i)=>s + invBalance(i).balance, 0));
+  const rows = custStatementRows(cust.id), net = rows.length ? rows[rows.length - 1].running : 0;
+  const credit = _r2_207(due - net);   /* رصيده + فلوس فواتير ملغاة لسه ماتنقلتش (+ فاتورة مدفوعة زيادة) */
+  const L = [(DB.settings && DB.settings.centerName) || 'Masters Auto Service', 'كشف حساب: ' + cust.name, 'بتاريخ ' + fmtDate(new Date().toISOString()), ''];
+  if(open.length){
+    L.push('الفواتير اللي لسه عليها فلوس:');
+    open.slice(0, 15).forEach(i=>L.push('• فاتورة #' + i.invNo + ' بتاريخ ' + fmtDate(i.date) + ' — الباقي ' + money(invBalance(i).balance)));
+    if(open.length > 15) L.push('• و' + (open.length - 15) + ' فواتير تانية');
+    L.push('', 'إجمالي الفواتير المفتوحة: ' + money(due));
+  } else L.push('مفيش فواتير عليها فلوس 🙏');
+  if(credit > 0.005) L.push('فلوس ليك عندنا: ' + money(credit));
+  if(open.length || credit > 0.005) L.push(net > 0.005 ? 'الصافي المطلوب: ' + money(net) : net < -0.005 ? 'ليك عندنا صافي: ' + money(-net) : 'الحساب خالص — شكراً لتعاملك معانا 🙏');
+  return L.join('\n');
+}
+function openCustStatement(customerId, keep){
+  if(!custStmtAllowed()){ toast('مالكش صلاحية على كشف حساب العملاء', true); return; }
+  const cust = DB.customers.find(c=>c.id === customerId);
+  if(!cust){ toast('العميل مش موجود', true); return; }
+  if(!keep) custStmtFilter = { preset:'all', from:'', to:'' };
+  window._custStmtId = customerId;
+  const v = custStmtView(customerId), deps = custOpenDeposits(customerId);
+  const ph = cust.phone ? apptWaPhone(cust.phone) : '';
+  const f = custStmtFilter;
+  openModal(`
+  <div class="flex-between" style="gap:10px;flex-wrap:wrap;margin-bottom:8px">
+    <h3 style="margin:0">📄 كشف حساب العميل — ${escNote(cust.name)}</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="printCustStatement('${cust.id}')">🖨 طباعة / PDF</button>
+      ${ph.length >= 8 ? `<a class="btn btn-sm" target="_blank" rel="noopener" href="https://wa.me/${ph}?text=${encodeURIComponent(custStmtWaText(cust))}">💬 واتساب (إنت اللي تبعت)</a>` : ''}
+      ${canScreen('customers') ? `<button class="btn btn-sm" onclick="openCustomerHistory('${cust.id}', true)">↩️ سجل العميل</button>` : ''}
+    </div>
+  </div>
+  <div class="card" style="padding:8px 10px;margin-bottom:10px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${SUP_REP_PRESETS.map(([id, lbl])=>`<button class="btn btn-sm ${f.preset === id ? 'btn-accent' : ''}" onclick="custStmtSet('preset','${id}')">${lbl}</button>`).join('')}
+    </div>
+    ${f.preset === 'custom' ? `<div class="grid g2" style="max-width:420px;margin-top:8px">
+      <div class="form-row" style="margin:0"><label class="f-label">من تاريخ</label><input class="f" type="date" value="${escAttr(f.from)}" onchange="custStmtSet('from',this.value)"></div>
+      <div class="form-row" style="margin:0"><label class="f-label">إلى تاريخ</label><input class="f" type="date" value="${escAttr(f.to)}" onchange="custStmtSet('to',this.value)"></div>
+    </div>` : ''}
+  </div>
+  <div class="cs-sum">
+    ${stat(money(v.debit), 'فواتير ' + (v.r ? 'الفترة' : 'كل التعاملات'))}
+    ${stat(money(v.credit), 'اللي دفعه ' + (v.r ? 'في الفترة' : 'كله'))}
+    ${stat(custStmtBalTxt(v.closing), v.r ? 'الرصيد آخر الفترة' : 'الرصيد دلوقتي', v.closing > 0.005)}
+  </div>
+  ${custStmtTableHTML(v)}
+  ${deps.length ? `<div class="muted" style="font-size:12px;margin-top:8px">💰 عربون مدفوع على أوامر لسه ماتفوترتش: ${deps.map(x=>'<b>' + money(x.d.amount) + '</b> على أمر #' + x.j.jobNo).join(' · ')} — مش داخل في الرصيد لحد ما الأمر يتفوتر.</div>` : ''}
+  <div class="muted" style="font-size:11.5px;margin-top:6px">📋 الكشف عرض بس — الفواتير الملغاة مش داخلة فيه، وأي تصحيح بيتم من الشاشات الأصلية بصلاحياتها.</div>
+  `, 'xwide');
+}
+function custStmtSet(k, v){
+  custStmtFilter[k] = v;
+  if(k === 'preset' && v !== 'custom'){ custStmtFilter.from = ''; custStmtFilter.to = ''; }
+  openCustStatement(window._custStmtId, true);
+}
+function printCustStatement(customerId){
+  if(!custStmtAllowed()) return;
+  const cust = DB.customers.find(c=>c.id === customerId);
+  if(!cust) return;
+  const v = custStmtView(customerId);
+  printHTML(`<div style="padding:10px">
+    <h2 style="text-align:center;margin:4px 0">${escNote((DB.settings && DB.settings.centerName) || 'Masters Auto Service')} — كشف حساب عميل</h2>
+    <div style="text-align:center;margin-bottom:10px">العميل: <b>${escNote(cust.name)}</b>${cust.phone ? ' · ' + escNote(cust.phone) : ''} · الفترة: <b>${custStmtPeriodLabel()}</b> · بتاريخ ${fmtDate(new Date().toISOString())}</div>
+    ${custStmtTableHTML(v, true)}
+    <div style="margin-top:10px;font-size:14px">فواتير: <b>${money(v.debit)}</b> · مدفوع: <b>${money(v.credit)}</b> · ${v.r ? 'الرصيد آخر الفترة' : 'الرصيد'}: <b>${custStmtBalTxt(v.closing)}</b></div>
+  </div>`);
+}
 /* ======================= FINANCE (الخزنة والحسابات المالية — الملاحظة 17) ======================= */
 function accBalance(accId){
   const acc = DB.finAccounts.find(a=>a.id===accId);
@@ -21631,7 +22069,11 @@ function renderFinance(){
   const range = periodRange(finPeriod);
   const pm = DB.finMoves.filter(m=>inPeriod(m.date, range));
   const collections = pm.filter(m=>m.kind==='collection').reduce((s,m)=>s+m.amount,0);
-  const expensesOut = pm.filter(m=>m.kind==='expense').reduce((s,m)=>s+m.amount,0);
+  /* م277 (سيف): «إجمالي المصروفات» = كل اللي اتصرف كمصروف — العادي + السلف + المكافآت + المرتبات (زي «تقارير المصروفات» من م251).
+     كانت العادي بس، فسلف النهارده (7,600) ماكانتش باينة. الراجع لنفس النوع (زي إلغاء صرف مرتب) بيتخصم. الموردين كارتهم لوحدهم. */
+  const EXP_KINDS277 = [['expense','مصروفات'],['advance','سلف'],['reward','مكافآت'],['salary','مرتبات']];
+  const expBy277 = EXP_KINDS277.map(([k, l])=>[l, Math.round(pm.filter(m=>m.kind===k).reduce((s,m)=>s+(m.type==='in' ? -1 : 1)*(Number(m.amount)||0),0)*100)/100]);
+  const expensesOut = Math.round(expBy277.reduce((s,x)=>s+x[1],0)*100)/100;
   const supplierOut = pm.filter(m=>m.kind==='supplier'||m.kind==='purchase').reduce((s,m)=>s+m.amount,0);
   const extDeposits = pm.filter(m=>m.kind==='deposit').reduce((s,m)=>s+m.amount,0);
   /* م127: عرابين العملاء — واردة في سجل الحركات وبسطر واضح في التقرير */
@@ -21657,6 +22099,7 @@ function renderFinance(){
     }).join('')}
   </div>
   <div class="muted" style="font-size:12px;margin-bottom:8px">إجمالي السيولة في الحسابات الشغالة: <b style="color:var(--accent)">${money(totalAll)}</b> · اضغط على أي حساب لكشف حسابه وتسوية رصيده أو أرشفته</div>
+  ${todayCardHTML276()}
   ${(()=>{   /* م87: الحسابات المؤرشفة — ظاهرة بوضوح مع إمكانية الاسترجاع */
     const arch = DB.finAccounts.filter(a=>a.archived);
     if(!arch.length) return '<div style="margin-bottom:18px"></div>';
@@ -21683,10 +22126,11 @@ function renderFinance(){
     </div>
     <div class="grid g4" style="margin-bottom:10px">
       ${stat(money(collections),'إجمالي التحصيلات')}
-      ${stat(money(expensesOut),'إجمالي المصروفات', expensesOut>0)}
+      ${stat(money(expensesOut),'إجمالي المصروفات (شامل السلف والمكافآت والمرتبات)', expensesOut>0)}
       ${stat(money(supplierOut),'مدفوعات موردين ومشتريات')}
       ${stat(money(netFlow),'صافي التدفق النقدي', netFlow<0)}
     </div>
+    ${expBy277.some(x=>Math.abs(x[1])>0.005)?`<div class="muted" style="font-size:12px">💸 تقسيم المصروفات: ${expBy277.filter(x=>Math.abs(x[1])>0.005).map(([l,v])=>l+' '+money(v)).join(' · ')}</div>`:''}
     ${extDeposits>0?`<div class="muted" style="font-size:12px">منها إيداعات خارجية (شركاء/ملاك): ${money(extDeposits)}</div>`:''}
     ${custDeps>0||custDepRefunds>0?`<div class="muted" style="font-size:12px">💰 عرابين عملاء مقبوضة: ${money(custDeps)}${custDepRefunds>0?' · ↩️ عرابين مستردة: '+money(custDepRefunds):''}</div>`:''}
   </div>
@@ -22082,14 +22526,323 @@ function renderExpenses(){
     <button class="btn btn-sm ${expenseView==='report'?'btn-accent':''}" onclick="setExpenseView('report')">📊 تقارير المصروفات</button>
     <button class="btn btn-sm ${expenseView==='custodies'?'btn-accent':''}" onclick="setExpenseView('custodies')">👛 العهد${(()=>{ const o=DB.custodies.filter(c=>c.status==='open').length; return o?' ('+o+')':''; })()}</button>
     ${can('exp.advance')?`<button class="btn btn-sm ${expenseView==='advances'?'btn-accent':''}" onclick="setExpenseView('advances')">💰 سلفة الموظفين</button>`:''}
+    ${canScreen('finance')?`<button class="btn btn-sm ${expenseView==='audit'?'btn-accent':''}" onclick="setExpenseView('audit')">🔎 مراجعة المصروفات</button>`:''}
   </div>`;
   let body;
   if(expenseView==='categories') body = renderExpenseCategories();
   else if(expenseView==='report') body = renderExpenseReport();
   else if(expenseView==='custodies') body = renderCustodies();
   else if(expenseView==='advances') body = renderAdvancesView();   /* م166 */
+  else if(expenseView==='audit') body = renderExpAudit276();   /* م276 */
   else body = renderExpenseList();
-  return tabsBar + body;
+  return treasuryStripHTML() + expAnomBoxHTML276() + tabsBar + body;
+}
+/* ============ م275: 💰 أرصدة الخزن والبنوك فوق شاشة المصروفات (طلب سيف) ============
+   بتظهر للي معاه شاشة «الخزنة والحسابات» كمان — اللي معاه المصروفات بس مايشوفش الخزن فيها كام (قرار سيف).
+   كارت لكل خزنة/بنك/محفظة: الرصيد (نفس رقم شاشة الخزنة بالظبط) + حركة النهارده · حسابات العهد سطر واحد.
+   الحساب اللي اتحرك في آخر 4 ثواني (من الجهاز ده أو من جهاز تاني) بينوّر بإطار أصفر — عشان التحديث يبان أول بأول.
+   «🙈 إخفاء» لكل جهاز لوحده (الشاشة ممكن تبقى مفتوحة والناس حواليها). عرض بس. */
+const BAL_HIDE_KEY = 'ms_hide_balances';
+var _balHide = null;
+function balHidden(){
+  if(_balHide === null){ try{ _balHide = localStorage.getItem(BAL_HIDE_KEY) === '1'; }catch(e){ _balHide = false; } }
+  return _balHide;
+}
+function toggleBalHidden(){
+  _balHide = !balHidden();
+  try{ if(_balHide) localStorage.setItem(BAL_HIDE_KEY, '1'); else localStorage.removeItem(BAL_HIDE_KEY); }catch(e){}
+  refreshContent();
+}
+const BAL_KIND_ORDER = { 'خزنة':0, 'بنك':1, 'محفظة':2 };
+const BAL_KIND_ICON = { 'خزنة':'💵', 'بنك':'🏦', 'محفظة':'📱' };
+function treasuryStripHTML(){
+  if(!canScreen('finance') || !canScreen('expenses')) return '';
+  const live = liveAccounts();
+  if(!live.length) return '';
+  if(balHidden()) return `<div class="bal-off"><span>💰 أرصدة الخزن مخفية على الجهاز ده</span><button class="btn btn-sm" onclick="toggleBalHidden()">👁 إظهار الأرصدة</button></div>`;
+  const total = live.reduce((s,a)=>s+accBalance(a.id),0);
+  const today = periodRange({ preset:'today' }), now = Date.now();
+  const tin = {}, tout = {}, flash = new Set();
+  DB.finMoves.forEach(m=>{
+    if(!inPeriod(m.date, today)) return;
+    const o = m.type==='in' ? tin : tout;
+    o[m.accountId] = (o[m.accountId]||0) + (Number(m.amount)||0);
+    if(Math.abs(now - new Date(m.date).getTime()) < 4000) flash.add(m.accountId);
+  });
+  const accs = live.filter(a=>a.kind!=='عهدة').sort((a,b)=>((BAL_KIND_ORDER[a.kind] ?? 3) - (BAL_KIND_ORDER[b.kind] ?? 3)));
+  const cus = live.filter(a=>a.kind==='عهدة');
+  return `<div class="bal-wrap">
+    <div class="bal-top"><b>💰 أرصدة الخزن والبنوك دلوقتي</b>
+      <span class="muted">${(()=>{ const f = todayFlow276(); return f.in || f.out ? `النهارده: <span style="color:var(--success)">+${money(f.in)}</span> · <span style="color:var(--danger)">−${money(f.out)}</span> · ` : ''; })()}إجمالي السيولة <b class="bal-total">${money(total)}</b> <button class="btn btn-sm" onclick="toggleBalHidden()">🙈 إخفاء</button></span></div>
+    <div class="bal-cards">${accs.map(a=>{
+      const b = accBalance(a.id), i = _r2_207(tin[a.id]||0), o = _r2_207(tout[a.id]||0);
+      return `<div class="bal-card${flash.has(a.id)?' flash':''}" role="button" tabindex="0" title="دوس تشوف كشف حساب ${escAttr(a.name)}"
+          onclick="openAccountDetail('${a.id}')" onkeydown="if(event.key==='Enter')this.click()">
+        <div class="bal-name">${BAL_KIND_ICON[a.kind]||'💼'} ${escNote(a.name)}</div>
+        <div class="bal-num${b < -0.005 ? ' neg' : ''}">${money(b)}</div>
+        <div class="bal-today">${i||o ? 'النهارده: '+(i?`<span class="in">+${money(i)}</span>`:'')+(i&&o?' · ':'')+(o?`<span class="out">−${money(o)}</span>`:'') : 'مفيش حركة النهارده'}</div>
+      </div>`;
+    }).join('')}</div>
+    <div class="bal-foot">${cus.length ? `👛 حسابات العهد: <b>${money(cus.reduce((s,a)=>s+accBalance(a.id),0))}</b> · ` : ''}دوس على أي حساب تفتح كشف حسابه</div>
+  </div>`;
+}
+/* ============ م276: 📈 تحليل المصروفات (طلب سيف: الحسابات تبقى سهلة للمراجعة والمقارنة واكتشاف السرقة) ============
+   «المعتاد» لكل بند = من أقل لأعلى شهر في آخر 6 شهور كاملة (من أول شهر البند ظهر فيه — والشهر الحالي برا الحسبة).
+   🚨 «فوق المعتاد» = الشهر ده عدّى أعلى شهر بأكتر من 20% وبـ500 ج.م على الأقل — ولازم 3 شهور بيانات على الأقل.
+   💸 «مصروف واحد كبير» = 3 أضعاف المصروف المعتاد (الوسيط) في نفس البند وألف جنيه على الأقل — ولازم 5 مصروفات قبله.
+   نفس تعريف «تقارير المصروفات»: المصروفات التشغيلية بس (مش سداد الموردين ولا رد فلوس للعملاء). عرض بس. */
+const ANOM_MONTHS = 6, ANOM_MIN_MONTHS = 3, ANOM_PCT = 0.2, ANOM_MIN_ABS = 500;
+const BIG_ENTRY_X = 3, BIG_ENTRY_MIN = 1000, BIG_ENTRY_MIN_N = 5;
+const NO_RECEIPT_MIN = 1000, WORK_FROM_H = 8, WORK_TO_H = 22;   /* المركز بيفتح من 9 لـ10 بالليل — هامش ساعة */
+function ym276(d){ const x = new Date(d); return isNaN(x.getTime()) ? '' : x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0'); }
+function ymShift276(ym, k){ const p = ym.split('-').map(Number); const d = new Date(p[0], p[1] - 1 + k, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+function ymLabel276(ym){ const p = ym.split('-').map(Number); return new Date(p[0], p[1] - 1, 1).toLocaleDateString(NUM_LOCALE, { month:'long' }); }
+function expCatKey276(e){ return e.category || 'غير محدد'; }
+function expCatStats276(asOf){
+  const cur = ym276(asOf || new Date());
+  const months = [];
+  for(let k = ANOM_MONTHS; k >= 1; k--) months.push(ymShift276(cur, -k));
+  const first = {}, by = {};
+  operatingExpenses().forEach(e=>{
+    const ym = ym276(e.date);
+    if(!ym || ym > cur) return;
+    const k = expCatKey276(e);
+    if(!first[k] || ym < first[k]) first[k] = ym;
+    if(ym !== cur && ym < months[0]) return;
+    const r = by[k] || (by[k] = { cat:k, group:expGroupOf(e), m:{} });
+    r.m[ym] = (r.m[ym] || 0) + (Number(e.amount) || 0);
+  });
+  return Object.values(by).map(r=>{
+    const hist = months.filter(ym=>ym >= first[r.cat]).map(ym=>_r2_207(r.m[ym] || 0));
+    const now = _r2_207(r.m[cur] || 0), m1 = _r2_207(r.m[ymShift276(cur, -1)] || 0), m2 = _r2_207(r.m[ymShift276(cur, -2)] || 0);
+    const enough = hist.length >= ANOM_MIN_MONTHS && hist.filter(v=>v > 0.005).length >= ANOM_MIN_MONTHS;   /* مراجعة: بند نايم من سنة ⇐ أصفار مش «معتاد» */
+    const lo = enough ? Math.min(...hist) : null, hi = enough ? Math.max(...hist) : null;
+    const over = enough && now > hi * (1 + ANOM_PCT) + 0.005 && now - hi >= ANOM_MIN_ABS;
+    return { cat:r.cat, group:r.group, now, m1, m2, lo, hi, n:hist.length, enough, over };
+  }).sort((a, b)=>(b.now - a.now) || (b.m1 - a.m1));
+}
+/* المصروف الواحد الكبير على غير العادة — الأساس: مصروفات نفس البند في آخر 6 شهور كاملة
+   (المصروف العادي والسلفة والمكافأة بس — المرتب والاستهلاك الداخلي مش «مصروف بيتسجل بإيد») */
+function bigEntryType276(e){ return ['expense', 'advance', 'reward'].includes(expTxnType(e)); }
+function expBigEntries276(list, asOf){
+  const cur = ym276(asOf || new Date()), from = ymShift276(cur, -ANOM_MONTHS), base = {};
+  operatingExpenses().filter(bigEntryType276).forEach(e=>{
+    const ym = ym276(e.date);
+    if(!ym || ym < from || ym >= cur) return;
+    (base[expCatKey276(e)] = base[expCatKey276(e)] || []).push(Number(e.amount) || 0);
+  });
+  const med = {};
+  Object.keys(base).forEach(k=>{
+    const a = base[k].slice().sort((x, y)=>x - y);
+    if(a.length < BIG_ENTRY_MIN_N) return;
+    const mid = Math.floor(a.length / 2);
+    med[k] = a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+  });
+  return (list || []).filter(bigEntryType276).map(e=>{
+    const m = med[expCatKey276(e)], a = Number(e.amount) || 0;
+    return (m > 0 && a >= BIG_ENTRY_X * m && a >= BIG_ENTRY_MIN) ? { e, med:_r2_207(m), x:Math.round(a / m * 10) / 10 } : null;
+  }).filter(Boolean);
+}
+/* إشعار لصاحب المركز — مرة واحدة للبند في الشهر · ومرة للمصروف الكبير نفسه (إشعار سيستم: بيوصل حتى لو صاحب المركز اللي سجّل) */
+function expAnomAfterSave276(e){
+  try{
+    if(!e || !isOperatingExpense(e)) return;
+    const who = e.actor || e.recordedBy || '—', cat = expCatKey276(e);
+    const r = expCatStats276().find(x=>x.cat === cat);
+    const key = 'anom|' + ym276(new Date()) + '|' + cat;
+    if(r && r.over && !DB.notifications.some(n=>n.type === 'exp_anomaly' && (n.refId === key || n.refNo === key)))
+      notify('exp_anomaly', '🚨 بند «' + cat + '» عدّى المعتاد: ' + money(r.now) + ' الشهر ده — المعتاد من ' + money(r.lo) + ' لـ' + money(r.hi) + ' (آخر ' + r.n + ' شهور) · آخر مصروف سجّله ' + who,
+        { category:'financial', priority:'high', amount:r.now, refType:'expense', refId:key, system:true });
+    const big = expBigEntries276([e])[0];
+    if(big && !DB.notifications.some(n=>n.type === 'exp_big_entry' && (n.refId === 'big|' + e.id || n.refNo === 'big|' + e.id)))
+      notify('exp_big_entry', '💸 مصروف كبير على غير العادة' + (e.expNo ? ' #' + e.expNo : '') + ' — ' + cat + ' ' + money(e.amount) + ' (المعتاد للمصروف الواحد حوالي ' + money(big.med) + ') · سجّله ' + who,
+        { category:'financial', priority:'high', amount:Number(e.amount) || 0, refType:'expense', refId:'big|' + e.id, refNo:e.expNo || null, system:true });
+  }catch(x){ /* المراقبة ماتوقفش التسجيل أبداً */ }
+}
+/* صندوق «محتاج تراجع» فوق شاشة المصروفات — للي معاه شاشة الخزنة (نفس قاعدة الأرصدة) */
+function expAnomBoxHTML276(){
+  if(!canScreen('finance')) return '';
+  const cur = ym276(new Date());
+  const over = expCatStats276().filter(r=>r.over);
+  const big = expBigEntries276(DB.expenses.filter(e=>ym276(e.date) === cur));
+  if(!over.length && !big.length) return '';
+  const lines = over.map(r=>`🚨 <b>${escNote(r.cat)}</b>: ${money(r.now)} الشهر ده — المعتاد من ${money(r.lo)} لـ${money(r.hi)} (آخر ${r.n} شهور)`)
+    .concat(big.map(x=>`💸 مصروف واحد كبير${x.e.expNo ? ' #' + x.e.expNo : ''}: ${escNote(expCatKey276(x.e))} <b>${money(x.e.amount)}</b> — المعتاد للمصروف الواحد في البند ده حوالي ${money(x.med)} · سجّله ${escNote(x.e.actor || x.e.recordedBy || '—')}`));
+  return `<div class="anom-box"><div class="anom-h"><span>🚨 محتاج تراجع (${lines.length})</span><button class="btn btn-sm" onclick="setExpenseView('audit')">🔎 مراجعة المصروفات</button></div>
+    ${lines.slice(0, 5).map(l=>`<div class="anom-l">${l}</div>`).join('')}
+    ${lines.length > 5 ? `<div class="muted" style="font-size:12px;margin-top:4px">و${lines.length - 5} كمان في «🔎 مراجعة المصروفات»</div>` : ''}</div>`;
+}
+/* 📈 كل بند: الشهر ده · اللي فات · اللي قبله · المعتاد — فوق «تقارير المصروفات» */
+var _expCmpCats276 = [];
+function expCatDrill276(i){
+  const cat = _expCmpCats276[i];
+  if(cat == null) return;
+  expFilters = { q:'', cat, type:'', preset:'this_month', from:'', to:'' };
+  setExpenseView('list');
+}
+function expCatCompareHTML276(){
+  const cur = ym276(new Date());
+  const rows = expCatStats276().filter(r=>r.now || r.m1 || r.m2);
+  _expCmpCats276 = rows.map(r=>r.cat);
+  if(!rows.length) return '';
+  const st = r=>r.over ? '<span class="tag tag-unpaid">🚨 فوق المعتاد</span>'
+    : !r.enough ? '<span class="muted" style="font-size:11.5px">لسه بيانات قليلة</span>'
+    : r.now > r.hi + 0.005 ? '<span class="tag tag-partial">⬆ أعلى شوية</span>' : '<span style="color:var(--success);font-size:12px">✅ في المعتاد</span>';
+  const v = x=>x ? money(x) : '<span class="muted">—</span>';
+  return `<div class="section-head"><h3>📈 كل بند — الشهر ده قدام الشهور اللي فاتت</h3></div>
+  <div class="card cmp276" style="margin-bottom:16px">
+    <div class="muted" style="font-size:12px;margin-bottom:8px">«المعتاد» = من أقل لأعلى شهر في آخر 6 شهور · 🚨 = الشهر ده عدّى أعلى شهر بأكتر من 20% · دوس على أي بند تشوف مصروفاته الشهر ده. (الجدول ده بالشهور — مش مرتبط بالفترة اللي تحت)</div>
+    <table><thead><tr><th>البند</th><th>${ymLabel276(cur)} (لحد النهارده)</th><th>${ymLabel276(ymShift276(cur, -1))}</th><th>${ymLabel276(ymShift276(cur, -2))}</th><th>المعتاد (آخر 6 شهور)</th><th>الحالة</th></tr></thead><tbody>
+    ${rows.map((r, i)=>`<tr class="${r.over ? 'over' : ''}" style="cursor:pointer" title="دوس تشوف مصروفات البند ده" onclick="expCatDrill276(${i})">
+      <td><b>${escNote(r.cat)}</b><div class="muted" style="font-size:11px">${escNote(r.group || '')}</div></td>
+      <td style="font-weight:800">${v(r.now)}</td><td>${v(r.m1)}</td><td>${v(r.m2)}</td>
+      <td style="white-space:nowrap">${r.enough ? money(r.lo) + ' — ' + money(r.hi) : '<span class="muted">—</span>'}</td><td>${st(r)}</td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+/* 📅 النهارده: دخل كام · طلع كام · الصافي (التحويلات بين الحسابات وتصحيح وسيلة الدفع مش فلوس جديدة — برا الحسبة) */
+const FLOW_LBL276 = { collection:'تحصيل فواتير', cust_deposit:'عرابين', deposit:'إيداع شريك/مالك', supplier_refund:'استرداد من موردين',
+  custody_return:'رجوع عهد', reversal:'رجوع مصروفات اتحذفت', expense:'مصروفات', supplier:'موردين', purchase:'موردين', advance:'سلف',
+  salary:'مرتبات', reward:'مكافآت', custody:'عهد', cust_refund:'رد فلوس لعملاء', cust_deposit_refund:'رد عرابين', adjustment:'تسوية رصيد', custody_settle:'تسوية عهد' };
+const FLOW_OUT276 = ['expense', 'supplier', 'purchase', 'advance', 'salary', 'reward', 'custody', 'cust_refund', 'cust_deposit_refund'];
+function todayFlow276(){
+  const r = periodRange({ preset:'today' });
+  const o = { in:0, out:0, inBy:{}, outBy:{} };
+  DB.finMoves.forEach(m=>{
+    if(m.kind === 'transfer' || m.kind === 'correction' || m.kind === 'custody_settle' || !inPeriod(m.date, r)) return;   /* حركات داخلية بين حسابات */
+    const a = Number(m.amount) || 0, base = FLOW_LBL276[m.kind] || 'أخرى';
+    const l = m.kind === 'reversal' ? 'رجوع / عكس قيود' : (m.type === 'in' && FLOW_OUT276.includes(m.kind)) ? 'رجوع ' + base : base;
+    if(m.type === 'in'){ o.in += a; o.inBy[l] = (o.inBy[l] || 0) + a; }
+    else { o.out += a; o.outBy[l] = (o.outBy[l] || 0) + a; }
+  });
+  o.in = _r2_207(o.in); o.out = _r2_207(o.out);
+  return o;
+}
+function todayCardHTML276(){
+  const f = todayFlow276();
+  const prof = can('rep.profit') ? computeProfitStats(periodRange({ preset:'today' })) : null;
+  const br = by=>Object.entries(by).sort((a, b)=>b[1] - a[1]).map(([k, v])=>k + ' ' + money(v)).join(' · ') || '—';
+  const net = _r2_207(f.in - f.out);
+  return `<div class="card t276">
+    <div class="flex-between" style="gap:8px;flex-wrap:wrap"><h3 style="margin:0">📅 النهارده — ${fmtDate(new Date().toISOString())}</h3><span class="muted" style="font-size:11.5px">بيتحدّث مع كل حركة · التحويلات بين الحسابات مش محسوبة</span></div>
+    <div class="t276-grid">
+      <div class="t276-c"><div class="t276-n in">+${money(f.in)}</div><div class="t276-l">دخل الخزن</div><div class="t276-b">${br(f.inBy)}</div></div>
+      <div class="t276-c"><div class="t276-n out">−${money(f.out)}</div><div class="t276-l">طلع من الخزن</div><div class="t276-b">${br(f.outBy)}</div></div>
+      <div class="t276-c"><div class="t276-n" style="${net < -0.005 ? 'color:var(--danger)' : ''}">${money(net)}</div><div class="t276-l">الصافي (دخل − طلع)</div></div>
+      ${prof ? `<div class="t276-c"><div class="t276-n" style="${prof.netProfit < -0.005 ? 'color:var(--danger)' : ''}">${money(prof.netProfit)}</div><div class="t276-l">ربح فواتير النهارده (${prof.count} فاتورة)</div><div class="t276-b">بعد الهالك — قبل المصاريف والمرتبات</div></div>` : ''}
+    </div></div>`;
+}
+/* 🔎 مراجعة المصروفات — للي معاه شاشة الخزنة (تاب في شاشة المصروفات) */
+var expAud276 = { preset:'this_month', from:'', to:'' };
+const AUD_PRESETS276 = [['this_month','الشهر ده'],['last_month','الشهر اللي فات'],['this_week','الأسبوع ده'],['custom','فترة مخصوصة']];
+function setExpAud276(k, v){ expAud276[k] = v; if(k === 'preset' && v !== 'custom'){ expAud276.from = ''; expAud276.to = ''; } refreshContent(); }
+function expOpen276(no){ expFilters = { q:'', no:String(no || ''), type:'', preset:'all', from:'', to:'' }; setExpenseView('list'); }
+function expClearPin276(){ delete expFilters.cat; delete expFilters.no; refreshContent(); }
+function expPinChipHTML276(){
+  const f = expFilters, t = f.cat ? '📂 البند: «' + escNote(f.cat) + '» (المصروفات التشغيلية بس)' : f.no ? '🔎 العملية #' + escNote(f.no) : '';
+  return t ? `<div class="ap-chip" style="display:inline-flex;gap:8px;align-items:center;margin-bottom:10px">${t}<button class="btn btn-sm" onclick="expClearPin276()">✕ شيل الفلتر</button></div>` : '';
+}
+function expHour276(e){
+  const s = String(e.at || e.date || '');
+  if(!e.at && (/^\d{4}-\d{2}-\d{2}$/.test(s) || /T00:00:00(\.000)?Z$/.test(s))) return null;   /* تاريخ بس من غير ساعة */
+  const d = new Date(s); return isNaN(d.getTime()) ? null : d.getHours();
+}
+function expAuditData276(){
+  const r = periodRange(expAud276);
+  const list = DB.expenses.filter(e=>inPeriod(e.date, r));
+  const manual = list.filter(e=>expTxnType(e) === 'expense');
+  /* 🔁 شكله مكرر: نفس البند ونفس المبلغ وكل واحد بعد اللي قبله بـ3 أيام أو أقل ⇐ مجموعة واحدة بعددها
+     (المصروفات العادية بس — السلف بنفس المبلغ لكذا موظف طبيعي) */
+  const grp = {}, dups = [];
+  manual.forEach(e=>{ const k = expCatKey276(e) + '|' + _r2_207(Number(e.amount) || 0); (grp[k] = grp[k] || []).push(e); });
+  Object.values(grp).forEach(g=>{
+    g.sort((a, b)=>new Date(a.date) - new Date(b.date));
+    let cl = [g[0]];
+    for(let i = 1; i < g.length; i++){
+      if(new Date(g[i].date) - new Date(cl[cl.length - 1].date) <= 3 * 86400000) cl.push(g[i]);
+      else { if(cl.length > 1) dups.push(cl); cl = [g[i]]; }
+    }
+    if(cl.length > 1) dups.push(cl);
+  });
+  dups.sort((a, b)=>(Number(b[0].amount) || 0) * b.length - (Number(a[0].amount) || 0) * a.length);
+  const noRec = manual.filter(e=>(Number(e.amount) || 0) >= NO_RECEIPT_MIN && !e.receipt && !expPhotoList(e).length)
+    .sort((a, b)=>(Number(b.amount) || 0) - (Number(a.amount) || 0));
+  const late = list.filter(e=>['expense', 'advance', 'reward'].includes(expTxnType(e))).filter(e=>{ const h = expHour276(e); return h != null && (h < WORK_FROM_H || h >= WORK_TO_H); });
+  const big = expBigEntries276(list);
+  const deleted = DB.finMoves.filter(m=>m.kind === 'reversal' && m.expDeletedId && inPeriod(m.date, r))
+    .map(m=>({ date:m.date, who:m.actor || '—', text:m.note || '', amount:Number(m.amount) || 0 }))
+    .concat((DB.notifications || []).filter(n=>n.type === 'expense_delete' && inPeriod(n.date, r)
+      && !DB.finMoves.some(m=>m.kind === 'reversal' && m.expDeletedId && m.expNo && ((n.action || '').match(/#\d+/g) || []).includes('#' + m.expNo)))   /* نفس الحذف ⇐ سطر واحد */
+      .map(n=>({ date:n.date, who:n.userName || '—', text:n.action || '', amount:Number(n.amount) || 0 })))
+    .sort((a, b)=>new Date(b.date) - new Date(a.date));
+  const who = {};
+  list.filter(bigEntryType276).forEach(e=>{ const k = e.actor || e.recordedBy || '—'; const w = who[k] || (who[k] = { n:0, t:0 }); w.n++; w.t += Number(e.amount) || 0; });
+  return { r, list, dups, noRec, late, big, deleted, who:Object.entries(who).sort((a, b)=>b[1].t - a[1].t) };
+}
+const AUD_CAP276 = 100;
+function cap276(arr){ return arr.slice(0, AUD_CAP276); }
+function capNote276(arr){ return arr.length > AUD_CAP276 ? `<div class="muted" style="font-size:12px;margin-top:6px">ظاهر أول ${AUD_CAP276} بس من ${arr.length} — ضيّق الفترة تشوف الباقي</div>` : ''; }
+function expAudRow276(e, extra){
+  return `<tr style="cursor:pointer" title="دوس تفتح المصروف في القايمة" onclick="expOpen276('${e.expNo || ''}')">
+    <td style="white-space:nowrap">${fmtDateTime(e.at || e.date)}</td><td>${e.expNo ? '#' + e.expNo : '—'}</td>
+    <td>${escNote(expCatKey276(e))}<div class="muted" style="font-size:11px">${escNote((e.description || '').slice(0, 60))}</div></td>
+    <td style="font-weight:800">${money(e.amount)}</td><td>${escNote(e.actor || e.recordedBy || '—')}</td>${extra != null ? `<td class="muted" style="font-size:11.5px">${extra}</td>` : ''}</tr>`;
+}
+function renderExpAudit276(){
+  if(!canScreen('finance')) return `<div class="empty">🔒 مراجعة المصروفات للي معاه شاشة «الخزنة والحسابات»</div>`;
+  const a = expAuditData276(), f = expAud276;
+  const over = expCatStats276().filter(r=>r.over);
+  const sec = (title, n, hint, body)=>`<div class="card"><h4>${title} ${n ? `<span class="tag tag-unpaid" style="font-size:11px">${n}</span>` : '<span style="color:var(--success);font-size:12px">✅ مفيش</span>'}</h4>
+    <div class="muted" style="font-size:11.5px;margin-bottom:6px">${hint}</div>${n ? body : ''}</div>`;
+  const th = (x)=>`<table><thead><tr><th>الوقت</th><th>رقم</th><th>البند</th><th>المبلغ</th><th>سجّله</th>${x ? `<th>${x}</th>` : ''}</tr></thead><tbody>`;
+  return `<div class="aud276">
+  <div class="card" style="padding:8px 10px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${AUD_PRESETS276.map(([id, l])=>`<button class="btn btn-sm ${f.preset === id ? 'btn-accent' : ''}" onclick="setExpAud276('preset','${id}')">${l}</button>`).join('')}</div>
+    ${f.preset === 'custom' ? `<div class="grid g2" style="max-width:420px;margin-top:8px">
+      <input class="f" type="date" value="${escAttr(f.from)}" onchange="setExpAud276('from',this.value)"><input class="f" type="date" value="${escAttr(f.to)}" onchange="setExpAud276('to',this.value)"></div>` : ''}
+    <div class="muted" style="font-size:11.5px;margin-top:6px">${a.list.length} عملية في الفترة · بنعلّم على اللي يستاهل نظرة — مش معناه إن فيه غلط. دوس على أي سطر تفتحه في القايمة.</div>
+  </div>
+  ${sec('🚨 بنود فوق المعتاد الشهر ده', over.length, 'البند عدّى أعلى شهر في آخر 6 شهور بأكتر من 20%.',
+    `<table><thead><tr><th>البند</th><th>الشهر ده</th><th>المعتاد</th></tr></thead><tbody>${over.map(r=>`<tr><td><b>${escNote(r.cat)}</b></td><td style="color:var(--danger);font-weight:800">${money(r.now)}</td><td>${money(r.lo)} — ${money(r.hi)}</td></tr>`).join('')}</tbody></table>`)}
+  ${sec('💸 مصروف واحد كبير على غير العادة', a.big.length, 'المصروف أكبر من 3 أضعاف المصروف المعتاد في نفس البند.',
+    th('المعتاد') + cap276(a.big).map(x=>expAudRow276(x.e, 'حوالي ' + money(x.med) + ' (×' + x.x + ')')).join('') + '</tbody></table>' + capNote276(a.big))}
+  ${sec('🔁 شكله متسجّل أكتر من مرة', a.dups.length, 'نفس البند ونفس المبلغ كذا مرة ورا بعض (كل مرة بعد اللي قبلها بـ3 أيام أو أقل) — اتأكد إنهم مصروفات مختلفة فعلاً. دوس على أي رقم تفتحه.',
+    `<table><thead><tr><th>البند</th><th>المبلغ</th><th>كام مرة</th><th>من — لحد</th><th>سجّلها</th><th>أرقام العمليات</th></tr></thead><tbody>${cap276(a.dups).map(cl=>`<tr>
+      <td><b>${escNote(expCatKey276(cl[0]))}</b>${cl.length > 5 ? '<div class="muted" style="font-size:11px">كتير — ممكن يكون مصروف يومي عادي</div>' : ''}</td>
+      <td style="font-weight:800">${money(cl[0].amount)}</td><td>${cl.length}</td>
+      <td style="white-space:nowrap">${fmtDate(cl[0].date)}${ym276(cl[0].date) && fmtDate(cl[0].date) !== fmtDate(cl[cl.length - 1].date) ? ' — ' + fmtDate(cl[cl.length - 1].date) : ''}</td>
+      <td>${[...new Set(cl.map(e=>e.actor || e.recordedBy || '—'))].map(escNote).join('، ')}</td>
+      <td style="font-size:12px">${cl.map(e=>e.expNo ? `<a href="#" onclick="event.preventDefault();expOpen276('${e.expNo}')">#${e.expNo}</a>` : '—').join(' ')}</td></tr>`).join('')}</tbody></table>${capNote276(a.dups)}`)}
+  ${sec('📷 مصروف كبير من غير صورة إيصال', a.noRec.length, 'مصروف من ' + money(NO_RECEIPT_MIN) + ' أو أكتر ومفيش صورة للفاتورة.',
+    th() + cap276(a.noRec).map(e=>expAudRow276(e)).join('') + '</tbody></table>' + capNote276(a.noRec))}
+  ${sec('🌙 متسجّل بعد مواعيد الشغل', a.late.length, 'اتسجل قبل الساعة ' + WORK_FROM_H + ' الصبح أو بعد ' + (WORK_TO_H - 12) + ' بالليل.',
+    th() + cap276(a.late).map(e=>expAudRow276(e)).join('') + '</tbody></table>' + capNote276(a.late))}
+  ${sec('🗑 مصروفات اتحذفت', a.deleted.length, 'من سطر «↩ رجوع مصروف» اللي بيتسجل في الخزنة مع كل حذف (حتى حذف صاحب المركز).',
+    `<table><thead><tr><th>الوقت</th><th>مين</th><th>المبلغ</th><th>التفاصيل</th></tr></thead><tbody>${cap276(a.deleted).map(x=>`<tr><td style="white-space:nowrap">${fmtDateTime(x.date)}</td><td>${escNote(x.who)}</td><td style="font-weight:800">${x.amount ? money(x.amount) : '—'}</td><td style="font-size:12px">${escNote(x.text)}</td></tr>`).join('')}</tbody></table>${capNote276(a.deleted)}`)}
+  <div class="card"><h4>👤 مين سجّل كام في الفترة</h4><div class="muted" style="font-size:11.5px;margin-bottom:6px">المصروفات والسلف والمكافآت اللي اتسجلت بإيد (من غير المرتبات وسداد الموردين).</div>
+    ${a.who.length ? `<table><thead><tr><th>سجّله</th><th>عدد العمليات</th><th>الإجمالي</th></tr></thead><tbody>${a.who.map(([k, w])=>`<tr><td>${escNote(k)}</td><td>${w.n}</td><td style="font-weight:800">${money(w.t)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">مفيش عمليات في الفترة دي</div>'}
+  </div></div>`;
+}
+/* ============ م275: ⚠️ المبلغ أكبر من رصيد الحساب ⇐ تحذير جوه نفس النافذة، والدوسة التانية بتأكّد ============
+   تحذير مش منع (قرار سيف): ساعات فيه فلوس اتحطت في الخزنة ولسه ماتسجلتش. لو غيّرت المبلغ أو الحساب ⇐ يحذّر تاني. */
+var _overOk275 = '';
+/* قايمة الحسابات في نوافذ شاشة المصروفات: الرصيد جنب الاسم للي معاه شاشة «الخزنة والحسابات» بس (قرار سيف) */
+function accOptsHTML275(){
+  const show = canScreen('finance');
+  return liveAccounts().map(a=>`<option value="${a.id}">${escNote(a.name)}${show ? ' (' + money(accBalance(a.id)) + ')' : ''}</option>`).join('');
+}
+function overdrawOk275(acc, amount, boxId){
+  const bal = _r2_207(accBalance(acc.id));
+  if(amount <= bal + 0.005){ _overOk275 = ''; return true; }
+  const sig = acc.id + '|' + amount;
+  if(_overOk275 === sig){ _overOk275 = ''; return true; }
+  _overOk275 = sig;
+  const msg = canScreen('finance')
+    ? `⚠️ رصيد «${escNote(acc.name)}» دلوقتي ${money(bal)} — والمبلغ ${money(amount)}. الحساب هيبقى بالسالب (${money(_r2_207(bal - amount))}).`
+    : `⚠️ رصيد «${escNote(acc.name)}» مش مكفّي للمبلغ ده — الحساب هيبقى بالسالب.`;
+  const box = document.getElementById(boxId);
+  if(box) box.innerHTML = `<div class="ow275">${msg}<br><b>لو متأكد إن الفلوس موجودة فعلاً — دوس الزرار تاني.</b></div>`;
+  else toast(msg + ' — لو متأكد دوس تاني', true);
+  return false;
 }
 /* ============ م166: سلفة الموظفين من المصروفات — سجل مركزي واحد ============
    قرار سيف: مفيش نظامين للسلف. المصدر الوحيد للحقيقة هو صفوف المصروفات
@@ -22212,6 +22965,8 @@ function expSearchHay(e){
 }
 function expMatchesFilters(e){
   const f = expFilters;
+  if(f.cat != null && f.cat !== '' && (expCatKey276(e) !== f.cat || !isOperatingExpense(e))) return false;   /* م276: البند بالظبط زي جدول المقارنة */
+  if(f.no != null && f.no !== '' && String(e.expNo || '') !== String(f.no)) return false;   /* م276: رقم العملية بالظبط */
   if(f.type && expTxnType(e)!==f.type) return false;
   if(f.preset && f.preset!=='all'){
     const range = f.preset==='custom' ? periodRange({preset:'custom', from:f.from, to:f.to}) : periodRange({preset:f.preset});
@@ -22292,7 +23047,7 @@ function expRowsHTML(){
 function renderExpenseList(){
   const noCats = DB.expenseCategories.length===0;
   const f = expFilters;
-  return `
+  return `${expPinChipHTML276()}
   <div class="section-head"><h3>المصروفات والحركات المالية</h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" title="تصدير اللي ظاهر في الشاشة (الفترة + النوع + البحث) بكل السطور" onclick="exportExpensesXLSX()">⬇ Excel</button>
@@ -22329,6 +23084,7 @@ function openNewExpenseModal(){
   const today = new Date().toISOString().slice(0,10);
   const nextNoVal = nextNo(DB.expenses,'expNo');
   _expPh = { expId:null, photos:[] };   /* م249 */
+  _overOk275 = '';
   openModal(`
     <h3>مصروف جديد <span class="muted" style="font-size:12px">— رقم العملية #${nextNoVal}</span></h3>
     <div class="grid g2">
@@ -22339,10 +23095,11 @@ function openNewExpenseModal(){
     <div class="grid g2">
       <div class="form-row"><label class="f-label">المبلغ</label><input class="f" id="expAmt" type="number" min="0"></div>
       <div class="form-row"><label class="f-label">وسيلة الدفع / الحساب</label>
-        <select class="f" id="expAcc">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+        <select class="f" id="expAcc">${accOptsHTML275()}</select></div>
     </div>
     <div class="form-row"><label class="f-label">📷 صورة الفاتورة (اختياري — لحد صورتين)</label><div id="expPhotos">${expPhotosHTML()}</div></div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="expNotes"></div>
+    <div id="expOverWarn"></div>
     <button class="btn btn-accent" id="expSaveBtn" style="width:100%" onclick="saveExpense()">حفظ المصروف وخصمه من الحساب</button>
   `);
 }
@@ -22478,8 +23235,9 @@ async function saveExpPhotos(){
    الفترة + نوع العملية + البحث اللي مختارين فوق · بكل السطور (مش أول 100 بس) · وسطر إجمالي في الآخر */
 function expPeriodText(){
   const f = expFilters;
-  if(f.preset === 'custom') return (f.from ? fmtDate(f.from) : '…') + ' إلى ' + (f.to ? fmtDate(f.to) : '…');
-  return (EXP_DATE_PRESETS.find(p=>p[0] === f.preset) || [null, 'الكل'])[1];
+  const pin = f.cat ? ' — البند «' + f.cat + '»' : f.no ? ' — العملية #' + f.no : '';   /* م276: الملف بيقول إنه بند/عملية بعينها */
+  if(f.preset === 'custom') return (f.from ? fmtDate(f.from) : '…') + ' إلى ' + (f.to ? fmtDate(f.to) : '…') + pin;
+  return (EXP_DATE_PRESETS.find(p=>p[0] === f.preset) || [null, 'الكل'])[1] + pin;
 }
 function expensesCSVContent(){
   const list = [...DB.expenses].filter(expMatchesFilters).sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -22615,6 +23373,7 @@ async function saveExpense(){
   if(amount<=0){ toast('اكتب مبلغ صحيح', true); return; }
   const acc = DB.finAccounts.find(a=>a.id===accId);
   if(!acc){ toast('اختار الحساب اللي هيتخصم منه المصروف — مصروف من غير حساب = فلوس خرجت من غير قيد', true); return; }   /* م179ب */
+  if(!overdrawOk275(acc, amount, 'expOverWarn')) return;   /* م275: قبل رفع الصور — عشان التحذير مايرفعش حاجة */
   /* م249: صور الفاتورة بتترفع لمخزن الصور الأول — النت فاصل ⇐ المصروف مايتسجلش والفلوس ماتتخصمش */
   const ph = (_expPh && !_expPh.expId) ? _expPh : null;
   const expId = (ph && ph.newId) || uid('exp');
@@ -22637,6 +23396,7 @@ async function saveExpense(){
   if(ph) _expPh = null;
   if(acc) addFinMove(acc.id, 'out', amount, 'expense', 'مصروف: '+cat.name+(description?' — '+description:''));
   await Promise.all([saveKey('expenses'), saveKey('finMoves')]);
+  expAnomAfterSave276(DB.expenses.find(x=>x.id===expId));   /* م276 */
   await logAction('مصروف '+money(amount)+' — '+cat.name+(acc?' من '+acc.name:'')+(photos.length ? ' · 📷 '+(photos.length === 1 ? 'صورة' : 'صورتين')+' فاتورة' : ''));
   if(amount >= (DB.settings.largeExpenseThreshold||20000)){
     pushNotif({ category:'financial', type:'large_expense', priority: amount>=50000?'critical':'high', amount,
@@ -22733,6 +23493,7 @@ function renderExpenseReport(){
       </tbody></table>
     </div>`;
   return `
+  ${expCatCompareHTML276()}
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
       ${PERIOD_PRESETS.map(([id,lbl])=>`<button class="btn btn-sm ${expensePeriod.preset===id?'btn-accent':''}" onclick="setExpPreset('${id}')">${lbl}</button>`).join('')}
@@ -22970,6 +23731,7 @@ function renderCustodies(){
 }
 function openNewCustodyModal(){
   if(!can('fin.custody_create')){ toast('مالكش صلاحية إصدار عهد', true); return; }
+  _overOk275 = '';
   const emps = DB.employees.filter(e=>e.status==='نشط').sort(cmpName);
   if(emps.length===0){ toast('مفيش موظفين نشطين — سجّلهم في الموارد البشرية الأول', true); return; }
   openModal(`
@@ -22981,9 +23743,10 @@ function openNewCustodyModal(){
     </div>
     <div class="form-row"><label class="f-label">الغرض من العهدة</label><input class="f" id="cuPurpose" placeholder="مثال: شراء بنزين، خامات دهان، مصروفات طارئة..."></div>
     <div class="form-row"><label class="f-label">مصدر الصرف</label>
-      <select class="f" id="cuSource">${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+      <select class="f" id="cuSource">${accOptsHTML275()}</select></div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="cuNotes"></div>
     <div class="muted" style="font-size:12px;margin-bottom:10px">القيمة هتتخصم من المصدر فوراً وتبقى عهدة مفتوحة (مش مصروف) لحد التسوية.</div>
+    <div id="cuOverWarn"></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveCustody()">إصدار العهدة</button>
   `);
 }
@@ -23002,6 +23765,7 @@ async function saveCustody(){
   // عهدة مفتوحة واحدة لكل موظف
   const existing = empOpenCustody(empId);
   if(existing){ toast('الموظف '+emp.name+' عنده عهدة مفتوحة بقيمة '+money(existing.amount)+' — لازم تتسوّى الأول قبل عهدة جديدة', true); return; }
+  if(!overdrawOk275(src, amount, 'cuOverWarn')) return;   /* م275 */
   const c = {
     id: uid('cus'), custodyNo: nextNo(DB.custodies,'custodyNo'),
     amount, employeeId: empId, employeeName: emp.name, purpose,
@@ -23141,6 +23905,7 @@ async function saveSettleCustody(custodyId, opts){
   if(remaining>0.005) saves.push(saveKey('finMoves'));
   const stl263 = c.settlement, cAt263 = c.closedAt;
   await Promise.all(saves);
+  createdExpenses.forEach(expAnomAfterSave276);   /* م276: مصروفات العهدة بتتراقب زي أي مصروف */
   /* م263 (مراجعة v283): تحديث لحظي من جهاز تاني (سداد من نفس العهدة) وصل أثناء الحفظ ممكن يرجّعها «مفتوحة» في الذاكرة ⇒ نرجّع الإقفال ونحفظ تاني،
      ولو جهاز تاني سوّاها هو كمان (تسوية مرتين = استرجاع مرتين) المالك يتبلّغ */
   if(c.status!=='closed'){ c.status = 'closed'; c.settlement = stl263; c.closedAt = cAt263; await saveKey('custodies'); }
@@ -29247,13 +30012,16 @@ async function _writeAdvance({ emp, extName, extEmpId, date, amount, reason, not
     extEmpId: emp ? null : extEmpId, extEmpName: emp ? null : dispName,
     at: new Date().toISOString(),
     finMoveId:advFm.id, notes:note||'', recordedBy:actorName(), system:true });
+  const advRow276 = DB.expenses[DB.expenses.length - 1];
   const saves = [saveKey('finMoves'), saveKey('expenses', DB.expenses)];
   if(emp) saves.push(saveKey('employees'));
   await Promise.all(saves);
+  expAnomAfterSave276(advRow276);   /* م276 */
   await logAction('سلفة '+money(amount)+' — '+dispName+(emp?'':' (موظف غير مكود)')+' من '+acc.name);
 }
 /* ============ م166: تسجيل سلفة من شاشة المصروفات ============ */
 function openExpAdvanceModal(){
+  _overOk275 = '';
   if(!can('exp.advance')){ toast('مالكش صلاحية سلفة الموظفين من المصروفات', true); return; }
   const extNames = [...new Set(DB.expenses.filter(e=>expTxnType(e)==='advance' && e.extEmpName).map(e=>e.extEmpName))];
   openModal(`
@@ -29278,11 +30046,12 @@ function openExpAdvanceModal(){
       <div class="form-row"><label class="f-label">قيمة السلفة</label><input class="f" id="xadvAmt" type="number" min="0"></div>
     </div>
     <div class="form-row"><label class="f-label">مصدر الدفع (إلزامي — الحساب اللي هتتخصم منه)</label>
-      <select class="f" id="xadvAcc"><option value="">— اختار الحساب —</option>${liveAccounts().map(a=>`<option value="${a.id}">${a.name} (${money(accBalance(a.id))})</option>`).join('')}</select></div>
+      <select class="f" id="xadvAcc"><option value="">— اختار الحساب —</option>${accOptsHTML275()}</select></div>
     <div id="xadvCatBox">${staffCatFieldHTML('xadvCat', '')}</div>
     <div class="form-row"><label class="f-label">سبب السلفة</label><input class="f" id="xadvReason"></div>
     <div class="form-row"><label class="f-label">ملاحظات (اختياري)</label><input class="f" id="xadvNote"></div>
     <div class="muted" style="font-size:12px;margin-bottom:10px">السلفة بتنزل في نفس السجل المركزي — للمكود هتظهر فوراً في ملفه في الموارد البشرية وهتتخصم من راتبه زي أي سلفة.</div>
+    <div id="xadvOverWarn"></div>
     <button class="btn btn-accent" style="width:100%" onclick="saveExpAdvance()">حفظ السلفة</button>
   `);
 }
@@ -29311,6 +30080,7 @@ async function saveExpAdvance(){
   const acc = accId ? DB.finAccounts.find(a=>a.id===accId) : null;
   if(!acc){ toast('اختار مصدر الدفع — السلفة لازم تتخصم من حساب', true); return; }
   const pc = staffCatRead('xadvCat'); if(!pc) return;   /* م251 */
+  if(!overdrawOk275(acc, amount, 'xadvOverWarn')) return;   /* م275 */
   if(kind==='coded'){
     const empId = (document.getElementById('xadvEmp')||{}).value;
     const emp = DB.employees.find(x=>x.id===empId);
@@ -29448,6 +30218,7 @@ async function _writeReward({ emp, date, amount, type, reason, note, acc, cat })
   DB.expenses.push(ex);
   b.expenseId = ex.id;
   await Promise.all([saveKey('employees'), saveKey('finMoves'), saveKey('expenses', DB.expenses)]);
+  expAnomAfterSave276(ex);   /* م276 */
   await logAction('🎁 مكافأة ('+type+') '+money(amount)+' — '+emp.name+' — 💵 اتصرفت من '+acc.name+(cat ? ' · '+cat.name : '')+(reason?' — '+reason:''));
 }
 /* م251: مكافأة قديمة (اتسجلت قبل م251 — على المرتب) اتصرفت كاش قبل كده بره السيستم ⇐ ماتتضافش على المرتب (من غير حركة فلوس).
@@ -30593,7 +31364,7 @@ const NOTIF_SEVERITY = {
   cost_after_invoice:'critical', sell_below_cost:'critical', supplier_settle:'high', supplier_adjust:'high',
   permission_change:'critical', user_create:'high', user_delete:'critical', user_password:'critical',
   expense_delete:'critical', voucher_delete:'critical', customer_delete:'critical', customer_merge:'high',
-  large_discount:'high', large_expense:'high', bulk_delete:'critical', count_diff:'high',
+  large_discount:'high', large_expense:'high', exp_anomaly:'high', exp_big_entry:'high',   /* م276 */ bulk_delete:'critical', count_diff:'high',
   // 🟡 متوسط
   supplier_edit:'medium', supplier_archive:'medium', supplier_restore:'medium',
   customer_edit:'medium', vehicle_edit:'medium', vehicle_owner:'high',
