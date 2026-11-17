@@ -2080,7 +2080,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v297';
+const APP_VERSION = 'v298';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -4186,6 +4186,7 @@ function goTab(id){
   camClose();
   if(id !== currentTab){ _navStack234.push(currentTab); if(_navStack234.length > 30) _navStack234.shift(); }   /* م234: للرجوع */
   if(id==='reports') repCmp = '';   /* م256: فتح التقارير من جديد ⇒ «قارن بـ» تلقائي */
+  if(id==='finance') finMvF = { dir:'', acc:'', kind:'' };   /* م278: فلاتر «حركات الفترة» بتبدأ من الأول */
   if(id==='hr') hrView = 'today';   /* م254: فتح الموارد البشرية من أي مكان (القايمة · الإشعارات · كروت الرئيسية) بيبدأ من 🏠 النهارده */
   currentTab = id; render(); mScrollTop();
 }
@@ -22135,16 +22136,81 @@ function renderFinance(){
     ${custDeps>0||custDepRefunds>0?`<div class="muted" style="font-size:12px">💰 عرابين عملاء مقبوضة: ${money(custDeps)}${custDepRefunds>0?' · ↩️ عرابين مستردة: '+money(custDepRefunds):''}</div>`:''}
   </div>
 
-  <div class="section-head"><h3>حركات الفترة (${pm.length})</h3></div>
+  ${(()=>{
+    const fm = finMvFiltered278(pm), pk = pgKey('finm', [finPeriod, finMvF]);
+    return `<div class="section-head" id="finMovesHead"><h3>حركات الفترة (${fm.length === pm.length ? pm.length : fm.length + ' من ' + pm.length})</h3></div>
+  ${finMvBarHTML278(pm, fm)}
   <div class="card">
     <table><thead><tr><th>الوقت</th><th>الحساب</th><th>النوع</th><th>المبلغ</th><th>البيان</th><th>بواسطة</th></tr></thead>
-    <tbody>${pm.length? pgSlice(pgKey('finm', [finPeriod]), [...pm].sort((a,b)=>new Date(b.date)-new Date(a.date))).map(m=>{
+    <tbody>${fm.length? pgSlice(pk, [...fm].sort((a,b)=>new Date(b.date)-new Date(a.date))).map(m=>{
       const acc = DB.finAccounts.find(a=>a.id===m.accountId);
       return `<tr><td style="white-space:nowrap">${fmtDateTime(m.date)}</td><td>${acc?acc.name:'—'}</td>
-      <td>${m.type==='in'?'<span class="tag tag-paid">وارد</span>':'<span class="tag tag-unpaid">منصرف</span>'}</td>
+      <td>${finMvInternal278(m) ? '<span class="tag tag-received">⇄ داخلي</span>' : m.type==='in'?'<span class="tag tag-paid">وارد</span>':'<span class="tag tag-unpaid">منصرف</span>'}<div class="muted" style="font-size:10.5px;margin-top:2px">${finMvKindLbl278(m)}</div></td>
       <td style="font-weight:800">${money(m.amount)}</td><td class="muted" style="font-size:12px">${m.note||'—'}</td>
       <td class="muted" style="font-size:11.5px">${m.actor||'—'}</td></tr>`;
-    }).join('') + pgRowHTML(pgKey('finm', [finPeriod]), pm.length, 6) : `<tr><td colspan="6" class="empty">لا توجد حركات في الفترة دي</td></tr>`}</tbody></table>
+    }).join('') + pgRowHTML(pk, fm.length, 6) : `<tr><td colspan="6" class="empty">${pm.length ? 'مفيش حركات بالفلتر ده في الفترة دي' : 'لا توجد حركات في الفترة دي'}</td></tr>`}</tbody></table>
+  </div>`;
+  })()}`;
+}
+/* ============ م278: فلاتر «حركات الفترة» في شاشة الخزنة (طلب سيف: «عايز أشوف دخل النهارده بس») ============
+   الكل · ⬇ الوارد بس · ⬆ المنصرف بس · ⇄ التحويلات الداخلية + الحساب + نوع الحركة + سطر مجموع اللي ظاهر.
+   التحويلات بين الحسابات وتصحيح وسيلة الدفع وتسوية العهد «داخلية» — برا الوارد والمنصرف عشان ماتنفخش الأرقام (نفس قاعدة «📅 النهارده»).
+   عرض بس — ولا رقم بيتغيّر. */
+var finMvF = { dir:'', acc:'', kind:'' };
+function finMvInternal278(m){ return m.kind === 'transfer' || m.kind === 'correction' || m.kind === 'custody_settle'; }
+function finMvKindLbl278(m){
+  if(m.kind === 'transfer') return 'تحويل بين الحسابات';
+  if(m.kind === 'correction') return 'تصحيح وسيلة دفع';
+  if(m.kind === 'custody_settle') return 'تسوية عهدة';
+  if(m.kind === 'reversal') return 'رجوع / عكس قيود';
+  const base = FLOW_LBL276[m.kind] || 'أخرى';
+  return (m.type === 'in' && FLOW_OUT276.includes(m.kind)) ? 'رجوع ' + base : base;
+}
+function finMvFiltered278(pm, skip){
+  const f = finMvF;
+  return pm.filter(m=>{
+    const internal = finMvInternal278(m);
+    if(f.dir === 'transfer'){ if(!internal) return false; }
+    else if(f.dir){ if(internal || m.type !== f.dir) return false; }
+    if(skip !== 'acc' && f.acc && m.accountId !== f.acc) return false;
+    if(skip !== 'kind' && f.kind && finMvKindLbl278(m) !== f.kind) return false;
+    return true;
+  });
+}
+function setFinMvF278(k, v){
+  finMvF[k] = String(v || '');
+  if(k === 'dir') finMvF.kind = '';   /* نوع الحركة بيتغيّر مع الاتجاه */
+  refreshContent();
+}
+/* من كارت «📅 النهارده»: دوسة على الدخل/اللي طلع ⇐ جدول النهارده على الوارد/المنصرف بس */
+function finTodayGo278(dir){
+  finPeriod.preset = 'today'; finPeriod.from = ''; finPeriod.to = '';
+  finMvF = { dir:dir === 'out' ? 'out' : 'in', acc:'', kind:'' };
+  refreshContent();
+  setTimeout(()=>{ try{ const el = document.getElementById('finMovesHead'); if(el && el.scrollIntoView) el.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(e){} }, 60);
+}
+function finMvBarHTML278(pm, fm){
+  const f = finMvF, sum = list=>Math.round(list.reduce((s,m)=>s+(Number(m.amount)||0),0)*100)/100;
+  const dirs = [['','الكل'],['in','⬇ الوارد بس'],['out','⬆ المنصرف بس'],['transfer','⇄ التحويلات الداخلية']];
+  const accIds = [...new Set(finMvFiltered278(pm, 'acc').map(m=>m.accountId))];
+  const accs = DB.finAccounts.filter(a=>accIds.includes(a.id) || a.id === f.acc);
+  const kinds = [...new Set(finMvFiltered278(pm, 'kind').map(finMvKindLbl278).concat(f.kind ? [f.kind] : []))].sort();
+  const ins = fm.filter(m=>!finMvInternal278(m) && m.type === 'in'), outs = fm.filter(m=>!finMvInternal278(m) && m.type === 'out');
+  const nm = n=>n === 1 ? 'حركة واحدة' : n === 2 ? 'حركتين' : n + (n >= 3 && n <= 10 ? ' حركات' : ' حركة');
+  const line = f.dir === 'in' ? `⬇ ${nm(fm.length)} وارد · <b style="color:var(--success)">${money(sum(fm))}</b>`
+    : f.dir === 'out' ? `⬆ ${nm(fm.length)} منصرف · <b style="color:var(--danger)">${money(sum(fm))}</b>`
+    : f.dir === 'transfer' ? `⇄ ${nm(fm.length)} داخلية · ${money(sum(fm.filter(m=>m.type === 'out')))} اتنقلت بين الحسابات (مش فلوس داخلة ولا طالعة من المركز)`
+    : `${nm(fm.length)} · وارد <b style="color:var(--success)">${money(sum(ins))}</b> · منصرف <b style="color:var(--danger)">${money(sum(outs))}</b> · الصافي <b>${money(sum(ins) - sum(outs))}</b> <span class="muted">(من غير التحويلات الداخلية)</span>`;
+  return `<div class="card" style="padding:10px 12px;margin-bottom:10px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      ${dirs.map(([v, l])=>`<button class="btn btn-sm ${f.dir === v ? 'btn-accent' : ''}" onclick="setFinMvF278('dir','${v}')">${l}</button>`).join('')}
+      <select class="f" style="max-width:200px;padding:6px 10px" onchange="setFinMvF278('acc',this.value)"><option value="">كل الحسابات</option>
+        ${accs.map(a=>`<option value="${a.id}" ${f.acc === a.id ? 'selected' : ''}>${escNote(a.name)}${a.archived ? ' (مؤرشف)' : ''}</option>`).join('')}</select>
+      <select class="f" style="max-width:200px;padding:6px 10px" onchange="setFinMvF278('kind',this.value)"><option value="">كل الأنواع</option>
+        ${kinds.map(k=>`<option value="${escAttr(k)}" ${f.kind === k ? 'selected' : ''}>${escNote(k)}</option>`).join('')}</select>
+      ${f.dir || f.acc || f.kind ? `<button class="btn btn-sm" onclick="finMvF={dir:'',acc:'',kind:''};refreshContent()">✕ مسح الفلاتر</button>` : ''}
+    </div>
+    <div style="font-size:12.5px;margin-top:8px">${line}</div>
   </div>`;
 }
 function openAccountDetail(accId){
@@ -22725,8 +22791,8 @@ function todayCardHTML276(){
   return `<div class="card t276">
     <div class="flex-between" style="gap:8px;flex-wrap:wrap"><h3 style="margin:0">📅 النهارده — ${fmtDate(new Date().toISOString())}</h3><span class="muted" style="font-size:11.5px">بيتحدّث مع كل حركة · التحويلات بين الحسابات مش محسوبة</span></div>
     <div class="t276-grid">
-      <div class="t276-c"><div class="t276-n in">+${money(f.in)}</div><div class="t276-l">دخل الخزن</div><div class="t276-b">${br(f.inBy)}</div></div>
-      <div class="t276-c"><div class="t276-n out">−${money(f.out)}</div><div class="t276-l">طلع من الخزن</div><div class="t276-b">${br(f.outBy)}</div></div>
+      <div class="t276-c" role="button" tabindex="0" style="cursor:pointer" title="دوس تشوف حركات الوارد النهارده بس" onclick="finTodayGo278('in')" onkeydown="if(event.key==='Enter')this.click()"><div class="t276-n in">+${money(f.in)}</div><div class="t276-l">دخل الخزن</div><div class="t276-b">${br(f.inBy)}</div></div>
+      <div class="t276-c" role="button" tabindex="0" style="cursor:pointer" title="دوس تشوف حركات المنصرف النهارده بس" onclick="finTodayGo278('out')" onkeydown="if(event.key==='Enter')this.click()"><div class="t276-n out">−${money(f.out)}</div><div class="t276-l">طلع من الخزن</div><div class="t276-b">${br(f.outBy)}</div></div>
       <div class="t276-c"><div class="t276-n" style="${net < -0.005 ? 'color:var(--danger)' : ''}">${money(net)}</div><div class="t276-l">الصافي (دخل − طلع)</div></div>
       ${prof ? `<div class="t276-c"><div class="t276-n" style="${prof.netProfit < -0.005 ? 'color:var(--danger)' : ''}">${money(prof.netProfit)}</div><div class="t276-l">ربح فواتير النهارده (${prof.count} فاتورة)</div><div class="t276-b">بعد الهالك — قبل المصاريف والمرتبات</div></div>` : ''}
     </div></div>`;
