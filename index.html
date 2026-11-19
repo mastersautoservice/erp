@@ -2080,7 +2080,7 @@ let currentTab = 'dashboard';
 let loaded = false;
 
 /* رقم النسخة — بيظهر تحت في القايمة عشان تتأكد إن الجهاز فاتح آخر تحديث */
-const APP_VERSION = 'v298';
+const APP_VERSION = 'v299';
 
 const STATUSES = ['مستلمة','جاري الفحص','جاري الشغل','جاهزة للتسليم','تم التسليم'];
 const STATUS_TAGCLASS = {'مستلمة':'tag-received','جاري الفحص':'tag-inspect','جاري الشغل':'tag-working','جاهزة للتسليم':'tag-ready','تم التسليم':'tag-delivered','ملغاة':'tag-cancel'};
@@ -13705,12 +13705,12 @@ function downloadXLSXFromCSV(baseName, csv){
   }
 }
 function exportJobsScreenCSV(){
-  downloadXLSXFromCSV('أوامر-الشغل-'+new Date().toISOString().slice(0,10), jobsScreenCSVContent());
+  downloadXLSXFromCSV('أوامر-الشغل-'+attDateStr(Date.now()), jobsScreenCSVContent());
   logAction('⬇ تصدير Excel لأوامر الشغل اللي لسه ما اتقفلتش مالياً');
   toast('اتصدّر ملف Excel — الأوامر اللي لسه مفيش لها فاتورة بس');
 }
 function exportOpenJobsCSV(){
-  downloadXLSXFromCSV('الورشة-المفتوحة-'+new Date().toISOString().slice(0,10), openJobsCSVContent());
+  downloadXLSXFromCSV('الورشة-المفتوحة-'+attDateStr(Date.now()), openJobsCSVContent());
   logAction('⬇ تصدير Excel لأوامر الشغل المفتوحة ('+openJobsDisplayed().length+' أمر)');
   toast('اتصدّر ملف Excel بالنتائج المعروضة');
 }
@@ -16992,7 +16992,7 @@ function suppliersFinCSVContent(){
   return '﻿' + rows.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
 }
 function exportSuppliersFinCSV(){
-  downloadXLSXFromCSV('الموردين-'+new Date().toISOString().slice(0,10), suppliersFinCSVContent());   /* م176 */
+  downloadXLSXFromCSV('الموردين-'+attDateStr(Date.now()), suppliersFinCSVContent());   /* م176 */
   logAction('⬇ تصدير Excel للموردين ('+supFinPeriodLabel()+')');
   toast('اتصدّر ملف Excel بالموردين المعروضين');
 }
@@ -18910,7 +18910,7 @@ async function savePurPhotos(){
 let purchaseDraft = null;
 let purEditIdx = null;   // م96: السطر اللي في وضع التعديل (null = مفيش)
 function resetPurchaseDraft(){
-  purchaseDraft = { supplierId:'', invoiceNo:'', date:new Date().toISOString().slice(0,10), paymentMethod:'آجل', lines:[] };   /* م269: دايماً آجل */
+  purchaseDraft = { supplierId:'', invoiceNo:'', date:attDateStr(Date.now()), paymentMethod:'آجل', lines:[] };   /* م269: دايماً آجل */
   purEditIdx = null;   // م96: وضع تعديل السطر ماينفعش يفضل مفتوح على فاتورة جديدة
   _purDraftPh = [];    // م270: صور فاتورة المورد بتاعة المسودة
 }
@@ -23087,8 +23087,10 @@ function openPurListOfExp270(expId){
     ${(()=>{ const gap = Math.round(((+e.amount||0) - (e.purchasePaid||[]).reduce((t,x)=>t+(+x.amount||0),0))*100)/100;
       return gap > 0.005 ? `<div class="muted" style="font-size:12px;margin-top:8px">والباقي ${money(gap)} اتسجّل على الرصيد الافتتاحي للمورد.</div>` : ''; })()}`);
 }
+/* م279 (سيف): القايمة برقم العملية — آخر حاجة اتسجلت فوق حتى لو تاريخها قديم (التاريخ مكتوب جنبها) · فلتر الفترة لسه بالتاريخ */
+function expListCmp(a, b){ return ((Number(b.expNo) || 0) - (Number(a.expNo) || 0)) || (new Date(b.date) - new Date(a.date)); }
 function expRowsHTML(){
-  const all = [...DB.expenses].filter(expMatchesFilters).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const all = [...DB.expenses].filter(expMatchesFilters).sort(expListCmp);
   const list = all.slice(0, expShowLimit);
   const moreRow = all.length > list.length ? `<tr><td colspan="10" style="text-align:center;padding:10px">
     <button class="btn btn-sm btn-accent" onclick="expShowMore()">⬇ تحميل المزيد (${Math.min(100, all.length-list.length)} كمان)</button>
@@ -23147,7 +23149,7 @@ function renderExpenseList(){
 }
 function openNewExpenseModal(){
   if(DB.expenseCategories.length===0){ toast('كوّد أنواع المصروفات الأول من تبويب "أنواع المصروفات"', true); setExpenseView('categories'); return; }
-  const today = new Date().toISOString().slice(0,10);
+  const today = attDateStr(Date.now());
   const nextNoVal = nextNo(DB.expenses,'expNo');
   _expPh = { expId:null, photos:[] };   /* م249 */
   _overOk275 = '';
@@ -23306,7 +23308,7 @@ function expPeriodText(){
   return (EXP_DATE_PRESETS.find(p=>p[0] === f.preset) || [null, 'الكل'])[1] + pin;
 }
 function expensesCSVContent(){
-  const list = [...DB.expenses].filter(expMatchesFilters).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const list = [...DB.expenses].filter(expMatchesFilters).sort(expListCmp);   /* م279: نفس ترتيب الشاشة */
   const r2 = x => Math.round((+x || 0)*100)/100;
   const rows = [['التاريخ','رقم','نوع العملية','النوع','المجموعة','الوصف','المبلغ','وسيلة الدفع','ملاحظات']];
   let tot = 0;
@@ -26440,6 +26442,8 @@ function attToTs(dateStr, timeStr, fmt){
   const dt = new Date(d.y, d.mo-1, d.d, t.h, t.mi, t.se||0);
   return isNaN(dt.getTime()) ? null : dt.getTime();
 }
+/* م279: تاريخ اليوم بتوقيت الجهاز (مصر) — استخدمه لأي «النهارده» (مش toISOString().slice(0,10) اللي بيدّي تاريخ جرينتش:
+   من 12 لـ2 بالليل كان بيطلع امبارح — حادثة 20/11: 5 مصروفات اتسجلت بتاريخ 19/11 ونزلت آخر القايمة) */
 function attDateStr(ts){ const d=new Date(ts); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function attTimeStr(ts){ if(ts==null) return '—'; const d=new Date(ts); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 function fmtMins(m){ if(m==null||isNaN(m)) return '—'; m=Math.max(0,Math.round(m)); const h=Math.floor(m/60), mm=m%60; return (h?h+'س ':'')+(mm||!h?mm+'د':''); }
@@ -29087,7 +29091,7 @@ function employeeFormHTML(e){
     </div>
     <div class="grid g2">
       <div class="form-row"><label class="f-label">الرقم القومي</label><input class="f" id="emNid" value="${e.nationalId||''}"></div>
-      <div class="form-row"><label class="f-label">تاريخ التعيين</label><input class="f" id="emHire" type="date" value="${e.hireDate||new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-row"><label class="f-label">تاريخ التعيين</label><input class="f" id="emHire" type="date" value="${e.hireDate||attDateStr(Date.now())}"></div>
     </div>
     <div class="grid g2">
       ${hrCanSeeSalary()?`<div class="form-row"><label class="f-label">الراتب الشهري الأساسي</label><input class="f" id="emSalary" type="number" min="0" value="${e.salary||''}"></div>`:''}
@@ -29569,7 +29573,7 @@ function openAbsenceModal(empId){
   openModal(`
     <h3>تسجيل غياب — ${e.name}</h3>
     <div class="grid g2">
-      <div class="form-row"><label class="f-label">تاريخ الغياب</label><input class="f" id="abDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-row"><label class="f-label">تاريخ الغياب</label><input class="f" id="abDate" type="date" value="${attDateStr(Date.now())}"></div>
       <div class="form-row"><label class="f-label">عدد الأيام (ينفع جزء من يوم: 0.5)</label><input class="f" id="abDays" type="number" min="0.25" step="0.25" value="1"></div>
     </div>
     <div class="form-row"><label class="f-label">نوع الغياب</label>
@@ -29837,7 +29841,7 @@ function openNewPermitModal(kind){
   const activeEmps = DB.employees.filter(e=>e.status==='نشط');
   if(activeEmps.length===0){ toast('مفيش موظفين نشطين — لازم يتسجلوا الأول في ملفات الموظفين', true); return; }
   const empOptions = activeEmps.map(e=>`<option value="${e.id}">${e.name} — ${e.job||'—'}</option>`).join('');
-  const today = new Date().toISOString().slice(0,10);
+  const today = attDateStr(Date.now());
   openModal(`
     <h3>${isEarly?'إذن انصراف مبكر':'مأمورية'} جديد <span class="muted" style="font-size:12px">— رقم #${nextNo(DB.permits,'permitNo')}</span></h3>
     <div class="grid g2">
@@ -30108,7 +30112,7 @@ function openExpAdvanceModal(){
       <div style="font-size:12.5px;color:var(--danger);font-weight:700;margin-bottom:10px">⚠️ هذا الموظف غير مسجل بالنظام، سيتم تسجيل العملية كسلفة لموظف غير مكود.</div>
     </div>
     <div class="grid g2">
-      <div class="form-row"><label class="f-label">تاريخ السلفة</label><input class="f" id="xadvDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-row"><label class="f-label">تاريخ السلفة</label><input class="f" id="xadvDate" type="date" value="${attDateStr(Date.now())}"></div>
       <div class="form-row"><label class="f-label">قيمة السلفة</label><input class="f" id="xadvAmt" type="number" min="0"></div>
     </div>
     <div class="form-row"><label class="f-label">مصدر الدفع (إلزامي — الحساب اللي هتتخصم منه)</label>
@@ -30179,7 +30183,7 @@ function openPenaltyModal(empId){
   openModal(`
     <h3>جزاء / خصم — ${e.name}</h3>
     <div class="grid g2">
-      <div class="form-row"><label class="f-label">التاريخ</label><input class="f" id="pnDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-row"><label class="f-label">التاريخ</label><input class="f" id="pnDate" type="date" value="${attDateStr(Date.now())}"></div>
       <div class="form-row"><label class="f-label">قيمة الخصم</label><input class="f" id="pnAmt" type="number" min="0"></div>
     </div>
     <div class="form-row"><label class="f-label">سبب الجزاء</label><input class="f" id="pnReason" placeholder="مثال: إهمال في تنفيذ العمل"></div>
@@ -31155,7 +31159,7 @@ function toolFormHTML(x){
       <div class="form-row"><label class="f-label">الرقم التسلسلي (اختياري)</label><input class="f" id="tlSerial" value="${x.serial||''}"></div>
     </div>
     <div class="grid g2">
-      <div class="form-row"><label class="f-label">تاريخ الشراء</label><input class="f" id="tlDate" type="date" value="${x.purchaseDate||new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-row"><label class="f-label">تاريخ الشراء</label><input class="f" id="tlDate" type="date" value="${x.purchaseDate||attDateStr(Date.now())}"></div>
       <div class="form-row"><label class="f-label">تكلفة الشراء</label><input class="f" id="tlCost" type="number" min="0" value="${x.cost||0}"></div>
     </div>
     <div class="grid g2">
@@ -34863,7 +34867,7 @@ function exportBackup(){
   const blob = new Blob([JSON.stringify(backup,null,2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = 'garage-backup-'+new Date().toISOString().slice(0,10)+'.json';
+  a.href = url; a.download = 'garage-backup-'+attDateStr(Date.now())+'.json';
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
   const total = DATA_KEYS.reduce((s,k)=>s+((DB[k]||[]).length||0),0);
